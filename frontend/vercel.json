@@ -1,0 +1,9 @@
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "https://datalens-ai-backend.onrender.com/api/$1" },
+    { "source": "/static/(.*)", "destination": "https://datalens-ai-backend.onrender.com/static/$1" },
+    { "source": "/download-cleaned", "destination": "https://datalens-ai-backend.onrender.com/download-cleaned" },
+    { "source": "/download-report", "destination": "https://datalens-ai-backend.onrender.com/download-report" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
