@@ -14,7 +14,11 @@ export class ApiError extends Error {
   body: ApiErrorBody;
 
   constructor(status: number, body: ApiErrorBody, message?: string) {
-    super(message ?? body.error ?? `Request failed (${status})`);
+    let errMsg = message ?? body.error;
+    if (typeof errMsg === "object") {
+      errMsg = JSON.stringify(errMsg);
+    }
+    super(typeof errMsg === "string" ? errMsg : `Request failed (${status})`);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
