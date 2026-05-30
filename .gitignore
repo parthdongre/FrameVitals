@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# venv
+venv/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Runtime artifacts (regenerated on every analysis)
+uploads/*
+!uploads/.gitkeep
+cleaned/*
+!cleaned/.gitkeep
+static/charts/*
+!static/charts/.gitkeep
+logs/
+
+# LaTeX intermediates (the builder cleans these up but in case of crash)
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.synctex.gz
+
+# OS
+.DS_Store
+
+# Reports — keep the whitepaper, ignore the auto-generated dataset PDFs
+reports/*_report.pdf
+reports/whitepaper/*.aux
+reports/whitepaper/*.log
+reports/whitepaper/*.out
+reports/whitepaper/*.toc
+
+# IDE
+.vscode/
+.idea/
+.kiro/

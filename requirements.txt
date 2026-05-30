@@ -1,0 +1,55 @@
+# ============================================================================
+# DataLens AI v3 — Requirements
+# Mandatory libraries: seaborn, ollama, streamlit, matplotlib, pandas, numpy
+# ============================================================================
+
+# --- Mandatory core ---------------------------------------------------------
+pandas>=2.2
+numpy>=1.26
+matplotlib>=3.8
+seaborn>=0.13
+streamlit>=1.36
+ollama>=0.3
+
+# --- Web / API --------------------------------------------------------------
+flask>=3.0
+werkzeug>=3.0
+
+# --- IO ---------------------------------------------------------------------
+openpyxl>=3.1
+
+# --- Statistical depth ------------------------------------------------------
+scipy>=1.13
+statsmodels>=0.14
+pingouin>=0.5
+
+# --- Machine learning -------------------------------------------------------
+scikit-learn>=1.5
+xgboost>=2.0
+lightgbm>=4.3
+imbalanced-learn>=0.12
+optuna>=3.6
+
+# --- Anomaly detection ------------------------------------------------------
+pyod>=2.0
+
+# --- Explainability ---------------------------------------------------------
+shap>=0.45
+
+# --- Visualization extras ---------------------------------------------------
+plotly>=5.22
+missingno>=0.5
+
+# --- Reporting --------------------------------------------------------------
+fpdf2>=2.7
+jinja2>=3.1
+# weasyprint>=62  # optional, requires system libs (cairo/pango); enable if needed
+
+# --- Engineering / reliability ---------------------------------------------
+pydantic>=2.7
+joblib>=1.4
+loguru>=0.7
+
+# --- Testing ----------------------------------------------------------------
+pytest>=8.2
+hypothesis>=6.100

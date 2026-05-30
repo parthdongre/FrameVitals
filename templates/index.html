@@ -1,0 +1,823 @@
+{% extends "base.html" %}
+{% block title %}DataLens AI - Live Console{% endblock %}
+
+{% block extra_head %}
+<style>
+  .fade-in-up { animation: fadeInUp 0.5s ease-out; }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .progress-track { background: rgba(148, 163, 184, 0.2); }
+  .progress-fill {
+    width: 0%;
+    transition: width 0.35s ease;
+    background: linear-gradient(90deg, #2563eb, #3b82f6, #38bdf8);
+  }
+
+  .console-card {
+    background: rgba(255, 255, 255, 0.62);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.84);
+    box-shadow: 0 16px 45px rgba(37, 99, 235, 0.08);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border-radius: 999px;
+    border: 1px solid rgba(191, 219, 254, 0.9);
+    background: rgba(255, 255, 255, 0.72);
+    color: #1d4ed8;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .list-scroll {
+    max-height: 12rem;
+    overflow: auto;
+  }
+
+  .list-scroll::-webkit-scrollbar { width: 6px; }
+  .list-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="bg-cluely min-h-screen text-slate-800">
+  <div class="mx-auto max-w-[1600px] px-4 py-4 sm:px-6 lg:px-8">
+    <header class="mb-4 flex flex-col gap-4 rounded-3xl glass-strong px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+      <div class="flex items-center gap-3">
+        <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-600 to-brand-700 shadow-lg shadow-brand-500/20">
+          <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6m6 0V5a2 2 0 012-2h2a2 2 0 012 2v14m-6 0h6m4 0v-9a2 2 0 00-2-2h-2a2 2 0 00-2 2v9m4 0h-4"/></svg>
+        </div>
+        <div>
+          <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Flask backend console</p>
+          <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">DataLens AI live analysis window</h1>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        <span id="ollamaStatus" class="chip">Checking Ollama…</span>
+        <span id="openrouterStatus" class="chip">Checking OpenRouter…</span>
+        <span class="chip">Parallel pipeline</span>
+        <a id="dashboardCta" href="http://127.0.0.1:5173" target="_blank" rel="noopener" class="chip border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100">Open React dashboard ↗</a>
+      </div>
+    </header>
+
+    <div class="grid gap-4 lg:grid-cols-[340px_1fr]">
+      <aside class="space-y-4 lg:sticky lg:top-4 lg:h-fit">
+        <section class="console-card rounded-3xl p-5 fade-in-up">
+          <div class="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Upload</p>
+              <h2 class="mt-1 text-lg font-semibold text-slate-900">Dataset input</h2>
+            </div>
+            <div id="statusPill" class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700">Idle</div>
+          </div>
+
+          <form id="analysisForm" action="/api/analyze" method="POST" enctype="multipart/form-data" class="space-y-4">
+            <label id="dropZone" class="block cursor-pointer rounded-[1.5rem] border-2 border-dashed border-slate-200 bg-white/55 p-6 text-center transition hover:border-brand-500 hover:bg-brand-50/60">
+              <div class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 16V4m0 0-4 4m4-4 4 4m-8 8v4h8v-4"/></svg>
+              </div>
+              <p id="dropTitle" class="text-sm font-semibold text-slate-700">Drop a dataset or browse files</p>
+              <p id="dropMeta" class="mt-1 text-xs text-slate-500">CSV, TSV, JSON, XLSX, XLS</p>
+              <input id="fileInput" type="file" name="dataset" accept=".csv,.xlsx,.xls,.tsv,.json" class="hidden" required>
+            </label>
+
+            <div>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-[0.28em] text-slate-500">Analysis depth</label>
+              <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {% for value, label in [("quick", "Quick"), ("standard", "Standard"), ("deep", "Deep"), ("research", "Research")] %}
+                <label class="cursor-pointer">
+                  <input type="radio" name="analysis_mode" value="{{ value }}" {% if value == "standard" %}checked{% endif %} class="peer sr-only">
+                  <div class="rounded-2xl border border-slate-200 bg-white/70 px-3 py-3 text-center text-slate-500 transition peer-checked:border-brand-500 peer-checked:bg-brand-50 peer-checked:text-brand-700">
+                    <div class="text-sm font-semibold">{{ label }}</div>
+                  </div>
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-[0.28em] text-slate-500">Target column</label>
+              <input id="targetInput" type="text" name="target_column" placeholder="Optional target column" class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100">
+              <p class="mt-2 text-xs text-slate-500">Needed for classification or regression analysis.</p>
+            </div>
+
+            <button id="runButton" type="submit" class="btn-glow inline-flex h-12 w-full items-center justify-center rounded-2xl bg-gradient-to-r from-brand-600 to-brand-500 text-sm font-bold text-white shadow-lg shadow-brand-500/20 transition hover:from-brand-700 hover:to-brand-600 disabled:cursor-not-allowed disabled:opacity-60">
+              <span id="runLabel">Run analysis</span>
+              <svg id="runSpinner" class="ml-3 hidden h-5 w-5 animate-spin text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+            </button>
+          </form>
+
+          <div class="mt-4 rounded-2xl border border-slate-200 bg-white/65 p-4">
+            <div class="flex items-center justify-between text-xs text-slate-500">
+              <span>Live state</span>
+              <span id="activeFileLabel">No file selected</span>
+            </div>
+            <div class="mt-2 h-2 overflow-hidden rounded-full progress-track">
+              <div id="sidebarProgress" class="progress-fill h-full rounded-full"></div>
+            </div>
+            <p id="sidebarPhase" class="mt-2 text-xs text-slate-600">Waiting for dataset upload</p>
+          </div>
+        </section>
+
+        <section class="console-card rounded-3xl p-5 fade-in-up">
+          <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Quick summary</p>
+          <div class="mt-3 space-y-2 text-sm text-slate-600">
+            <p>Upload a dataset, choose the analysis depth, and optionally define a target column.</p>
+            <p>The backend will generate profiling, data quality, ML readiness, charts, and an AI report.</p>
+            <p>This page is designed to behave like a live console rather than a static landing page.</p>
+          </div>
+        </section>
+      </aside>
+
+      <main class="space-y-4">
+        <section class="console-card rounded-3xl p-6 fade-in-up">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Backend execution window</p>
+              <h2 class="mt-1 text-3xl font-extrabold tracking-tight text-slate-900">DataLens AI <span class="gradient-text">v3</span> live console</h2>
+              <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Posts directly to <span class="font-semibold text-slate-700">/api/analyze</span>, runs the parallel v3 pipeline (deep stats, 7-detector anomaly ensemble, model leaderboard, SHAP, time-series, text/NLP, drift), and renders results inline.</p>
+            </div>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <span class="chip">Profiling</span>
+              <span class="chip">Deep stats</span>
+              <span class="chip">Anomaly ensemble</span>
+              <span class="chip">ML leaderboard</span>
+              <span class="chip">SHAP</span>
+              <span class="chip">Time-series</span>
+              <span class="chip">NLP</span>
+              <span class="chip">Drift</span>
+              <span class="chip">Agent Q&amp;A</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="console-card rounded-3xl p-6 fade-in-up">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Progress</p>
+              <h3 class="mt-1 text-lg font-semibold text-slate-900">Analysis pipeline</h3>
+            </div>
+            <div class="text-right">
+              <div id="progressLabel" class="text-sm font-semibold text-slate-700">Idle</div>
+              <div id="progressPercent" class="text-xs text-slate-500">0%</div>
+            </div>
+          </div>
+          <div class="mt-4 h-3 overflow-hidden rounded-full progress-track">
+            <div id="progressBar" class="progress-fill h-full rounded-full"></div>
+          </div>
+          <div id="activityTrail" class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5"></div>
+        </section>
+
+        <section class="grid gap-4 lg:grid-cols-4 fade-in-up">
+          <div class="console-card rounded-3xl p-5"><div class="text-[11px] uppercase tracking-[0.28em] text-slate-500">Rows</div><div class="mt-2 text-3xl font-bold text-slate-900" id="metricRows">—</div></div>
+          <div class="console-card rounded-3xl p-5"><div class="text-[11px] uppercase tracking-[0.28em] text-slate-500">Columns</div><div class="mt-2 text-3xl font-bold text-slate-900" id="metricColumns">—</div></div>
+          <div class="console-card rounded-3xl p-5"><div class="text-[11px] uppercase tracking-[0.28em] text-slate-500">Health</div><div class="mt-2 text-3xl font-bold text-slate-900" id="metricHealth">—</div></div>
+          <div class="console-card rounded-3xl p-5"><div class="text-[11px] uppercase tracking-[0.28em] text-slate-500">ML readiness</div><div class="mt-2 text-3xl font-bold text-slate-900" id="metricMl">—</div></div>
+        </section>
+
+        <section class="console-card rounded-3xl p-6 fade-in-up">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Overview</p>
+              <h3 class="mt-1 text-lg font-semibold text-slate-900">Analysis plan and summary</h3>
+            </div>
+            <div id="fileMetaPill" class="rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-xs text-slate-500">No dataset loaded</div>
+          </div>
+          <div class="mt-4 grid gap-4 lg:grid-cols-2">
+            <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Selected analyses</p>
+              <div class="mt-3 flex flex-wrap gap-2" id="analysisSelectedPills"><span class="text-sm text-slate-500">No analysis has been run yet.</span></div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Recommended analyses</p>
+              <div class="mt-3 flex flex-wrap gap-2" id="analysisRecommendedPills"><span class="text-sm text-slate-500">No recommendations yet.</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="console-card rounded-3xl p-6 fade-in-up">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Signals</p>
+              <h3 class="mt-1 text-lg font-semibold text-slate-900">Quality signals and risks</h3>
+            </div>
+          </div>
+          <div class="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/70">
+            <div class="overflow-x-auto">
+              <table class="min-w-full border-separate border-spacing-0 text-left text-sm">
+                <thead class="bg-slate-50 text-[11px] uppercase tracking-[0.28em] text-slate-500">
+                  <tr>
+                    <th class="border-b border-slate-200 px-4 py-3 font-semibold">Signal</th>
+                    <th class="border-b border-slate-200 px-4 py-3 font-semibold">Severity</th>
+                    <th class="border-b border-slate-200 px-4 py-3 font-semibold">Evidence</th>
+                    <th class="border-b border-slate-200 px-4 py-3 font-semibold">Recommendation</th>
+                  </tr>
+                </thead>
+                <tbody id="signalsBody">
+                  <tr><td class="px-4 py-4 text-slate-500" colspan="4">Run an analysis to populate the signal summary.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="console-card rounded-3xl p-6 fade-in-up">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Charts</p>
+              <h3 class="mt-1 text-lg font-semibold text-slate-900">Auto-generated visualizations</h3>
+            </div>
+          </div>
+          <div id="chartsGrid" class="mt-4 grid gap-4 md:grid-cols-2">
+            <div class="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-6 text-sm text-slate-500">Charts will appear here after analysis completes.</div>
+          </div>
+        </section>
+
+        <div class="grid gap-4 xl:grid-cols-2">
+          <section class="console-card rounded-3xl p-6 fade-in-up">
+            <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Machine learning</p>
+            <h3 class="mt-1 text-lg font-semibold text-slate-900">Target analysis and baseline model</h3>
+            <div id="mlPanel" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-slate-500">Target-aware results will appear here after analysis.</div>
+          </section>
+
+          <section class="console-card rounded-3xl p-6 fade-in-up">
+            <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Diagnostics</p>
+            <h3 class="mt-1 text-lg font-semibold text-slate-900">Leakage, multicollinearity, diagnostics</h3>
+            <div id="diagnosticsPanel" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-slate-500">Diagnostic output will appear here after analysis.</div>
+          </section>
+        </div>
+
+        <div class="grid gap-4 xl:grid-cols-2">
+          <section class="console-card rounded-3xl p-6 fade-in-up">
+            <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Segmentation</p>
+            <h3 class="mt-1 text-lg font-semibold text-slate-900">Group-level analysis</h3>
+            <div id="segmentPanel" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-slate-500">Segment analysis will appear here after analysis.</div>
+          </section>
+
+          <section class="console-card rounded-3xl p-6 fade-in-up">
+            <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Cleaning</p>
+            <h3 class="mt-1 text-lg font-semibold text-slate-900">Cleaning summary and actions</h3>
+            <div id="cleaningPanel" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-slate-500">Cleaning actions will appear here after analysis.</div>
+          </section>
+        </div>
+
+        <section class="console-card rounded-3xl p-6 fade-in-up">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">v3 analytics</p>
+              <h3 class="mt-1 text-lg font-semibold text-slate-900">Advanced modules</h3>
+            </div>
+            <div class="text-xs text-slate-500">Anomaly ensemble · ML leaderboard · SHAP · Time-series · Text · Drift</div>
+          </div>
+
+          <div class="mt-4 grid gap-4 lg:grid-cols-3">
+            <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Anomaly ensemble</p>
+              <div id="v3AnomalyPanel" class="mt-2 text-sm text-slate-600">No analysis yet.</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">ML leaderboard</p>
+              <div id="v3LeaderboardPanel" class="mt-2 text-sm text-slate-600">Set a target column to enable.</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">SHAP explainability</p>
+              <div id="v3ShapPanel" class="mt-2 text-sm text-slate-600">Set a target column to enable.</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Time-series</p>
+              <div id="v3TimeSeriesPanel" class="mt-2 text-sm text-slate-600">Detected automatically when a date column exists.</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Text / NLP profile</p>
+              <div id="v3TextPanel" class="mt-2 text-sm text-slate-600">Detected automatically for free-text columns.</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Pipeline timing</p>
+              <div id="v3TimingPanel" class="mt-2 text-sm text-slate-600">No timing data yet.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="console-card rounded-3xl p-6 fade-in-up">
+          <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">AI report</p>
+          <h3 class="mt-1 text-lg font-semibold text-slate-900">Generated narrative summary</h3>
+          <div id="aiReportPanel" class="mt-4 rounded-2xl border border-slate-200 bg-white/75 p-5 text-sm leading-7 text-slate-700">The AI report will appear here after analysis.</div>
+        </section>
+
+        <section class="console-card rounded-3xl p-6 fade-in-up">
+          <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Data preview</p>
+          <h3 class="mt-1 text-lg font-semibold text-slate-900">First rows of the dataset</h3>
+          <div id="previewTableWrap" class="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/75">
+            <div class="p-5 text-sm text-slate-500">A preview of the uploaded dataset will appear after analysis.</div>
+          </div>
+        </section>
+
+        <footer class="pb-4 pt-2 text-center text-[11px] uppercase tracking-[0.32em] text-slate-500">
+          Flask backend console · live analysis view
+        </footer>
+      </main>
+    </div>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById('analysisForm');
+  const fileInput = document.getElementById('fileInput');
+  const dropZone = document.getElementById('dropZone');
+  const dropTitle = document.getElementById('dropTitle');
+  const dropMeta = document.getElementById('dropMeta');
+  const activeFileLabel = document.getElementById('activeFileLabel');
+  const targetInput = document.getElementById('targetInput');
+  const runButton = document.getElementById('runButton');
+  const runLabel = document.getElementById('runLabel');
+  const runSpinner = document.getElementById('runSpinner');
+  const statusPill = document.getElementById('statusPill');
+  const sidebarProgress = document.getElementById('sidebarProgress');
+  const sidebarPhase = document.getElementById('sidebarPhase');
+  const progressBar = document.getElementById('progressBar');
+  const progressLabel = document.getElementById('progressLabel');
+  const progressPercent = document.getElementById('progressPercent');
+  const activityTrail = document.getElementById('activityTrail');
+  const metricRows = document.getElementById('metricRows');
+  const metricColumns = document.getElementById('metricColumns');
+  const metricHealth = document.getElementById('metricHealth');
+  const metricMl = document.getElementById('metricMl');
+  const fileMetaPill = document.getElementById('fileMetaPill');
+  const analysisSelectedPills = document.getElementById('analysisSelectedPills');
+  const analysisRecommendedPills = document.getElementById('analysisRecommendedPills');
+  const signalsBody = document.getElementById('signalsBody');
+  const chartsGrid = document.getElementById('chartsGrid');
+  const mlPanel = document.getElementById('mlPanel');
+  const diagnosticsPanel = document.getElementById('diagnosticsPanel');
+  const segmentPanel = document.getElementById('segmentPanel');
+  const cleaningPanel = document.getElementById('cleaningPanel');
+  const aiReportPanel = document.getElementById('aiReportPanel');
+  const previewTableWrap = document.getElementById('previewTableWrap');
+
+  let progressTimer = null;
+  let phaseTimer = null;
+  let liveProgress = 0;
+  const phases = ['Uploading file', 'Profiling dataset', 'Running quality checks', 'Building charts', 'Finalizing report'];
+
+  // ---- Health probe -----------------------------------------------------
+  // Populates the status chips and conditionally hides the React dashboard CTA.
+  async function probeHealth() {
+    const ollamaPill = document.getElementById('ollamaStatus');
+    const openrouterPill = document.getElementById('openrouterStatus');
+    const dashboardCta = document.getElementById('dashboardCta');
+
+    try {
+      const response = await fetch('/api/health');
+      const status = response.ok ? await response.json() : null;
+      if (!status) throw new Error('health endpoint unreachable');
+
+      ollamaPill.textContent = status.ollama_reachable ? 'Ollama ✓' : 'Ollama offline';
+      ollamaPill.className = 'chip ' + (status.ollama_reachable ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white/70 text-slate-500');
+
+      openrouterPill.textContent = status.openrouter_configured ? 'OpenRouter ✓' : 'OpenRouter unset';
+      openrouterPill.className = 'chip ' + (status.openrouter_configured ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white/70 text-slate-500');
+    } catch {
+      ollamaPill.textContent = 'Ollama unknown';
+      openrouterPill.textContent = 'OpenRouter unknown';
+    }
+
+    if (dashboardCta) {
+      // Probe the React dev server (5173) with a no-cors fetch so we can hide
+      // the CTA when the dev server isn't running.
+      try {
+        await fetch('http://127.0.0.1:5173', { mode: 'no-cors', cache: 'no-cache' });
+      } catch {
+        dashboardCta.style.display = 'none';
+      }
+    }
+  }
+  probeHealth();
+  // -----------------------------------------------------------------------
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  function formatValue(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    if (Array.isArray(value)) return value.map(formatValue).join(', ');
+    if (typeof value === 'number') return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 4 });
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    return escapeHtml(value);
+  }
+
+  async function readJsonResponse(response) {
+    const contentType = response.headers.get('content-type') || '';
+    const rawBody = await response.text();
+
+    if (!rawBody) {
+      return null;
+    }
+
+    if (contentType.includes('application/json')) {
+      try {
+        return JSON.parse(rawBody);
+      } catch {
+        return { error: rawBody };
+      }
+    }
+
+    return { error: rawBody };
+  }
+
+  function updateProgress(value, label) {
+    liveProgress = Math.max(0, Math.min(100, value));
+    progressBar.style.width = `${liveProgress}%`;
+    sidebarProgress.style.width = `${liveProgress}%`;
+    progressLabel.textContent = label;
+    sidebarPhase.textContent = label;
+    progressPercent.textContent = `${Math.round(liveProgress)}%`;
+  }
+
+  function setLog(message, tone = 'neutral') {
+    const styles = {
+      neutral: 'border-slate-200 bg-white/75 text-slate-600',
+      active: 'border-blue-200 bg-blue-50 text-blue-700',
+      success: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+      warning: 'border-amber-200 bg-amber-50 text-amber-700',
+      danger: 'border-rose-200 bg-rose-50 text-rose-700',
+    };
+
+    const node = document.createElement('div');
+    node.className = `rounded-2xl border px-3 py-2 text-xs ${styles[tone] || styles.neutral}`;
+    node.textContent = message;
+    activityTrail.prepend(node);
+
+    while (activityTrail.children.length > 5) {
+      activityTrail.removeChild(activityTrail.lastChild);
+    }
+  }
+
+  function startProgress() {
+    clearInterval(progressTimer);
+    clearInterval(phaseTimer);
+    activityTrail.innerHTML = '';
+    setLog('Starting backend analysis', 'active');
+    updateProgress(8, phases[0]);
+    let step = 0;
+
+    progressTimer = window.setInterval(() => {
+      if (liveProgress < 92) {
+        updateProgress(liveProgress + 10, phases[Math.min(step, phases.length - 1)]);
+      }
+    }, 350);
+
+    phaseTimer = window.setInterval(() => {
+      step = Math.min(step + 1, phases.length - 1);
+      setLog(phases[step], 'active');
+    }, 900);
+  }
+
+  function stopProgress(message, tone = 'success') {
+    clearInterval(progressTimer);
+    clearInterval(phaseTimer);
+    updateProgress(100, message);
+    setLog(message, tone);
+    setTimeout(() => updateProgress(0, 'Idle'), 900);
+  }
+
+  function renderChips(container, items, emptyText) {
+    if (!items || !items.length) {
+      container.innerHTML = `<span class="text-sm text-slate-500">${escapeHtml(emptyText)}</span>`;
+      return;
+    }
+
+    container.innerHTML = items.map((item) => `<span class="chip">${escapeHtml(item.name || item.label || item.title || item)}</span>`).join('');
+  }
+
+  function renderSignals(signals) {
+    if (!signals || !signals.length) {
+      signalsBody.innerHTML = '<tr><td class="px-4 py-4 text-slate-500" colspan="4">No signals available.</td></tr>';
+      return;
+    }
+
+    signalsBody.innerHTML = signals.map((signal) => `
+      <tr class="odd:bg-white/55 even:bg-slate-50/70">
+        <td class="border-b border-slate-100 px-4 py-4 text-slate-700">${escapeHtml(signal.name || 'Signal')}</td>
+        <td class="border-b border-slate-100 px-4 py-4"><span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${signal.severity === 'high' ? 'badge-high' : signal.severity === 'medium' ? 'badge-medium' : 'badge-low'}">${escapeHtml(signal.severity || 'low')}</span></td>
+        <td class="border-b border-slate-100 px-4 py-4 text-slate-500">${escapeHtml(signal.evidence || '—')}</td>
+        <td class="border-b border-slate-100 px-4 py-4 text-slate-500">${escapeHtml(signal.recommendation || '—')}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderCharts(charts) {
+    if (!charts || !charts.length) {
+      chartsGrid.innerHTML = '<div class="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-6 text-sm text-slate-500">Charts will appear here after analysis completes.</div>';
+      return;
+    }
+
+    chartsGrid.innerHTML = charts.map((chart) => `
+      <div class="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm">
+        <div class="text-sm font-semibold text-slate-800">${escapeHtml(chart.title || 'Chart')}</div>
+        <div class="mt-1 text-xs text-slate-500">${escapeHtml(chart.description || '')}</div>
+        <div class="mt-4 overflow-hidden rounded-2xl border border-slate-100 bg-white">
+          <img src="/static/${escapeHtml(chart.path || '')}" alt="${escapeHtml(chart.title || 'Chart')}" class="h-auto w-full object-cover" />
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderPreview(result) {
+    const columns = result?.profile?.columns || [];
+    const rows = result?.profile?.preview || [];
+
+    if (!columns.length || !rows.length) {
+      previewTableWrap.innerHTML = '<div class="p-5 text-sm text-slate-500">A preview of the uploaded dataset will appear after analysis.</div>';
+      return;
+    }
+
+    const head = columns.map((column) => `<th class="border-b border-slate-200 px-4 py-3 text-left text-[11px] uppercase tracking-[0.22em] text-slate-500">${escapeHtml(column)}</th>`).join('');
+    const body = rows.slice(0, 10).map((row) => `<tr class="odd:bg-white/55 even:bg-slate-50/70">${columns.map((column) => `<td class="border-b border-slate-100 px-4 py-3 text-sm text-slate-700">${formatValue(row[column])}</td>`).join('')}</tr>`).join('');
+
+    previewTableWrap.innerHTML = `<table class="min-w-full border-separate border-spacing-0 text-left"><thead class="bg-slate-50">${head}</thead><tbody>${body}</tbody></table>`;
+  }
+
+  function renderMlPanel(result) {
+    const target = result?.targetAnalysis || {};
+    const featureImportance = result?.featureImportance || {};
+    const baselineModel = result?.baselineModel || {};
+
+    if (!target.available && !featureImportance.available && !baselineModel.available) {
+      mlPanel.innerHTML = 'Target-aware results will appear here after analysis.';
+      return;
+    }
+
+    mlPanel.innerHTML = `
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div class="rounded-2xl border border-slate-200 bg-white/70 p-4"><p class="text-xs uppercase tracking-[0.28em] text-slate-500">Target column</p><p class="mt-2 text-lg font-semibold text-slate-800">${escapeHtml(target.target_column || 'Not set')}</p></div>
+        <div class="rounded-2xl border border-slate-200 bg-white/70 p-4"><p class="text-xs uppercase tracking-[0.28em] text-slate-500">Task type</p><p class="mt-2 text-lg font-semibold text-slate-800">${escapeHtml(target.task_type || 'Unknown')}</p></div>
+      </div>
+      <div class="mt-4 rounded-2xl border border-slate-200 bg-white/70 p-4"><p class="text-xs uppercase tracking-[0.28em] text-slate-500">Task reasoning</p><p class="mt-2 text-sm leading-6 text-slate-600">${escapeHtml(target.task_reason || 'No reasoning available.')}</p></div>
+      <div class="mt-4 rounded-2xl border border-slate-200 bg-white/70 p-4"><p class="text-xs uppercase tracking-[0.28em] text-slate-500">Top feature importance</p><p class="mt-2 text-sm text-slate-600">${escapeHtml((featureImportance.top_features || []).slice(0, 6).map((item) => `${item.feature}: ${item.importance}`).join(' | ') || 'No feature importance values available.')}</p></div>
+      <div class="mt-4 rounded-2xl border border-slate-200 bg-white/70 p-4"><p class="text-xs uppercase tracking-[0.28em] text-slate-500">Baseline model metrics</p><p class="mt-2 text-sm text-slate-600">${escapeHtml(baselineModel.model_metrics ? JSON.stringify(baselineModel.model_metrics) : 'No baseline metrics available.')}</p></div>
+    `;
+  }
+
+  function renderDiagnosticsPanel(result) {
+    const leakage = result?.targetLeakage || {};
+    const multicollinearity = result?.multicollinearity || {};
+    const diagnostics = result?.modelDiagnostics || {};
+
+    if (!leakage.available && !multicollinearity.vif && !diagnostics.available) {
+      diagnosticsPanel.innerHTML = 'Diagnostic output will appear here after analysis.';
+      return;
+    }
+
+    diagnosticsPanel.innerHTML = `
+      <div class="grid gap-3 sm:grid-cols-3">
+        <div class="rounded-2xl border border-slate-200 bg-white/70 p-4"><p class="text-xs uppercase tracking-[0.28em] text-slate-500">Leakage</p><p class="mt-2 text-sm font-semibold text-slate-800">${escapeHtml(leakage.status || leakage.message || 'Not available')}</p></div>
+        <div class="rounded-2xl border border-slate-200 bg-white/70 p-4"><p class="text-xs uppercase tracking-[0.28em] text-slate-500">Multicollinearity</p><p class="mt-2 text-sm font-semibold text-slate-800">${escapeHtml(multicollinearity.vif?.status || multicollinearity.vif?.message || 'Not available')}</p></div>
+        <div class="rounded-2xl border border-slate-200 bg-white/70 p-4"><p class="text-xs uppercase tracking-[0.28em] text-slate-500">Model diagnostics</p><p class="mt-2 text-sm font-semibold text-slate-800">${escapeHtml(diagnostics.task_type || diagnostics.message || 'Not available')}</p></div>
+      </div>
+    `;
+  }
+
+  function renderSegmentPanel(result) {
+    const segmentAnalysis = result?.segmentAnalysis || {};
+
+    if (!segmentAnalysis.available) {
+      segmentPanel.innerHTML = 'Segment analysis will appear here after analysis.';
+      return;
+    }
+
+    segmentPanel.innerHTML = `<div class="rounded-2xl border border-slate-200 bg-white/70 p-4 text-sm text-slate-600">${escapeHtml(JSON.stringify(segmentAnalysis).slice(0, 1200))}</div>`;
+  }
+
+  function renderCleaningPanel(result) {
+    const cleaning = result?.cleaning || {};
+
+    if (!cleaning.actions) {
+      cleaningPanel.innerHTML = 'Cleaning actions will appear here after analysis.';
+      return;
+    }
+
+    cleaningPanel.innerHTML = `<div class="rounded-2xl border border-slate-200 bg-white/70 p-4 text-sm text-slate-600">${escapeHtml(JSON.stringify(cleaning).slice(0, 1200))}</div>`;
+  }
+
+  // ---- v3 panels --------------------------------------------------------
+  const v3AnomalyPanel = document.getElementById('v3AnomalyPanel');
+  const v3LeaderboardPanel = document.getElementById('v3LeaderboardPanel');
+  const v3ShapPanel = document.getElementById('v3ShapPanel');
+  const v3TimeSeriesPanel = document.getElementById('v3TimeSeriesPanel');
+  const v3TextPanel = document.getElementById('v3TextPanel');
+  const v3TimingPanel = document.getElementById('v3TimingPanel');
+
+  function renderV3AnomalyPanel(result) {
+    const a = result?.anomaliesV2;
+    if (!a || !a.available) {
+      v3AnomalyPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(a?.message || 'Not available.')}</span>`;
+      return;
+    }
+    const detectors = a.detectors_run || [];
+    const top = (a.top_rows || []).slice(0, 3);
+    v3AnomalyPanel.innerHTML = `
+      <div class="text-2xl font-extrabold text-slate-900">${a.flagged_count}/${a.n_rows_scored}</div>
+      <div class="text-xs uppercase tracking-[0.28em] text-slate-500">flagged rows</div>
+      <div class="mt-2 text-xs text-slate-600">${detectors.length} detectors · threshold ${a.threshold}</div>
+      <div class="mt-2 flex flex-wrap gap-1">${detectors.slice(0, 4).map(d => `<span class="chip text-[10px]">${escapeHtml(d.replace(/_/g, ' '))}</span>`).join('')}${detectors.length > 4 ? `<span class="text-[10px] text-slate-500">+${detectors.length - 4}</span>` : ''}</div>
+      ${top.length ? `<div class="mt-2 text-xs text-slate-500">Top score ${top[0]?.ensemble?.toFixed?.(3) ?? '—'} · row ${top[0]?.row_index ?? '?'}</div>` : ''}
+    `;
+  }
+
+  function renderV3LeaderboardPanel(result) {
+    const lb = result?.modelLeaderboard;
+    if (!lb || !lb.available) {
+      v3LeaderboardPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(lb?.message || 'Set a target column to enable.')}</span>`;
+      return;
+    }
+    const winner = lb.winner;
+    const rows = (lb.leaderboard || []).slice(0, 3);
+    v3LeaderboardPanel.innerHTML = `
+      <div class="text-lg font-extrabold text-slate-900">${escapeHtml(winner?.model || '—')}</div>
+      <div class="text-xs uppercase tracking-[0.28em] text-slate-500">${escapeHtml(lb.primary_metric || 'score')} ${formatValue(winner?.primary_score)}</div>
+      <div class="mt-2 text-xs text-slate-600">${escapeHtml(lb.task_type || '?')} · ${rows.length} of ${lb.leaderboard?.length || 0} models</div>
+      <div class="mt-2 space-y-1 text-xs text-slate-500">
+        ${rows.map((r, i) => `<div>#${i + 1} ${escapeHtml(r.model)} · ${formatValue(r.primary_score)}</div>`).join('')}
+      </div>
+    `;
+  }
+
+  function renderV3ShapPanel(result) {
+    const ex = result?.explainability;
+    if (!ex || !ex.available) {
+      v3ShapPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(ex?.message || 'Set a target column to enable.')}</span>`;
+      return;
+    }
+    const top = (ex.global_importance || []).slice(0, 4);
+    v3ShapPanel.innerHTML = `
+      <div class="text-xs uppercase tracking-[0.28em] text-slate-500">${escapeHtml(ex.method || 'shap')}</div>
+      <div class="text-sm font-bold text-slate-900">${escapeHtml(ex.model || '—')}</div>
+      <div class="mt-2 space-y-1 text-xs text-slate-500">
+        ${top.map(f => `<div>${escapeHtml(f.feature)} · <span class="font-mono text-slate-600">${formatValue(f.importance)}</span></div>`).join('')}
+      </div>
+    `;
+  }
+
+  function renderV3TimeSeriesPanel(result) {
+    const ts = result?.timeSeries;
+    if (!ts || !ts.available) {
+      v3TimeSeriesPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(ts?.reason || 'No date column detected.')}</span>`;
+      return;
+    }
+    const stat = ts.stationarity?.verdict || '—';
+    v3TimeSeriesPanel.innerHTML = `
+      <div class="text-sm font-bold text-slate-900">${escapeHtml(ts.detected_date_column)} · ${escapeHtml(ts.numeric_column)}</div>
+      <div class="text-xs uppercase tracking-[0.28em] text-slate-500">${ts.n_observations} obs · ${escapeHtml(ts.frequency?.label || '?')}</div>
+      <div class="mt-2 text-xs text-slate-600">Stationarity: ${escapeHtml(stat)}</div>
+      ${ts.forecast?.available ? `<div class="mt-1 text-xs text-slate-500">Forecast HW MAE: ${formatValue(ts.forecast.holt_winters?.metrics?.mae)}</div>` : ''}
+    `;
+  }
+
+  function renderV3TextPanel(result) {
+    const tp = result?.textProfile;
+    if (!tp || !tp.available) {
+      v3TextPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(tp?.reason || 'No text columns detected.')}</span>`;
+      return;
+    }
+    const detected = tp.detected_columns || [];
+    const first = detected[0];
+    const profile = first ? (tp.profiles?.[first] || {}) : {};
+    v3TextPanel.innerHTML = `
+      <div class="text-sm font-bold text-slate-900">${detected.length} text col${detected.length === 1 ? '' : 's'}</div>
+      <div class="text-xs uppercase tracking-[0.28em] text-slate-500">${escapeHtml(first || '')}</div>
+      ${profile?.tokens ? `<div class="mt-2 text-xs text-slate-600">vocab ${profile.tokens.vocab_size?.toLocaleString?.() ?? '—'} · diversity ${formatValue(profile.tokens.lexical_diversity)}</div>` : ''}
+      ${profile?.sentiment_lite ? `<div class="text-xs text-slate-500">polarity ${formatValue(profile.sentiment_lite.polarity)}</div>` : ''}
+    `;
+  }
+
+  function renderV3TimingPanel(result) {
+    const t = result?.timings_ms || result?.timingsMs;
+    if (!t) {
+      v3TimingPanel.innerHTML = '<span class="text-slate-500">No timing data yet.</span>';
+      return;
+    }
+    const total = t.total ?? 0;
+    const phase3 = t.phase3_parallel_total ?? t.phase3ParallelTotal ?? 0;
+    v3TimingPanel.innerHTML = `
+      <div class="text-2xl font-extrabold text-slate-900">${total.toFixed(0)} ms</div>
+      <div class="text-xs uppercase tracking-[0.28em] text-slate-500">total pipeline</div>
+      <div class="mt-2 text-xs text-slate-600">Phase 3 (parallel): ${phase3.toFixed(0)} ms</div>
+      <div class="text-xs text-slate-500">Profile: ${(t.profile ?? 0).toFixed(0)} ms · Charts: ${(t.charts ?? 0).toFixed(0)} ms</div>
+    `;
+  }
+  // -----------------------------------------------------------------------
+
+  function renderMarkdownReport(result) {
+    const text = result?.aiReport?.text || result?.aiReport || 'The AI report will appear here after analysis.';
+    aiReportPanel.innerHTML = `<pre class="whitespace-pre-wrap font-sans leading-7 text-slate-700">${escapeHtml(text)}</pre>`;
+  }
+
+  function renderResult(result) {
+    window.__lastResult = result;
+    metricRows.textContent = formatValue(result?.rows);
+    metricColumns.textContent = formatValue(result?.columns);
+    metricHealth.textContent = result?.health ? `${result.health.overall_score}/100` : '—';
+    metricMl.textContent = result?.mlReadiness ? `${result.mlReadiness.score}/100` : '—';
+    fileMetaPill.textContent = result ? `${formatValue(result.rows)} rows · ${formatValue(result.columns)} columns` : 'No dataset loaded';
+
+    renderChips(analysisSelectedPills, result?.analysisSelection?.selectedAnalyses || [], 'No analysis has been run yet.');
+    renderChips(analysisRecommendedPills, result?.analysisSelection?.recommendedAnalyses || [], 'No recommendations yet.');
+    renderSignals(result?.signals || []);
+    renderCharts(result?.charts || []);
+    renderMlPanel(result);
+    renderDiagnosticsPanel(result);
+    renderSegmentPanel(result);
+    renderCleaningPanel(result);
+    renderV3AnomalyPanel(result);
+    renderV3LeaderboardPanel(result);
+    renderV3ShapPanel(result);
+    renderV3TimeSeriesPanel(result);
+    renderV3TextPanel(result);
+    renderV3TimingPanel(result);
+    renderMarkdownReport(result);
+    renderPreview(result);
+
+    statusPill.textContent = 'Complete';
+    statusPill.className = 'rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700';
+    dropTitle.textContent = result?.filename ? `Analyzed: ${result.filename}` : 'Analysis complete';
+    dropMeta.textContent = result?.analysisMode ? `Mode: ${String(result.analysisMode).toUpperCase()}` : 'Live backend console';
+  }
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+    activeFileLabel.textContent = file.name;
+    dropTitle.textContent = file.name;
+    dropMeta.textContent = `${sizeMB} MB`;
+    statusPill.textContent = 'Ready';
+    statusPill.className = 'rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700';
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const file = fileInput.files?.[0];
+    if (!file) {
+      setLog('Please upload a dataset file before running analysis.', 'warning');
+      statusPill.textContent = 'Waiting';
+      statusPill.className = 'rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700';
+      return;
+    }
+
+    startProgress();
+    runButton.disabled = true;
+    runLabel.textContent = 'Running analysis';
+    runSpinner.classList.remove('hidden');
+    statusPill.textContent = 'Running';
+    statusPill.className = 'rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700';
+
+    const formData = new FormData(form);
+
+    try {
+      const response = await fetch('/api/analyze', { method: 'POST', body: formData });
+      const payload = await readJsonResponse(response);
+      if (!response.ok) throw new Error(payload?.error || `Analysis failed (${response.status}).`);
+
+      renderResult(payload);
+      stopProgress('Analysis complete', 'success');
+      setLog('Live result rendered in the backend console', 'success');
+    } catch (error) {
+      stopProgress('Analysis failed', 'danger');
+      statusPill.textContent = 'Failed';
+      statusPill.className = 'rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold text-rose-700';
+      setLog(error instanceof Error ? error.message : 'Analysis failed.', 'danger');
+    } finally {
+      runButton.disabled = false;
+      runLabel.textContent = 'Run analysis';
+      runSpinner.classList.add('hidden');
+    }
+  });
+
+  dropZone.addEventListener('dragover', (event) => event.preventDefault());
+  dropZone.addEventListener('drop', (event) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    fileInput.files = dataTransfer.files;
+    fileInput.dispatchEvent(new Event('change'));
+  });
+
+  updateProgress(0, 'Waiting for dataset upload');
+</script>
+{% endblock %}

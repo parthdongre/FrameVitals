@@ -1,0 +1,317 @@
+================================================================================
+DATALENS AI — END-SEMESTER REVIEW · PRESENTATION DECK (LITE)
+================================================================================
+
+Group No: 13
+Members:
+    Parth Birari   ·  53 / IT D / 1251130415
+    Parth Dongre   ·  54 / IT D / 1251130421
+    Aryan Patil    ·  55 / IT D / 1251130411
+    Atharv Patil   ·  56 / IT D / 1251130441
+
+Guide:        Prof. Kishor Pathak
+Institute:    Vishwakarma Institute of Technology, Pune
+Department:   Information Technology
+Date:         May 2026
+
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 1  ·  COVER
+────────────────────────────────────────────────────────────────────────────────
+
+Eyebrow:    DATALENS · AI  ·  END-SEMESTER REVIEW
+Title:      DataLens AI
+Tagline:    Read the signal in your data.
+Subtitle:   An offline-first, evidence-backed dataset analyser.
+
+Footer:
+    Guide:      Prof. Kishor Pathak
+    Team:       Group 13 — Parth Birari, Parth Dongre, Aryan Patil, Atharv Patil
+    Institute:  Vishwakarma Institute of Technology, Pune
+    Date:       May 2026
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 2  ·  PROBLEM & OBJECTIVE
+────────────────────────────────────────────────────────────────────────────────
+
+  •  Existing tools are split: profiling-only (ydata), drift-only
+     (Evidently), ML-only (AutoML). None do all three.
+
+  •  AI assistants need cloud APIs and produce ungrounded text.
+
+  •  Goal — one offline pipeline that takes any CSV / Excel / JSON and
+     produces a complete, evidence-backed report in under a minute.
+
+  •  Every claim must trace to a named algorithm and a numeric result;
+     the LLM must fall back gracefully when no model is reachable.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 3  ·  ARCHITECTURE
+────────────────────────────────────────────────────────────────────────────────
+
+Six-phase pipeline · 40+ modules · parallel where safe.
+
+    [ React Dashboard ] ─ Vite · Tailwind · Highcharts
+              │
+    [ Flask API ] ─ JSON contract on :5055
+              │
+    [ run_full_analysis ] ─ modules/pipeline.py
+
+    P1 Ingest    →  load → profile → roles → signals → selector
+    P2 Quality   →  health · ML readiness · advanced
+    P3 Parallel  →  deep_stats · anomalies · time-series · text
+    P4 ML chain  →  leaderboard → SHAP
+    P5 Reporting →  cleaning · charts · PDF
+    P6 Agentic   →  brief · RAG · LLM agent (deferred)
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 4  ·  INGEST + PROFILING + QUALITY
+────────────────────────────────────────────────────────────────────────────────
+
+  loader · security · profiler · column_roles · dataset_signals · health · ML readiness
+
+  •  loader.py — encoding waterfall (utf-8-sig → windows-1252 → latin-1).
+
+  •  profiler.py — shape, dtypes, top categorical counts, full Pearson
+     matrix, 15-row preview.
+
+  •  column_roles.py — multi-label roles (id_like, time_like, sensitive,
+     long_text, target_candidate, …).
+
+  •  health_score.py
+        Health = 0.30·completeness + 0.20·consistency
+               + 0.20·uniqueness  + 0.20·outlier_safety + 10
+        Labels: ≥90 Excellent · ≥75 Good · ≥60 Moderate · ≥40 Poor · else Critical.
+
+  •  ml_readiness.py
+        score = 100 − min(30, missing %) − min(15, dup %) − min(20, 2·|cat cols|)
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 5  ·  DEEP STATISTICS — UNIVARIATE FORMULAE
+────────────────────────────────────────────────────────────────────────────────
+
+Per numeric column.
+
+  •  Skew   γ₁  =  E[(X − μ)³] / σ³        |γ₁| < 0.5 symmetric · ≥ 1 highly skewed
+  •  Kurt   γ₂  =  E[(X − μ)⁴] / σ⁴ − 3    > 1 heavy · < −1 light tailed
+
+  •  Normality:  Shapiro-Wilk (n ≤ 5000) · D'Agostino-Pearson (n ≥ 20) ·
+                 Anderson-Darling vs 5 % critical.
+
+  •  Best-fit distribution by AIC across {norm, lognorm, expon, gamma,
+     weibull, beta}:
+        AIC = 2·k − 2·ln L̂
+
+  •  Bootstrap 95 % CIs (mean & median): 999 BCa resamples
+     (scipy.stats.bootstrap).
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 6  ·  DEEP STATISTICS — BIVARIATE FORMULAE
+────────────────────────────────────────────────────────────────────────────────
+
+  Numeric × numeric:
+      Pearson r   =  Cov(X,Y) / (σ_X · σ_Y)        ∈ [−1, 1]
+      Spearman ρ  =  Pearson r on ranks
+      Kendall τ   =  P(concordant) − P(discordant)
+
+  Categorical × categorical:
+      χ²          =  Σ (Oᵢ − Eᵢ)² / Eᵢ
+      Cramér V    =  √( χ² / (n · (min(r, c) − 1)) )    ∈ [0, 1]
+                     ≥ 0.5 strong · ≥ 0.3 moderate · ≥ 0.1 weak
+
+  Binary × numeric:
+      Point-biserial r_pb = Pearson r with binary coded {0, 1}
+
+  Group difference:
+      Mann-Whitney U (2 groups) · Kruskal-Wallis H (≥ 3 groups)
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 7  ·  ANOMALY ENSEMBLE
+────────────────────────────────────────────────────────────────────────────────
+
+Each detector emits a [0, 1] score after min-max normalisation.
+
+  •  Isolation Forest  score(x) = 2^(−E[h(x)] / c(n))
+  •  Local Outlier Factor  LOF_k(x) = mean(lrd(y) / lrd(x), y ∈ N_k(x))
+  •  Robust z (MAD)  z* = (x − median) / (1.4826·MAD), flag |z*| > 3.5
+  •  Mahalanobis  D²(x) = (x − μ)ᵀ Σ⁻¹ (x − μ),  Σ from MinCovDet
+  •  Elliptic Envelope — robust Gaussian envelope
+  •  Optional ECOD + COPOD (pyod)
+
+Ensemble:  s(x) = mean across available detectors;  flag if s ≥ 0.6.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 8  ·  RELATIONSHIPS — VIF & LEAKAGE
+────────────────────────────────────────────────────────────────────────────────
+
+  multicollinearity.py
+      VIFⱼ  =  1 / (1 − R²ⱼ)        ≥ 10 High · ≥ 5 Medium · else Low
+
+  target_leakage.py
+      same_ratio = mean( str(feature) == str(target) ) on overlap ≥ 10
+      Risk:  ≥ 0.98 Critical · |ρ| ≥ 0.98 High · |ρ| ≥ 0.90 Medium
+
+  target_analyzer.py
+      task_type  ←  numeric ≤10 unique → classification
+                    numeric unique_ratio > 0.05 → regression
+      Imbalance: ≥90% Severe · ≥75% Imbalanced · ≥60% Slight · else Balanced
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 9  ·  ML LAB — METRICS
+────────────────────────────────────────────────────────────────────────────────
+
+7-model leaderboard, StratifiedKFold(5) for clf, KFold(5) for reg.
+
+Classification:
+   Accuracy = (TP + TN) / N
+   Precision = TP / (TP + FP)        Recall = TP / (TP + FN)
+   F1 = 2·P·R / (P + R)              F1_weighted = Σ wᵢ · F1ᵢ
+   Brier = (1/n) Σ (pᵢ − yᵢ)²        (binary calibration)
+
+Regression:
+   R² = 1 − Σ(yᵢ − ŷᵢ)² / Σ(yᵢ − ȳ)²
+   MAE = (1/n) Σ |yᵢ − ŷᵢ|
+   RMSE = √ (1/n) Σ (yᵢ − ŷᵢ)²
+
+Winner refit on train + 25 % holdout validation.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 10  ·  ML LAB — SHAP
+────────────────────────────────────────────────────────────────────────────────
+
+Shapley value (Lundberg & Lee 2017):
+
+   φᵢ(x)  =   Σ      |S|! (|F| − |S| − 1)!  ·  [ v(S∪{i}) − v(S) ]
+            S ⊆ F\{i} ───────────────────
+                            |F|!
+
+   Sums to ŷ(x) − E[ŷ] (local accuracy).
+
+  •  shap.TreeExplainer — exact SHAP for tree ensembles.
+  •  shap.LinearExplainer — closed-form SHAP for linear models.
+  •  Permutation importance — fallback, drop in score when feature j is
+     randomly permuted.
+
+Outputs: top-15 global features (one-hot summed back), top-3 per-row
+stories, beeswarm summary PNG.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 11  ·  TIME-SERIES MODULE
+────────────────────────────────────────────────────────────────────────────────
+
+  Date detection:
+      score = 0.6·parse_rate + 0.3·monotone + 0.1·name_is_date_like
+      Period via FFT: round(n / argmax|RFFT(series − mean)|).
+
+  Stationarity:
+      ADF  H₀: unit root → reject (p < 0.05) means stationary
+      KPSS H₀: stationary → fail to reject (p > 0.05) means stationary
+
+  STL strengths:
+      F_T = max(0, 1 − Var(R) / Var(T + R))
+      F_S = max(0, 1 − Var(R) / Var(S + R))
+
+  Holt-Winters (additive):
+      ℓ_t = α(y_t − s_{t−m}) + (1 − α)(ℓ_{t−1} + b_{t−1})
+      ŷ_{t+h} = ℓ_t + h·b_t + s_{t+h−m}
+   compared against a last-value naive baseline by MAE / RMSE.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 12  ·  TEXT PROFILE & DRIFT
+────────────────────────────────────────────────────────────────────────────────
+
+text_profile.py
+  •  Type-Token Ratio  TTR = |V| / N
+  •  TF-IDF  tfidf(t,d) = count(t,d) · log[ |D| / |{d : t∈d}| ]
+  •  LSA — TruncatedSVD(2) on the TF-IDF matrix.
+  •  Sentiment-lite polarity = (pos_words − neg_words) / total_words.
+  •  Regex hits: emails, URLs, phones, mentions, hashtags, monetary.
+
+drift_analysis.py
+  •  PSI  = Σ_b (p_b^cur − p_b^ref) · ln(p_b^cur / p_b^ref)
+            buckets: <0.10 stable · <0.25 minor · <0.50 moderate · ≥0.50 severe.
+  •  Two-sample KS  = max_x |F_ref(x) − F_cur(x)|, flag p < 0.01.
+  •  Categorical drift: chi-square independence on the 2 × K table.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 13  ·  REPORTING + AGENTIC
+────────────────────────────────────────────────────────────────────────────────
+
+Reporting (no statistical formulae):
+  •  chart_planner — picks 20+ chart specs from roles + signals.
+  •  visualizer — matplotlib + seaborn renderer in editorial-dark palette.
+  •  pdf_report_builder — composer, one figure per A4 page (cover, KPI
+     tiles, contents, sections, visual evidence pages).
+
+Agentic Q&A:
+  •  rag_index — fact index + cosine top-k retrieval
+        sim(q, cᵢ) = (q · cᵢ) / (‖q‖·‖cᵢ‖)
+        Backend: Ollama nomic-embed-text · TF-IDF fallback.
+  •  agent_brief — ≤ 9 KB JSON snapshot.
+  •  agent_tools — get_section · column_summary · run_query (sandboxed) ·
+     get_top_anomalies · get_leaderboard · search_facts.
+  •  ai_agent — fast path (one writer call) or full path (planner →
+     executor → critic → writer). Routes Cloud Ollama → local Ollama →
+     OpenRouter → heuristic.
+  •  safe_pandas — AST allow-list sandbox, no imports / lambdas / IO.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 14  ·  COMPARISON · DATALENS VS EXISTING TOOLS  (two-column)
+────────────────────────────────────────────────────────────────────────────────
+
+LEFT — DataLens AI:
+  •  Offline-first; no cloud APIs.
+  •  Profile + ML + SHAP + Drift + LLM in one pipeline.
+  •  Mean-rank anomaly ensemble (5–7 detectors).
+  •  Auto-generated PDF report + 27-page LaTeX module reference.
+
+RIGHT — Existing tools:
+  •  ydata-profiling: profiling only — no SHAP / drift / LLM.
+  •  Evidently: drift only — no profiling / LLM.
+  •  AutoML (auto-sklearn, h2o.ai): no profiling, no explanations.
+  •  ChatGPT Code Interpreter / Julius: cloud-only, ungrounded text.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 15  ·  LIMITATIONS, FUTURE & CONCLUSION
+────────────────────────────────────────────────────────────────────────────────
+
+Limitations:
+  •  Default hyperparameters — leaderboard is a baseline.
+  •  Drift compares two halves; no persistent baseline.
+  •  In-memory pipeline; degrades > 1 M rows.
+  •  English-centric NLP.
+
+Future:
+  •  Persistent drift baselines; streaming / sampled deep stats.
+  •  Optuna hyperparameter tuning.
+  •  Causal inference (DoWhy / EconML).
+  •  LLM agent re-call into pandas when retrieval is empty.
+
+Conclusion:
+  •  Working integration of profiling, deep statistics, anomaly detection,
+     ML, SHAP, time-series, drift, and an LLM agent in one pipeline.
+  •  Every claim traces to a named algorithm and a concrete formula.
+  •  Ships with a 27-page module reference covering the math behind every
+     analytical module.
+
+                          Thank You.
+
+================================================================================
+END OF DECK · 15 SLIDES (LITE)
+================================================================================

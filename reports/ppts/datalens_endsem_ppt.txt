@@ -1,0 +1,687 @@
+================================================================================
+DATALENS AI — END-SEMESTER REVIEW · PRESENTATION DECK
+================================================================================
+
+Group No: 13
+Members:
+    Parth Birari   ·  53 / IT D / 1251130415
+    Parth Dongre   ·  54 / IT D / 1251130421
+    Aryan Patil    ·  55 / IT D / 1251130411
+    Atharv Patil   ·  56 / IT D / 1251130441
+
+Guide:        Prof. Kishor Pathak
+Institute:    Vishwakarma Institute of Technology, Pune
+Department:   Information Technology
+Date:         May 2026
+
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 1  ·  COVER
+────────────────────────────────────────────────────────────────────────────────
+
+Eyebrow:    DATALENS · AI  ·  END-SEMESTER REVIEW
+Title:      DataLens AI
+Tagline:    Read the signal in your data.
+Subtitle:   An offline-first, evidence-backed dataset analyser.
+
+Footer:
+    Guide:      Prof. Kishor Pathak
+    Team:       Group 13 — Parth Birari, Parth Dongre, Aryan Patil, Atharv Patil
+    Institute:  Vishwakarma Institute of Technology, Pune
+    Date:       May 2026
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 2  ·  CONTENTS
+────────────────────────────────────────────────────────────────────────────────
+
+  •  Introduction & Motivation
+  •  Problem statement
+  •  Literature review
+  •  Research gaps
+  •  Objectives
+  •  System architecture (six-phase pipeline)
+  •  Module reference, category by category, with formulae:
+       Profiling · Quality · Statistics · Anomalies · Relationships ·
+       ML Lab · Time-series · Text · Drift · Reporting · Agentic
+  •  Comparison with existing tools
+  •  Limitations & future work
+  •  Conclusion & references
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 3  ·  INTRODUCTION
+────────────────────────────────────────────────────────────────────────────────
+
+What DataLens AI is.
+
+  •  Offline-first dataset analyser. Takes any CSV / TSV / Excel / JSON
+     and returns a structured, evidence-backed report.
+
+  •  Six-phase pipeline: ingest → quality → parallel analytics →
+     ML chain → reporting → agentic Q&A.
+
+  •  Two surfaces: a 17-tab React dashboard at :5173 and a Streamlit
+     visual console at :8501.
+
+  •  All ML and stats run locally. LLM responses use Ollama (local or
+     cloud) with a TF-IDF + heuristic fallback.
+
+  •  Defining property: every claim traces to a named algorithm and a
+     concrete numeric result.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 4  ·  PROBLEM STATEMENT
+────────────────────────────────────────────────────────────────────────────────
+
+The gap.
+
+  •  Profiling tools (ydata, pandas-profiling) cover stats but stop short
+     of ML, drift, and SHAP.
+
+  •  Drift tools (Evidently) require an already-modelled dataset.
+
+  •  AutoML platforms model but do not profile or explain.
+
+  •  LLM dataset assistants need cloud APIs and produce ungrounded text.
+
+  •  Real-world CSVs are messy: encoding mismatches, mixed dtypes,
+     irregular timestamps.
+
+  •  Goal — one offline pipeline that does all of the above honestly,
+     with every claim traceable to math.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 5  ·  LITERATURE REVIEW
+────────────────────────────────────────────────────────────────────────────────
+
+Surveying the four families of prior work DataLens AI builds on.
+
+  1.  Automated profiling (ydata-profiling / pandas-profiling, Sweetviz,
+      AutoViz). One-shot HTML reports of dtypes, missingness, correlations
+      and distributions. Strong on description, silent on modelling,
+      explainability and drift.
+
+  2.  Drift & monitoring (Evidently AI, NannyML, WhyLabs). Implement PSI,
+      KS, Wasserstein and chi-square tests over reference vs current
+      windows. Assume the dataset is already modelled and a baseline
+      exists; no profiling or ML in the same surface.
+
+  3.  AutoML & explainability (auto-sklearn, H2O.ai, PyCaret, FLAML;
+      SHAP — Lundberg & Lee 2017; LIME — Ribeiro 2016; permutation
+      importance — Breiman 2001). Strong leaderboards and attributions,
+      but treat the input table as already clean — no quality scoring,
+      no anomaly ensemble, no drift.
+
+  4.  Anomaly detection & statistical testing. Isolation Forest (Liu,
+      Ting, Zhou 2008), LOF (Breunig et al. 2000), robust covariance /
+      Mahalanobis distance (Rousseeuw 1984), MAD-based z-scores (Leys
+      et al. 2013). Time-series testing — ADF (Dickey & Fuller 1979),
+      KPSS (Kwiatkowski et al. 1992), STL decomposition (Cleveland et
+      al. 1990), Holt-Winters (Hyndman & Athanasopoulos 2018). Each is
+      well-studied in isolation; no public tool fuses them into one
+      report.
+
+  5.  LLM dataset assistants (ChatGPT Code Interpreter, Julius AI, Sketch,
+      PandasAI). Conversational and powerful, but cloud-only and
+      ungrounded — answers are generated text rather than traced to a
+      named algorithm and a numeric result.
+
+Takeaway — each family solves one slice. DataLens AI integrates all
+five behind a single offline pipeline where every claim is anchored
+to a formula.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 6  ·  RESEARCH GAPS  (two-column)
+────────────────────────────────────────────────────────────────────────────────
+
+LEFT COLUMN — Existing tools, what's missing:
+  •  Profiling-only depth (no ML, no drift, no SHAP)
+  •  Closed-source, cloud-only LLM inference
+  •  Black-box recommendations with no math behind them
+  •  Single chart per relationship, no chart planner
+  •  No reproducibility: outputs differ between runs
+  •  No per-row anomaly attribution
+
+RIGHT COLUMN — DataLens fills these by design:
+  •  40+ modules covering profile → ML → SHAP → drift → text
+  •  Local Ollama with optional Ollama Cloud free-tier fallback
+  •  Every signal carries evidence + recommendation strings
+  •  Role-aware planner produces 20+ chart types
+  •  Deterministic random_state seeds across all phases
+  •  Mean-rank anomaly ensemble across 5+ detectors
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 7  ·  OBJECTIVES
+────────────────────────────────────────────────────────────────────────────────
+
+  •  Auto-detect column roles, dtypes, and dataset signals.
+
+  •  Produce 0–100 health and ML-readiness scores with sub-component
+     breakdowns.
+
+  •  Run a cross-validated 7-model leaderboard for any target.
+
+  •  Generate global + per-row SHAP attributions for the winner.
+
+  •  Detect time-series structure with ADF + KPSS + STL + Holt-Winters.
+
+  •  Compute PSI / KS / chi-square drift between two datasets or two
+     halves of one.
+
+  •  Auto-generate a styled multi-page PDF report and a 17-tab React
+     dashboard from one analysis result.
+
+  •  Expose chat-style Q&A grounded in the analysis result via RAG.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 8  ·  SYSTEM ARCHITECTURE
+────────────────────────────────────────────────────────────────────────────────
+
+Six-phase pipeline · 40+ modules · parallel where safe.
+
+    [ React Dashboard ] ─ Vite · Tailwind · Highcharts
+              │
+    [ Flask API ] ─ JSON contract on :5055
+              │
+    [ run_full_analysis ] ─ modules/pipeline.py
+
+    P1 Ingest       →  load → profile → roles → signals → selector
+    P2 Quality      →  health → ML readiness → advanced
+    P3 Parallel     →  deep_stats · anomalies · time-series · text
+    P4 ML Chain     →  leaderboard → SHAP explainability
+    P5 Reporting    →  cleaning · charts · PDF
+    P6 Agentic Q&A  →  brief · RAG · LLM agent (deferred by default)
+
+Every parallel branch is wrapped in _safe_call() so a single exception
+becomes {"available": false, ...} instead of sinking the run.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 9  ·  SECTION DIVIDER · MODULES + FORMULAE
+────────────────────────────────────────────────────────────────────────────────
+
+Number:  02
+Title:   Modules & Formulae
+Blurb:   Category by category, every analytical module with the math
+         it actually runs.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 10  ·  INGEST + PROFILING MODULES
+────────────────────────────────────────────────────────────────────────────────
+
+Five modules. No statistical formulae — pure structural detection.
+
+  •  loader.py — encoding waterfall (utf-8-sig → windows-1252 →
+     latin-1) so real-world files always load.
+
+  •  security.py — extension allow-list + secure_filename + CSV-injection
+     guard (prefix `'` to cells starting with `=  +  -  @`).
+
+  •  profiler.py — shape, dtypes, top-10 categorical counts, full Pearson
+     correlation matrix, 15-row preview. Date detection: ≥ 70 % parse
+     rate on a 25-row sample with pd.to_datetime.
+
+  •  column_roles.py — multi-label role assignment (numeric, categorical,
+     id_like, time_like, price_like, sensitive, long_text, binary,
+     target_candidate, …) driven by dtype + cardinality + name keyword
+     banks + content checks.
+
+  •  dataset_signals.py — flat boolean dictionary that drives the
+     analysis selector (has_numeric_columns, has_potential_leakage,
+     has_time_series_structure, …). Leakage heuristic: any non-id
+     numeric pair with |Pearson r| ≥ 0.98.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 11  ·  QUALITY MODULES (formulae)
+────────────────────────────────────────────────────────────────────────────────
+
+Two scores out of 100 plus the auto-cleaner.
+
+  health_score.py
+  ──────────────
+    completeness    = 100 − missing %
+    uniqueness      = 100 − duplicate %
+    outlier safety  = 100 − IQR-outlier %
+    consistency     = 100 − (constant % + high-cardinality %)
+
+    Health = 0.30·completeness + 0.20·consistency
+           + 0.20·uniqueness  + 0.20·outlier_safety + 10
+
+    Labels:  ≥90 Excellent · ≥75 Good · ≥60 Moderate · ≥40 Poor · else Critical
+
+  ml_readiness.py
+  ───────────────
+    score = 100 − min(30, missing %) − min(15, duplicate %)
+                − min(20, 2·|categorical_cols|)
+
+    Labels: ≥85 Ready · ≥70 Mostly Ready · ≥50 Partially · else Not Ready
+
+  cleaner.py
+  ──────────
+    Numeric NaN → median impute · Categorical NaN → mode impute
+    Drop exact duplicate rows · Sanitise CSV cells before export
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 12  ·  STATISTICS — DEEP STATISTICS V2 (formulae)
+────────────────────────────────────────────────────────────────────────────────
+
+Per numeric column.
+
+  •  Skewness  γ₁ = E[(X − μ)³] / σ³
+                  |γ₁| < 0.5 symmetric · < 1 moderate · ≥ 1 highly skewed
+
+  •  Kurtosis (excess) γ₂ = E[(X − μ)⁴] / σ⁴ − 3
+                  > 1 heavy-tailed · < −1 light-tailed
+
+  •  Normality:  Shapiro-Wilk for n ≤ 5000;  D'Agostino-Pearson for n ≥ 20;
+                 Anderson-Darling vs 5 % critical value. Verdict prefers
+                 Shapiro p when available.
+
+  •  Best-fit distribution by AIC across {norm, lognorm, expon, gamma,
+     weibull, beta}:
+                 AIC = 2·k − 2·ln L̂
+
+  •  Bootstrap 95 % CIs (mean & median): scipy.stats.bootstrap, 999
+     resamples, BCa method.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 13  ·  STATISTICS — BIVARIATE TESTS (formulae)
+────────────────────────────────────────────────────────────────────────────────
+
+Numeric vs numeric:
+  Pearson r       =  Cov(X,Y) / (σ_X · σ_Y)            ∈ [−1, 1]
+  Spearman ρ      =  Pearson r on ranks                ∈ [−1, 1]
+  Kendall τ       =  P(concordant) − P(discordant)     ∈ [−1, 1]
+
+Categorical vs categorical:
+  Chi-square      χ²  =  Σ (Oᵢ − Eᵢ)² / Eᵢ
+  Cramér's V      V   =  √( χ² / (n · (min(r, c) − 1)) )    ∈ [0, 1]
+                          ≥ 0.5 strong · ≥ 0.3 moderate · ≥ 0.1 weak
+
+Binary vs numeric:
+  Point-biserial  r_pb  =  Pearson r with binary coded {0, 1}
+
+Group differences (numeric vs low-cardinality categorical):
+  Mann-Whitney U for 2 groups · Kruskal-Wallis H for ≥ 3 groups
+  H₀: groups come from the same distribution · reject at p < 0.05
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 14  ·  ANOMALY ENSEMBLE (formulae)
+────────────────────────────────────────────────────────────────────────────────
+
+Each detector emits a [0, 1] score after min-max normalisation.
+
+  •  Isolation Forest:  score(x) = 2^(−E[h(x)] / c(n))
+       — average path length E[h(x)] in random binary trees;
+         c(n) is the average path length for a sample of size n.
+
+  •  Local Outlier Factor:  LOF_k(x) = (Σ_{y∈N_k(x)} lrd(y) / lrd(x)) / |N_k(x)|
+       — ratio of local reachability density of x to its k neighbours.
+
+  •  Robust z-score (MAD):  z* = (x − median) / (1.4826 · MAD),  flag |z*| > 3.5
+       — 1.4826 makes MAD a consistent estimator of σ for normals.
+
+  •  Mahalanobis:  D²(x) = (x − μ)ᵀ Σ⁻¹ (x − μ),  Σ from MinCovDet.
+
+  •  Elliptic Envelope:  flags rows in the tail of a robust Gaussian fit.
+
+Ensemble:  s(x) = mean across available detectors;  flag if s(x) ≥ 0.6.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 15  ·  RELATIONSHIPS MODULES (formulae)
+────────────────────────────────────────────────────────────────────────────────
+
+  multicollinearity.py
+  ────────────────────
+    For feature j regressed on all others, R²ⱼ from LinearRegression.
+                 VIFⱼ  =  1 / (1 − R²ⱼ)
+                 ≥ 10 High · ≥ 5 Medium · else Low.
+
+  target_leakage.py
+  ─────────────────
+    same_ratio  =  mean( str(feature) == str(target) )  on overlap ≥ 10
+    Risk:  ≥ 0.98 Critical · |ρ| ≥ 0.98 High · |ρ| ≥ 0.90 Medium · else Low.
+
+  target_analyzer.py
+  ──────────────────
+    task_type ←  numeric with ≤ 10 unique values  →  classification
+                 numeric with unique_ratio > 0.05  →  regression
+    Imbalance:  Severely (≥ 90 %) · Imbalanced (≥ 75 %) · Slightly (≥ 60 %)
+                else Balanced.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 16  ·  ML LAB — LEADERBOARD (formulae)
+────────────────────────────────────────────────────────────────────────────────
+
+Cross-validated 7-model board.  StratifiedKFold(5) for classification
+(folds capped by smallest class).  KFold(5) for regression.
+
+Classification metrics:
+  Accuracy  =  (TP + TN) / N
+  Precision =  TP / (TP + FP)        Recall = TP / (TP + FN)
+  F1        =  2·P·R / (P + R)        F1_weighted = Σ wᵢ · F1ᵢ over classes
+  Brier     =  (1/n) Σ (pᵢ − yᵢ)²    (binary, lower = better calibrated)
+
+Regression metrics:
+  R²    =  1 − Σ(yᵢ − ŷᵢ)² / Σ(yᵢ − ȳ)²
+  MAE   =  (1/n) Σ |yᵢ − ŷᵢ|
+  MSE   =  (1/n) Σ (yᵢ − ŷᵢ)²        RMSE = √MSE
+
+Winner: best non-Dummy model by F1_weighted (clf) or R² (reg). Refit on
+train, validated on a held-out 25 % slice.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 17  ·  ML LAB — EXPLAINABILITY (formulae)
+────────────────────────────────────────────────────────────────────────────────
+
+SHAP value (Lundberg & Lee 2017):
+
+   φᵢ(x) = Σ_{S ⊆ F\{i}}  |S|! (|F| − |S| − 1)!  ·  [v(S∪{i}) − v(S)]
+                          ─────────────────────
+                                   |F|!
+
+   Sums to ŷ(x) − E[ŷ]: local accuracy property.
+
+Implementations used:
+  •  shap.TreeExplainer — exact polynomial-time SHAP for tree ensembles.
+  •  shap.LinearExplainer — closed-form SHAP for linear models given a
+     background sample.
+  •  Permutation importance — drop in score when feature j is randomly
+     permuted, mean over 5 repeats.
+
+Outputs: top-15 global features (one-hot dummies summed back to parents),
+top-3 per-row stories, beeswarm summary PNG.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 18  ·  ML LAB — DIAGNOSTICS, FEATURES, SEGMENTS (formulae)
+────────────────────────────────────────────────────────────────────────────────
+
+  model_diagnostics.py
+  ────────────────────
+    Independent RandomForest on a 25 % holdout.
+    Classification: classification report (P/R/F1 per class), K×K
+    confusion matrix, 5-fold CV F1_weighted. CV mean > 0.98 → "check
+    target leakage".
+    Regression: residual summary (mean, std, min, max), top-10 worst
+    predictions by |y − ŷ|, 5-fold CV R².
+
+  feature_importance.py
+  ─────────────────────
+    Gini importance for trees:  Σ over splits of (impurity_decrease · n)
+    Mutual information:  I(X;Y) = ΣΣ p(x,y) log[ p(x,y) / (p(x)p(y)) ]
+
+  segment_analysis.py
+  ───────────────────
+    Pick low-cardinality (2–12 unique) categoricals.
+    Numeric target: groupby + count, mean, median, std, min, max.
+    Otherwise: per-group share of total rows.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 19  ·  TIME-SERIES MODULE (formulae)
+────────────────────────────────────────────────────────────────────────────────
+
+Date detection score:
+   s = 0.6·parse_rate + 0.3·monotone + 0.1·name_is_date_like
+Period via FFT: round(n / argmax|RFFT(series − mean)|).
+
+Stationarity:
+   ADF  H₀: unit root (non-stationary) · reject at p < 0.05 → stationary
+   KPSS H₀: stationary             · fail to reject at p > 0.05 → stationary
+
+STL strengths (Hyndman 2008):
+   F_T  =  max(0, 1 − Var(R) / Var(T + R))   trend strength
+   F_S  =  max(0, 1 − Var(R) / Var(S + R))   seasonal strength
+
+Holt-Winters additive:
+   ℓ_t  = α(y_t − s_{t−m}) + (1 − α)(ℓ_{t−1} + b_{t−1})
+   b_t  = β(ℓ_t − ℓ_{t−1}) + (1 − β) b_{t−1}
+   s_t  = γ(y_t − ℓ_{t−1} − b_{t−1}) + (1 − γ) s_{t−m}
+   ŷ_{t+h}  =  ℓ_t + h·b_t + s_{t+h−m}
+Naive baseline: last value. Compared by MAE and RMSE on the held-out tail.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 20  ·  TEXT PROFILE MODULE (formulae)
+────────────────────────────────────────────────────────────────────────────────
+
+Detection: object dtype + ≥ 30 % multi-token + mean length ≥ 8 chars.
+
+Vocabulary stats:
+   Type-Token Ratio  TTR = |V| / N      (unique tokens / total tokens)
+   Shannon entropy  H = −Σ pᵢ log₂ pᵢ   (over token frequencies)
+
+TF-IDF:
+   tf(t, d)   = count(t in d)
+   idf(t, D)  = log[ |D| / |{d : t ∈ d}| ]
+   tfidf      = tf · idf
+
+LSA: TruncatedSVD(n_components = 2) on the TF-IDF matrix.
+
+Sentiment-lite:
+   polarity = (positive_words − negative_words) / total_words
+   Seed lists: ~20 positive / ~20 negative tokens.
+
+Regex hits: emails, URLs, phones, mentions, hashtags, monetary tokens.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 21  ·  DRIFT MODULE (formulae)
+────────────────────────────────────────────────────────────────────────────────
+
+PSI (Population Stability Index):
+                 B
+   PSI  =     Σ    (p_b^cur − p_b^ref) · ln( p_b^cur / p_b^ref )
+                b = 1
+
+   Buckets:  < 0.10 stable · < 0.25 minor · < 0.50 moderate · ≥ 0.50 severe.
+   Numeric:  10 quantile bins from the reference array.
+   Categorical: bin = category. Laplace smoothed by 10⁻⁶ to avoid log 0.
+
+Kolmogorov-Smirnov two-sample:
+   KS  =  max_x | F_ref(x) − F_cur(x) |       (max gap in empirical CDFs)
+   Flag if p < 0.01.
+
+Categorical drift: chi-square independence on the 2 × K count table.
+
+Per-column severity is rolled up to an overall verdict.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 22  ·  REPORTING MODULES
+────────────────────────────────────────────────────────────────────────────────
+
+No statistical formulae — pure presentation logic.
+
+  •  chart_planner.py — picks chart specs from column roles + signals.
+     Skips meaningless ones (no histogram of an ID column). 20+ chart
+     types: health components, distributions, boxplots, violins,
+     correlation heatmap, top correlations, target distribution,
+     leaderboard, feature importance, time-series trend.
+
+  •  visualizer.py — renders each spec with matplotlib + seaborn in the
+     editorial-dark palette. Saves PNGs to static/charts/.
+
+  •  pdf_report_builder.py — composer class lays out one matplotlib
+     figure per A4 page. Cover + KPI tiles · Contents · Sections · Visual
+     Evidence (two charts per page).
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 23  ·  AGENTIC LAYER — RAG INDEX (formulae)
+────────────────────────────────────────────────────────────────────────────────
+
+  rag_index.py — fact index and retrieval.
+
+Cosine similarity (top-k retrieval):
+                      q · cᵢ
+   sim(q, cᵢ)  =  ───────────
+                   ‖q‖ · ‖cᵢ‖
+
+Backends:
+  •  Ollama nomic-embed-text — parallel-batched at 8 workers.
+  •  Fallback: TF-IDF (1–2 grams, 4096 max features) — used in tests / CI.
+
+Fact build: walks the analysis dict, emits one fact per leaf, skips
+noisy paths (chart filenames, AI report text, raw correlations,
+per-row anomaly rows).
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 24  ·  AGENTIC LAYER — AGENT MODULES
+────────────────────────────────────────────────────────────────────────────────
+
+Agent loop and the tools the LLM can call.
+
+  •  ai_insights.py — generate_ai_report builds a structured prompt
+     (Executive Summary → Quality Risks → Key Insights → Cleaning →
+     Warnings → Next Steps). Falls back to a deterministic Python
+     writer when no model is reachable.
+
+  •  agent_brief.py — packs identity + schema + signals + ML headlines
+     + sample rows into a ≤ 9 KB JSON brief.
+
+  •  agent_tools.py — nine audited tools: get_section, list_columns,
+     column_summary, run_query (sandboxed pandas), get_top_anomalies,
+     get_leaderboard, get_explainability_top, search_facts,
+     get_dataset_brief.
+
+  •  ai_agent.py — fast path = one writer call;  full path = planner
+     (JSON) → executor → critic (JSON) → writer.  Routes Ollama Cloud
+     → local Ollama → OpenRouter → heuristic.
+
+  •  safe_pandas.py — AST allow-list sandbox. ~80 safe attributes,
+     no imports / lambdas / dunders / IO. Compiled AST runs under
+     `__builtins__: {}`.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 25  ·  COMPARISON · DATALENS VS EXISTING TOOLS  (two-column)
+────────────────────────────────────────────────────────────────────────────────
+
+LEFT — DataLens AI:
+  •  Offline-first; runs without internet.
+  •  40+ modules, 9 categories, six-phase pipeline.
+  •  Built-in SHAP + permutation importance.
+  •  Built-in PSI / KS drift detection.
+  •  Multi-detector anomaly ensemble (5–7 detectors).
+  •  Auto-generated PDF report + 27-page LaTeX module reference.
+  •  Local LLM agent with TF-IDF fallback.
+
+RIGHT — Existing tools:
+  •  ydata / pandas-profiling: profiling depth comparable, no SHAP, no
+     leaderboard, no LLM.
+  •  Evidently AI: drift only — no profiling, no LLM.
+  •  AutoML (auto-sklearn, h2o.ai): no profiling, no explanations, no
+     drift.
+  •  ChatGPT Code Interpreter / Julius AI: cloud-only, ungrounded text.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 26  ·  LIMITATIONS
+────────────────────────────────────────────────────────────────────────────────
+
+What DataLens does NOT do well today.
+
+  •  Default hyperparameters — leaderboard is a baseline, not state-of-art.
+  •  Drift compares two halves of one upload; no persistent baseline.
+  •  In-memory pipeline; degrades > 1 M rows.
+  •  Associational only; no causal inference.
+  •  English-centric NLP (NLTK stopwords).
+  •  LLM agent has no pandas-recall yet, so questions outside the brief
+     fall back to RAG.
+  •  No real-time / streaming support.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 27  ·  FUTURE WORK
+────────────────────────────────────────────────────────────────────────────────
+
+Where v4 should go.
+
+  •  Persistent drift baselines: store a "time-zero" snapshot per dataset.
+  •  Streaming / sampled variants of deep stats and anomaly ensemble.
+  •  Hyperparameter tuning with Optuna for the leaderboard.
+  •  Causal inference module (DoWhy / EconML) on declared treatment +
+     outcome columns.
+  •  LLM agent re-call: writer executes pandas snippets when retrieval
+     comes back empty.
+  •  Multilingual NLP: language detection + per-language stopwords.
+  •  Production observability (Loguru → JSON logs, Prometheus, SLOs).
+  •  Vercel + Railway deployment.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 28  ·  CONCLUSION
+────────────────────────────────────────────────────────────────────────────────
+
+  •  DataLens AI is a complete, offline-first, evidence-backed dataset
+     analyser — built end-to-end in one semester.
+
+  •  Working integration of profiling, deep statistics, anomaly detection,
+     ML modeling, SHAP, time-series, drift, and an LLM agent in a single
+     coherent pipeline.
+
+  •  Every analytical claim traces back to a named algorithm and a
+     concrete formula — no generated text, no hallucinated metrics.
+
+  •  Ships with a 27-page auto-generated module reference that documents
+     every module and the math it runs.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 29  ·  REFERENCES
+────────────────────────────────────────────────────────────────────────────────
+
+Algorithmic foundations.
+
+  •  Lundberg & Lee (2017). A Unified Approach to Interpreting Model
+     Predictions. NeurIPS.
+  •  Breiman (2001). Random Forests. Machine Learning 45(1).
+  •  Liu, Ting, Zhou (2008). Isolation Forest. ICDM.
+  •  Breunig et al. (2000). LOF: Identifying Density-Based Local Outliers.
+     SIGMOD.
+  •  Cleveland et al. (1990). STL: A Seasonal-Trend Decomposition based
+     on Loess.
+  •  Hyndman & Athanasopoulos (2018). Forecasting: Principles and
+     Practice (2nd ed.).
+  •  Dickey & Fuller (1979). Distribution of the Estimators for AR Time
+     Series with a Unit Root.
+  •  Kwiatkowski, Phillips, Schmidt, Shin (1992). KPSS test for
+     stationarity.
+  •  Shapley (1953). A Value for n-Person Games.
+  •  Cramér (1946). Mathematical Methods of Statistics.
+  •  Yurdakul (2018). Statistical Properties of Population Stability
+     Index.
+
+
+────────────────────────────────────────────────────────────────────────────────
+SLIDE 30  ·  THANK YOU
+────────────────────────────────────────────────────────────────────────────────
+
+                          Thank You.
+
+                          Questions?
+
+         ./run.sh · 17-tab dashboard at :5173 · console at :8501
+
+================================================================================
+END OF DECK · 30 SLIDES
+================================================================================

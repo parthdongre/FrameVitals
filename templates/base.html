@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}DataLens AI{% endblock %}</title>
+    <meta name="description" content="DataLens AI — Intelligent dataset analysis engine with automated profiling, quality scoring, ML readiness, and AI-powered insights.">
+
+    <!-- TailwindCSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'] },
+                colors: {
+                    pearl: { 50: '#fafcff', 100: '#f0f5ff', 200: '#e8f0fe', 300: '#d4e4fd' },
+                    brand: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a' },
+                },
+                backdropBlur: { '3xl': '64px' },
+                animation: {
+                    'float': 'float 6s ease-in-out infinite',
+                    'glow': 'glow 4s ease-in-out infinite alternate',
+                    'slide-up': 'slideUp 0.6s ease-out',
+                    'fade-in': 'fadeIn 0.8s ease-out',
+                },
+                keyframes: {
+                    float: { '0%, 100%': { transform: 'translateY(0px)' }, '50%': { transform: 'translateY(-12px)' } },
+                    glow: { '0%': { boxShadow: '0 0 30px rgba(59,130,246,0.1)' }, '100%': { boxShadow: '0 0 60px rgba(59,130,246,0.2)' } },
+                    slideUp: { '0%': { transform: 'translateY(30px)', opacity: '0' }, '100%': { transform: 'translateY(0)', opacity: '1' } },
+                    fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+                },
+            }
+        }
+    }
+    </script>
+
+    <!-- Inter Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; background-color: #fafcff; }
+
+        /* Ultra-premium animated mesh gradient background */
+        .bg-cluely {
+            background-color: #fafcff;
+            background-image: 
+                radial-gradient(at 0% 0%, hsla(217, 100%, 94%, 0.7) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, hsla(213, 100%, 90%, 0.8) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, hsla(220, 100%, 95%, 0.7) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, hsla(215, 100%, 92%, 0.6) 0px, transparent 50%);
+            background-attachment: fixed;
+            animation: bgShift 15s ease-in-out infinite alternate;
+        }
+
+        @keyframes bgShift {
+            0% { background-position: 0% 0%; }
+            100% { background-position: 100% 100%; }
+        }
+
+        /* Enhanced Glassmorphism panels */
+        .glass { 
+            background: rgba(255, 255, 255, 0.45); 
+            backdrop-filter: blur(28px) saturate(200%); 
+            -webkit-backdrop-filter: blur(28px) saturate(200%); 
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+        }
+        .glass-strong { 
+            background: rgba(255, 255, 255, 0.65); 
+            backdrop-filter: blur(40px) saturate(200%); 
+            -webkit-backdrop-filter: blur(40px) saturate(200%); 
+            border: 1px solid rgba(255, 255, 255, 1);
+            box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.07), inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+        }
+        .glass-subtle { 
+            background: rgba(255, 255, 255, 0.2); 
+            backdrop-filter: blur(12px); 
+            -webkit-backdrop-filter: blur(12px); 
+            border: 1px solid rgba(255, 255, 255, 0.4); 
+        }
+
+        /* Glowing Orbs */
+        .hero-glow { 
+            position: absolute; 
+            width: 700px; height: 700px; 
+            border-radius: 50%; 
+            filter: blur(140px); 
+            opacity: 0.5; 
+            pointer-events: none; 
+            mix-blend-mode: multiply;
+            animation: floatOrb 10s ease-in-out infinite alternate;
+        }
+        
+        @keyframes floatOrb {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(30px, -50px) scale(1.1); }
+            100% { transform: translate(-20px, 20px) scale(0.95); }
+        }
+
+        /* Upload zone */
+        .upload-zone { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); background: rgba(255,255,255,0.3); backdrop-filter: blur(10px); }
+        .upload-zone:hover { border-color: #3b82f6; background: rgba(59,130,246,0.05); transform: translateY(-2px); box-shadow: 0 10px 30px -10px rgba(59,130,246,0.2); }
+        .upload-zone.dragover { border-color: #2563eb; background: rgba(59,130,246,0.1); transform: scale(1.02); }
+
+        /* Smooth hover lift */
+        .hover-lift { transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease; }
+        .hover-lift:hover { transform: translateY(-6px) scale(1.01); box-shadow: 0 24px 60px -12px rgba(37,99,235,0.15); border-color: rgba(255,255,255,1); }
+
+        /* Animated gradient text */
+        .gradient-text { 
+            background: linear-gradient(135deg, #1e3a8a, #2563eb, #3b82f6, #60a5fa); 
+            background-size: 200% 200%;
+            animation: gradientMove 4s ease infinite;
+            -webkit-background-clip: text; 
+            -webkit-text-fill-color: transparent; 
+            background-clip: text; 
+        }
+        
+        @keyframes gradientMove {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Glowing Button */
+        .btn-glow {
+            position: relative;
+            z-index: 1;
+        }
+        .btn-glow::before {
+            content: '';
+            position: absolute;
+            top: -2px; left: -2px; right: -2px; bottom: -2px;
+            background: linear-gradient(45deg, #3b82f6, #8b5cf6, #3b82f6, #60a5fa);
+            z-index: -1;
+            border-radius: inherit;
+            background-size: 400%;
+            animation: glowingBtn 20s linear infinite;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .btn-glow:hover::before { opacity: 0.7; filter: blur(8px); }
+        
+        @keyframes glowingBtn {
+            0% { background-position: 0 0; }
+            50% { background-position: 400% 0; }
+            100% { background-position: 0 0; }
+        }
+
+        /* Tab system */
+        .tab-btn { transition: all 0.2s ease; }
+        .tab-btn.active { background: rgba(255,255,255,0.9); color: #1d4ed8; box-shadow: 0 4px 16px rgba(37,99,235,0.1); border-color: rgba(255,255,255,1); }
+        .tab-panel { display: none; animation: fadeIn 0.4s ease-out; }
+        .tab-panel.active { display: block; }
+
+        /* Progress ring */
+        .progress-ring { transform: rotate(-90deg); }
+        .progress-ring circle { transition: stroke-dashoffset 1s ease-out; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Badge styles */
+        .badge-high { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+        .badge-medium { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+        .badge-low { background: #f0f9ff; color: #2563eb; border: 1px solid #bfdbfe; }
+        .badge-good { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+    </style>
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-cluely min-h-screen antialiased text-slate-800">
+    {% block body %}{% endblock %}
+</body>
+</html>

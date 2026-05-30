@@ -1,0 +1,426 @@
+{% extends "base.html" %}
+{% block title %}Report — {{ result.filename }} | DataLens AI{% endblock %}
+
+{% block body %}
+<!-- Navigation -->
+<nav class="fixed top-0 w-full z-50 glass-strong">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <a href="/" class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
+                <svg class="w-4.5 h-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6m6 0V5a2 2 0 012-2h2a2 2 0 012 2v14m-6 0h6m4 0v-9a2 2 0 00-2-2h-2a2 2 0 00-2 2v9m4 0h-4"/></svg>
+            </div>
+            <span class="text-lg font-bold text-slate-900">DataLens <span class="gradient-text">AI</span></span>
+        </a>
+        <div class="flex items-center gap-3">
+            <a href="/download-cleaned/{{ result.dataset_id }}" class="px-4 py-2 rounded-xl text-xs font-semibold text-brand-600 glass hover:bg-white/80 transition-all">⬇ Cleaned CSV</a>
+            {% set report_ready = result.report_status and result.report_status.ready %}
+            {% if report_ready %}
+            <a href="/download-report/{{ result.dataset_id }}" class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-brand-600 to-brand-500 shadow-lg shadow-brand-500/20">⬇ PDF Report</a>
+            {% else %}
+            <span class="px-4 py-2 rounded-xl text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200">PDF report generating</span>
+            {% endif %}
+        </div>
+    </div>
+</nav>
+
+<main class="pt-24 pb-16 max-w-7xl mx-auto px-6">
+
+    <!-- Header Card -->
+    <div class="glass-strong rounded-3xl p-8 mb-8 animate-fade-in">
+        <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-3xl font-extrabold text-slate-900">
+                    <span class="gradient-text">DataLens AI</span> Report
+                </h1>
+                <p class="mt-1 text-slate-500 text-sm font-medium">
+                    📄 {{ result.filename }} · {{ "{:,}".format(result.profile.shape.rows) }} rows × {{ result.profile.shape.columns }} columns · Mode: {{ result.analysis_mode }}
+                </p>
+            </div>
+        </div>
+
+        <!-- Top Metrics -->
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mt-8">
+            <div class="glass rounded-2xl p-5 text-center hover-lift">
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">Rows</div>
+                <div class="text-2xl font-extrabold gradient-text mt-1">{{ "{:,}".format(result.profile.shape.rows) }}</div>
+            </div>
+            <div class="glass rounded-2xl p-5 text-center hover-lift">
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">Columns</div>
+                <div class="text-2xl font-extrabold gradient-text mt-1">{{ result.profile.shape.columns }}</div>
+            </div>
+            <div class="glass rounded-2xl p-5 text-center hover-lift">
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">Health</div>
+                {% set score = result.health.overall_score %}
+                {% set sc = "text-brand-600" if score >= 80 else "text-amber-500" if score >= 60 else "text-red-500" %}
+                <div class="text-2xl font-extrabold {{ sc }} mt-1">{{ score }}/100</div>
+                <div class="text-[10px] text-slate-400 font-semibold">{{ result.health.label }}</div>
+            </div>
+            <div class="glass rounded-2xl p-5 text-center hover-lift">
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">ML Score</div>
+                <div class="text-2xl font-extrabold gradient-text mt-1">{{ result.ml_readiness.score }}/100</div>
+                <div class="text-[10px] text-slate-400 font-semibold">{{ result.ml_readiness.label }}</div>
+            </div>
+            <div class="glass rounded-2xl p-5 text-center hover-lift">
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">Memory</div>
+                <div class="text-2xl font-extrabold gradient-text mt-1">{{ result.profile.memory_usage_mb }} MB</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="flex flex-wrap gap-2 mb-6" id="tabNav">
+        {% set tabs = [("overview","📊 Overview"), ("roles","🧬 Roles"), ("signals","⚡ Signals"), ("charts","📈 Charts"), ("cleaning","🔧 Cleaning"), ("ai","🤖 AI Report"), ("data","📋 Data")] %}
+        {% for id, label in tabs %}
+        <button onclick="switchTab('{{ id }}')" data-tab="{{ id }}" class="tab-btn px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-500 glass-subtle hover:bg-white/60 transition-all {% if id == 'overview' %}active{% endif %}">{{ label }}</button>
+        {% endfor %}
+    </div>
+
+    <!-- ========== TAB: OVERVIEW ========== -->
+    <div id="tab-overview" class="tab-panel active space-y-6">
+        <!-- Health Components -->
+        <div class="glass-strong rounded-2xl p-7">
+            <h3 class="text-lg font-bold text-slate-900 mb-5">🏥 Health Components</h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {% for name, val in result.health.components.items() %}
+                {% set color = "from-brand-500 to-brand-600" if val >= 80 else "from-amber-400 to-amber-500" if val >= 60 else "from-red-400 to-red-500" %}
+                <div class="text-center">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br {{ color }} flex items-center justify-center mx-auto mb-2 shadow-lg">
+                        <span class="text-xl font-black text-white">{{ val }}</span>
+                    </div>
+                    <div class="text-xs font-semibold text-slate-500 capitalize">{{ name | replace('_', ' ') }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Column Profile -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="glass-strong rounded-2xl p-7">
+                <h3 class="text-lg font-bold text-slate-900 mb-4">Numeric Columns</h3>
+                {% if result.profile.numeric_columns %}
+                <div class="flex flex-wrap gap-2">
+                    {% for c in result.profile.numeric_columns %}
+                    <span class="px-3 py-1 rounded-lg bg-brand-50 text-brand-700 text-xs font-semibold border border-brand-100">{{ c }}</span>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-sm text-slate-400">None detected</p>
+                {% endif %}
+            </div>
+            <div class="glass-strong rounded-2xl p-7">
+                <h3 class="text-lg font-bold text-slate-900 mb-4">Categorical Columns</h3>
+                {% if result.profile.categorical_columns %}
+                <div class="flex flex-wrap gap-2">
+                    {% for c in result.profile.categorical_columns %}
+                    <span class="px-3 py-1 rounded-lg bg-purple-50 text-purple-700 text-xs font-semibold border border-purple-100">{{ c }}</span>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-sm text-slate-400">None detected</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Analysis Plan -->
+        {% if result.analysis_selection %}
+        <div class="glass-strong rounded-2xl p-7">
+            <h3 class="text-lg font-bold text-slate-900 mb-4">🎯 Analysis Plan</h3>
+            <div class="grid grid-cols-3 gap-4 mb-4">
+                <div class="text-center p-4 rounded-xl bg-green-50 border border-green-100">
+                    <div class="text-2xl font-black text-green-600">{{ result.analysis_selection.summary.selected_count }}</div>
+                    <div class="text-xs font-semibold text-green-600">Selected</div>
+                </div>
+                <div class="text-center p-4 rounded-xl bg-amber-50 border border-amber-100">
+                    <div class="text-2xl font-black text-amber-600">{{ result.analysis_selection.summary.recommended_count }}</div>
+                    <div class="text-xs font-semibold text-amber-600">Recommended</div>
+                </div>
+                <div class="text-center p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <div class="text-2xl font-black text-slate-500">{{ result.analysis_selection.summary.skipped_count }}</div>
+                    <div class="text-xs font-semibold text-slate-500">Skipped</div>
+                </div>
+            </div>
+            <details class="group">
+                <summary class="text-sm font-semibold text-brand-600 cursor-pointer hover:text-brand-700">View selected analyses ↓</summary>
+                <div class="mt-3 space-y-1.5">
+                    {% for a in result.analysis_selection.selected_analyses %}
+                    <div class="flex items-center gap-2 text-sm">
+                        <span class="text-green-500">✓</span>
+                        <span class="font-semibold text-slate-700">{{ a.name }}</span>
+                        <span class="px-2 py-0.5 rounded-md bg-slate-100 text-[10px] font-bold text-slate-500">{{ a.category }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </details>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- ========== TAB: ROLES ========== -->
+    <div id="tab-roles" class="tab-panel space-y-4">
+        {% if result.roles_summary %}
+        <div class="glass-strong rounded-2xl p-7 mb-4">
+            <h3 class="text-lg font-bold text-slate-900 mb-2">🧬 Column Role Analysis</h3>
+            <p class="text-sm text-slate-500 mb-5">Each column is tagged with semantic roles based on name, type, cardinality, and missingness.</p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="text-center p-3 rounded-xl bg-brand-50 border border-brand-100">
+                    <div class="text-xl font-black text-brand-700">{{ result.roles_summary.numeric_count }}</div>
+                    <div class="text-[10px] font-bold text-brand-600 uppercase">Numeric</div>
+                </div>
+                <div class="text-center p-3 rounded-xl bg-purple-50 border border-purple-100">
+                    <div class="text-xl font-black text-purple-700">{{ result.roles_summary.categorical_count }}</div>
+                    <div class="text-[10px] font-bold text-purple-600 uppercase">Categorical</div>
+                </div>
+                <div class="text-center p-3 rounded-xl bg-amber-50 border border-amber-100">
+                    <div class="text-xl font-black text-amber-700">{{ result.roles_summary.id_like | length }}</div>
+                    <div class="text-[10px] font-bold text-amber-600 uppercase">ID-like</div>
+                </div>
+                <div class="text-center p-3 rounded-xl bg-green-50 border border-green-100">
+                    <div class="text-xl font-black text-green-700">{{ result.roles_summary.target_candidates | length }}</div>
+                    <div class="text-[10px] font-bold text-green-600 uppercase">Target Candidates</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if result.column_roles %}
+        {% for col_name, info in result.column_roles.items() %}
+        <div class="glass rounded-2xl px-6 py-4 hover-lift">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <span class="font-bold text-slate-900">{{ col_name }}</span>
+                    <span class="text-xs text-slate-400 font-mono">{{ info.dtype }}</span>
+                </div>
+                <div class="flex items-center gap-3 text-xs text-slate-400 font-medium">
+                    <span>Unique: {{ info.unique_count }}</span>
+                    {% set mc = "text-red-500" if info.missing_percent >= 20 else "text-amber-500" if info.missing_percent > 0 else "text-green-500" %}
+                    <span class="{{ mc }}">Missing: {{ info.missing_percent }}%</span>
+                </div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-1.5">
+                {% for role in info.roles %}
+                {% set rc = "badge-high" if role in ["id_like","constant","severe_missing"] else "badge-medium" if role in ["high_cardinality","unique_like","high_missing","very_high_missing"] else "badge-low" %}
+                <span class="px-2.5 py-0.5 rounded-md text-[11px] font-bold {{ rc }}">{{ role }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+
+    <!-- ========== TAB: SIGNALS ========== -->
+    <div id="tab-signals" class="tab-panel space-y-4">
+        <div class="glass-strong rounded-2xl p-7 mb-2">
+            <h3 class="text-lg font-bold text-slate-900">⚡ Data Quality Signals</h3>
+            <p class="text-sm text-slate-500">Automated risk detection and quality assessment</p>
+        </div>
+
+        {% for sig in result.signals %}
+        {% set sev = sig.severity | lower %}
+        {% set bc = "badge-high" if sev == "high" else "badge-medium" if sev == "medium" else "badge-low" if sev == "low" else "badge-good" %}
+        <div class="glass rounded-2xl px-6 py-5 hover-lift">
+            <div class="flex items-center gap-3 mb-2">
+                <span class="text-xl">{{ sig.icon }}</span>
+                <span class="font-bold text-slate-900">{{ sig.name }}</span>
+                <span class="px-2.5 py-0.5 rounded-md text-[11px] font-bold {{ bc }}">{{ sig.severity }}</span>
+            </div>
+            <p class="text-sm text-slate-500">{{ sig.evidence }}</p>
+            <p class="text-xs text-brand-600 mt-1.5 font-medium">💡 {{ sig.recommendation }}</p>
+        </div>
+        {% endfor %}
+
+        {% if result.dataset_signals %}
+        <div class="glass-strong rounded-2xl p-7">
+            <h3 class="text-lg font-bold text-slate-900 mb-3">🔍 Detected Dataset Signals</h3>
+            <div class="flex flex-wrap gap-2">
+                {% for key, val in result.dataset_signals.items() %}
+                {% if val is sameas true and key.startswith("has_") %}
+                <span class="px-3 py-1 rounded-lg bg-brand-50 text-brand-700 text-xs font-semibold border border-brand-100">{{ key | replace('has_', '') | replace('_', ' ') | title }}</span>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- ========== TAB: CHARTS ========== -->
+    <div id="tab-charts" class="tab-panel">
+        <div class="glass-strong rounded-2xl p-7 mb-6">
+            <h3 class="text-lg font-bold text-slate-900">📈 Auto-Generated Visualizations</h3>
+            <p class="text-sm text-slate-500">Role-aware charts — no meaningless plots on ID or constant columns</p>
+        </div>
+
+        {% if result.charts %}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {% for chart in result.charts %}
+            <div class="glass-strong rounded-2xl p-5 hover-lift">
+                <h4 class="font-bold text-slate-900 text-sm mb-1">{{ chart.title }}</h4>
+                <p class="text-xs text-slate-400 mb-3">{{ chart.description }}</p>
+                <img src="/static/{{ chart.path }}" alt="{{ chart.title }}" class="rounded-xl w-full">
+                {% if chart.planner_reason %}
+                <p class="text-[10px] text-slate-400 mt-2 italic">📌 {{ chart.planner_reason }}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="glass rounded-2xl p-12 text-center text-slate-400">
+            <p class="text-lg">No charts generated in this analysis mode.</p>
+            <p class="text-sm mt-1">Try "standard" or "deep" mode for visualizations.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- ========== TAB: CLEANING ========== -->
+    <div id="tab-cleaning" class="tab-panel space-y-6">
+        <div class="glass-strong rounded-2xl p-7">
+            <h3 class="text-lg font-bold text-slate-900 mb-5">🔧 Data Cleaning Report</h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="text-center p-4 rounded-xl bg-red-50 border border-red-100">
+                    <div class="text-xs font-bold text-red-400 uppercase">Missing Before</div>
+                    <div class="text-xl font-black text-red-600 mt-1">{{ result.cleaning.missing_before }}</div>
+                </div>
+                <div class="text-center p-4 rounded-xl bg-green-50 border border-green-100">
+                    <div class="text-xs font-bold text-green-400 uppercase">Missing After</div>
+                    <div class="text-xl font-black text-green-600 mt-1">{{ result.cleaning.missing_after }}</div>
+                </div>
+                <div class="text-center p-4 rounded-xl bg-red-50 border border-red-100">
+                    <div class="text-xs font-bold text-red-400 uppercase">Dupes Before</div>
+                    <div class="text-xl font-black text-red-600 mt-1">{{ result.cleaning.duplicates_before }}</div>
+                </div>
+                <div class="text-center p-4 rounded-xl bg-green-50 border border-green-100">
+                    <div class="text-xs font-bold text-green-400 uppercase">Dupes After</div>
+                    <div class="text-xl font-black text-green-600 mt-1">{{ result.cleaning.duplicates_after }}</div>
+                </div>
+            </div>
+        </div>
+
+        {% if result.cleaning.actions %}
+        <div class="glass-strong rounded-2xl p-7">
+            <h3 class="text-lg font-bold text-slate-900 mb-4">📋 Cleaning Actions</h3>
+            {% for action in result.cleaning.actions %}
+            {% set rc = "text-red-500" if action.risk == "High" else "text-amber-500" if action.risk == "Medium" else "text-brand-600" %}
+            <div class="py-3 border-b border-slate-100 last:border-0">
+                <div class="flex items-center gap-2">
+                    <span class="font-bold text-slate-800 text-sm">{{ action.action }}</span>
+                    <span class="{{ rc }} text-xs font-bold">[{{ action.risk }}]</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">{{ action.details }}</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- ========== TAB: AI REPORT ========== -->
+    <div id="tab-ai" class="tab-panel">
+        <div class="glass-strong rounded-2xl p-7">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-slate-900">🤖 AI Analysis Report</h3>
+                <span class="text-xs text-slate-400 font-medium">Source: {{ result.ai_report.source }}</span>
+            </div>
+            <div class="prose prose-slate prose-sm max-w-none text-slate-600 leading-relaxed" id="aiReportContent">
+                {{ result.ai_report.text | safe }}
+            </div>
+        </div>
+
+        <!-- Chat Section -->
+        <div class="glass-strong rounded-2xl p-7 mt-6">
+            <h3 class="text-lg font-bold text-slate-900 mb-4">💬 Ask About Your Data</h3>
+            <form action="/ask" method="POST" class="flex gap-3">
+                <input type="text" name="question" placeholder="e.g., What columns should I use as features?" class="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 bg-white/60 backdrop-blur-sm" required>
+                <button type="submit" class="px-6 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-700 hover:to-brand-600 transition-all shadow-lg shadow-brand-500/20">Ask</button>
+            </form>
+            {% if result.chat_answer %}
+            <div class="mt-5 p-5 rounded-xl bg-brand-50 border border-brand-100">
+                <p class="text-xs font-bold text-brand-600 mb-2">Q: {{ result.chat_question }}</p>
+                <div class="text-sm text-slate-700 prose prose-sm max-w-none">{{ result.chat_answer | safe }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ========== TAB: DATA ========== -->
+    <div id="tab-data" class="tab-panel space-y-6">
+        {% if result.profile.preview %}
+        <div class="glass-strong rounded-2xl p-7 overflow-x-auto">
+            <h3 class="text-lg font-bold text-slate-900 mb-4">📋 Data Preview</h3>
+            <table class="w-full text-xs">
+                <thead>
+                    <tr class="border-b border-slate-200">
+                        {% for col in result.profile.columns %}
+                        <th class="py-2 px-3 text-left font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">{{ col }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in result.profile.preview %}
+                    <tr class="border-b border-slate-50 hover:bg-brand-50/30">
+                        {% for col in result.profile.columns %}
+                        <td class="py-2 px-3 text-slate-600 whitespace-nowrap">{{ row[col] if row[col] is not none else "—" }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if result.profile.numeric_summary %}
+        <div class="glass-strong rounded-2xl p-7 overflow-x-auto">
+            <h3 class="text-lg font-bold text-slate-900 mb-4">📊 Numeric Summary</h3>
+            <table class="w-full text-xs">
+                <thead>
+                    <tr class="border-b border-slate-200">
+                        <th class="py-2 px-3 text-left font-bold text-slate-500 uppercase">Column</th>
+                        {% for stat in ["count","mean","std","min","25%","50%","75%","max"] %}
+                        <th class="py-2 px-3 text-left font-bold text-slate-500 uppercase">{{ stat }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for col, stats in result.profile.numeric_summary.items() %}
+                    <tr class="border-b border-slate-50 hover:bg-brand-50/30">
+                        <td class="py-2 px-3 font-semibold text-slate-700">{{ col }}</td>
+                        {% for stat in ["count","mean","std","min","25%","50%","75%","max"] %}
+                        <td class="py-2 px-3 text-slate-500">{{ "%.2f" | format(stats[stat]) if stats[stat] is not none else "—" }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+
+</main>
+
+<!-- Footer -->
+<footer class="py-8 border-t border-slate-100">
+    <div class="max-w-7xl mx-auto px-6 flex items-center justify-between">
+        <span class="text-xs text-slate-400 font-medium">DataLens AI · Analysis ID: {{ result.dataset_id }}</span>
+        <a href="/" class="text-xs font-semibold text-brand-600 hover:text-brand-700">← Analyze Another Dataset</a>
+    </div>
+</footer>
+
+<script>
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tabId).classList.add('active');
+    document.querySelector('[data-tab="' + tabId + '"]').classList.add('active');
+}
+
+// Simple markdown-ish rendering for AI report
+(function() {
+    const el = document.getElementById('aiReportContent');
+    if (!el) return;
+    let html = el.innerHTML;
+    html = html.replace(/^## (.+)$/gm, '<h2 class="text-lg font-bold text-slate-800 mt-6 mb-2">$1</h2>');
+    html = html.replace(/^### (.+)$/gm, '<h3 class="text-base font-bold text-slate-700 mt-4 mb-1">$1</h3>');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="font-bold text-slate-800">$1</strong>');
+    html = html.replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-slate-600">$1</li>');
+    html = html.replace(/\n/g, '<br>');
+    el.innerHTML = html;
+})();
+</script>
+{% endblock %}

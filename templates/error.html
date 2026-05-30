@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Error | DataLens AI{% endblock %}
+{% block body %}
+<div class="min-h-screen flex items-center justify-center px-6">
+    <div class="glass-strong rounded-3xl p-12 max-w-md text-center animate-fade-in">
+        <div class="text-5xl mb-4">⚠️</div>
+        <h1 class="text-2xl font-extrabold text-slate-900 mb-3">Something went wrong</h1>
+        <p class="text-sm text-slate-500 mb-8 leading-relaxed">{{ message }}</p>
+        <a href="/" class="inline-block px-8 py-3 rounded-2xl text-sm font-bold text-white bg-gradient-to-r from-brand-600 to-brand-500 shadow-lg shadow-brand-500/25 hover:from-brand-700 hover:to-brand-600 transition-all">← Back to Home</a>
+    </div>
+</div>
+{% endblock %}
