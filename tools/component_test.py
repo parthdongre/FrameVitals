@@ -661,7 +661,9 @@ def probe_rag_index(result: dict) -> dict:
 
 
 def probe_ai_agent(result: dict, df: pd.DataFrame) -> dict:
-    from modules.ai_agent import answer_with_agent
+    from framevitals.ai_agent import (
+         answer_with_agent,
+    )
     out = answer_with_agent(
         question="Give me a 1-sentence summary of this dataset's quality.",
         df=df,
