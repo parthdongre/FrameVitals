@@ -37,10 +37,6 @@ import pandas as pd
 from scipy import stats
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _safe_float(value: Any, ndigits: int = 4) -> float | int | None:
     if value is None:
         return None
@@ -75,10 +71,6 @@ def _shared_columns(df_a: pd.DataFrame, df_b: pd.DataFrame) -> list[str]:
     return [c for c in df_a.columns if c in df_b.columns]
 
 
-# ---------------------------------------------------------------------------
-# Numeric drift
-# ---------------------------------------------------------------------------
-
 def _psi_numeric(ref: np.ndarray, cur: np.ndarray, bins: int = 10) -> float | None:
     """Population Stability Index using quantile bins from `ref`."""
     ref = ref[np.isfinite(ref)]
@@ -86,11 +78,10 @@ def _psi_numeric(ref: np.ndarray, cur: np.ndarray, bins: int = 10) -> float | No
     if len(ref) < 10 or len(cur) < 10:
         return None
 
-    # Build bin edges from ref's quantiles, then expand bounds to capture cur extremes
     quantiles = np.linspace(0, 1, bins + 1)
     edges = np.unique(np.quantile(ref, quantiles))
     if len(edges) < 3:
-        return None  # ref is constant or near-constant
+        return None
     edges[0] = -np.inf
     edges[-1] = np.inf
 
@@ -100,7 +91,6 @@ def _psi_numeric(ref: np.ndarray, cur: np.ndarray, bins: int = 10) -> float | No
     ref_props = ref_counts / max(ref_counts.sum(), 1)
     cur_props = cur_counts / max(cur_counts.sum(), 1)
 
-    # Laplace smoothing to avoid log(0)
     ref_props = np.where(ref_props == 0, 1e-6, ref_props)
     cur_props = np.where(cur_props == 0, 1e-6, cur_props)
 
@@ -111,13 +101,18 @@ def _psi_numeric(ref: np.ndarray, cur: np.ndarray, bins: int = 10) -> float | No
 def _numeric_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict:
     # Force float64 — pd.to_numeric leaves boolean dtype alone, and newer
     # numpy refuses to subtract bool arrays inside np.quantile.
-    ref_arr = pd.to_numeric(ref, errors="coerce").astype("float64", copy=False).to_numpy()
-    cur_arr = pd.to_numeric(cur, errors="coerce").astype("float64", copy=False).to_numpy()
+    ref_arr = pd.to_numeric(ref, errors="coerce").astype("float64").to_numpy()
+    cur_arr = pd.to_numeric(cur, errors="coerce").astype("float64").to_numpy()
     ref_arr = ref_arr[np.isfinite(ref_arr)]
     cur_arr = cur_arr[np.isfinite(cur_arr)]
 
     if len(ref_arr) < 10 or len(cur_arr) < 10:
-        return {"column": name, "type": "numeric", "available": False, "reason": "n<10 in one side"}
+        return {
+            "column": name,
+            "type": "numeric",
+            "available": False,
+            "reason": "n<10 in one side",
+        }
 
     psi = _psi_numeric(ref_arr, cur_arr)
 
@@ -139,9 +134,8 @@ def _numeric_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict:
 
     severity = _classify_psi(psi)
     if ks_p is not None and ks_p < 0.01 and severity == "stable":
-        severity = "minor"  # KS reveals a shift PSI missed
+        severity = "minor"
 
-    # Compact histogram preview the frontend can plot directly
     edges = np.linspace(
         min(ref_arr.min(), cur_arr.min()),
         max(ref_arr.max(), cur_arr.max()),
@@ -175,10 +169,6 @@ def _numeric_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Categorical drift
-# ---------------------------------------------------------------------------
-
 def _psi_categorical(ref: pd.Series, cur: pd.Series) -> tuple[float | None, list[str], dict]:
     ref_counts = ref.astype(str).value_counts(dropna=False)
     cur_counts = cur.astype(str).value_counts(dropna=False)
@@ -195,7 +185,9 @@ def _psi_categorical(ref: pd.Series, cur: pd.Series) -> tuple[float | None, list
 
     ref_smoothed = np.where(ref_props == 0, 1e-6, ref_props)
     cur_smoothed = np.where(cur_props == 0, 1e-6, cur_props)
-    psi = float(np.sum((cur_smoothed - ref_smoothed) * np.log(cur_smoothed / ref_smoothed)))
+    psi = float(
+        np.sum((cur_smoothed - ref_smoothed) * np.log(cur_smoothed / ref_smoothed))
+    )
 
     distribution = {
         "categories": categories[:30],
@@ -211,15 +203,24 @@ def _categorical_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict
     cur_clean = cur.dropna()
 
     if len(ref_clean) < 10 or len(cur_clean) < 10:
-        return {"column": name, "type": "categorical", "available": False, "reason": "n<10 in one side"}
+        return {
+            "column": name,
+            "type": "categorical",
+            "available": False,
+            "reason": "n<10 in one side",
+        }
 
     psi, categories, distribution = _psi_categorical(ref_clean, cur_clean)
     if psi is None:
-        return {"column": name, "type": "categorical", "available": False, "reason": "single category"}
+        return {
+            "column": name,
+            "type": "categorical",
+            "available": False,
+            "reason": "single category",
+        }
 
     chi2_stat, chi2_p, dof = None, None, None
     try:
-        # Cap categories to keep contingency table manageable
         top_categories = categories[:30]
         ref_counts = ref_clean.astype(str).value_counts()
         cur_counts = cur_clean.astype(str).value_counts()
@@ -250,15 +251,15 @@ def _categorical_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict
         "chi2_significant": bool(chi2_p is not None and chi2_p < 0.01),
         "n_categories_ref": int(ref_clean.nunique(dropna=True)),
         "n_categories_cur": int(cur_clean.nunique(dropna=True)),
-        "new_categories": [c for c in cur_clean.unique() if c not in set(ref_clean.unique())][:10],
-        "missing_categories": [c for c in ref_clean.unique() if c not in set(cur_clean.unique())][:10],
+        "new_categories": [
+            c for c in cur_clean.unique() if c not in set(ref_clean.unique())
+        ][:10],
+        "missing_categories": [
+            c for c in ref_clean.unique() if c not in set(cur_clean.unique())
+        ][:10],
         "distribution": distribution,
     }
 
-
-# ---------------------------------------------------------------------------
-# Public entry points
-# ---------------------------------------------------------------------------
 
 def compare_datasets(
     df_ref: pd.DataFrame,
@@ -266,17 +267,7 @@ def compare_datasets(
     columns: list[str] | None = None,
     max_columns: int = 30,
 ) -> dict:
-    """
-    Compare two dataframes column by column. Returns drift report.
-
-    Args:
-        df_ref: Reference dataframe (e.g. older / training data).
-        df_cur: Current dataframe (e.g. newer / production data).
-        columns: Restrict comparison to these columns.
-        max_columns: Cap on columns analyzed to keep runtime bounded.
-
-    Returns a JSON-safe dict.
-    """
+    """Compare two dataframes column by column and return a drift report."""
     shared = _shared_columns(df_ref, df_cur)
     if columns:
         shared = [c for c in shared if c in columns]
@@ -295,30 +286,38 @@ def compare_datasets(
         ref_series = df_ref[col]
         cur_series = df_cur[col]
 
-        if pd.api.types.is_numeric_dtype(ref_series) and pd.api.types.is_numeric_dtype(cur_series):
+        if pd.api.types.is_numeric_dtype(ref_series) and pd.api.types.is_numeric_dtype(
+            cur_series
+        ):
             column_results.append(_numeric_column_drift(col, ref_series, cur_series))
         elif (
             pd.api.types.is_object_dtype(ref_series)
-            or pd.api.types.is_string_dtype(ref_series)
+            or pd.api.types.is_string_dtype(ref_series.dtype)
             or isinstance(ref_series.dtype, pd.CategoricalDtype)
             or pd.api.types.is_bool_dtype(ref_series)
         ):
             column_results.append(_categorical_column_drift(col, ref_series, cur_series))
         else:
-            column_results.append({
-                "column": col,
-                "type": "unsupported",
-                "available": False,
-                "reason": f"Unsupported dtype: {ref_series.dtype}",
-            })
+            column_results.append(
+                {
+                    "column": col,
+                    "type": "unsupported",
+                    "available": False,
+                    "reason": f"Unsupported dtype: {ref_series.dtype}",
+                }
+            )
 
-    # Aggregate severity
-    severity_counts = {"stable": 0, "minor": 0, "moderate": 0, "severe": 0, "unknown": 0}
+    severity_counts = {
+        "stable": 0,
+        "minor": 0,
+        "moderate": 0,
+        "severe": 0,
+        "unknown": 0,
+    }
     for entry in column_results:
         sev = entry.get("psi_severity") if entry.get("available") else "unknown"
         severity_counts[sev] = severity_counts.get(sev, 0) + 1
 
-    # Sort with most-drifted first (severe -> stable)
     severity_rank = {"severe": 0, "moderate": 1, "minor": 2, "stable": 3, "unknown": 4}
 
     def _rank(entry):
@@ -360,12 +359,7 @@ def split_by_date(
     date_column: str,
     ratio: float = 0.5,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Split a dataframe chronologically into earlier / later halves.
-
-    Returns (older_df, newer_df) sorted by date_column. Useful when the user
-    has a single dataset with a time index and wants to compare drift over time.
-    """
+    """Split a dataframe chronologically into earlier and later partitions."""
     if date_column not in df.columns:
         raise ValueError(f"Column not found: {date_column}")
 
