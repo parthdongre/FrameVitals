@@ -1,0 +1,113 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "framevitals"
+version = "0.1.0.dev0"
+
+description = "Automated diagnostics, data-quality analysis, anomaly detection, drift analysis, and ML-readiness checks for tabular data."
+
+readme = "README.md"
+requires-python = ">=3.11"
+
+authors = [
+    { name = "Parth Dongre" }
+]
+
+keywords = [
+    "data-quality",
+    "data-profiling",
+    "machine-learning",
+    "anomaly-detection",
+    "data-drift",
+    "eda",
+    "tabular-data",
+]
+
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+
+dependencies = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
+
+    "scipy>=1.13",
+    "statsmodels>=0.14",
+    "pingouin>=0.5",
+
+    "scikit-learn>=1.5",
+    "xgboost>=2.0",
+    "lightgbm>=4.3",
+    "imbalanced-learn>=0.12",
+    "optuna>=3.6",
+
+    "pyod>=2.0",
+    "shap>=0.45",
+
+    "plotly>=5.22",
+    "missingno>=0.5",
+
+    "fpdf2>=2.7",
+    "jinja2>=3.1",
+
+    "pydantic>=2.7",
+    "joblib>=1.4",
+    "loguru>=0.7",
+
+    "ollama>=0.3",
+    "werkzeug>=3.0",
+]
+
+
+[project.optional-dependencies]
+
+web = [
+    "flask>=3.0",
+    "streamlit>=1.36",
+    "gunicorn>=22.0",
+]
+
+dev = [
+    "pytest>=8.2",
+    "hypothesis>=6.100",
+    "build>=1.2",
+    "twine>=5.1",
+    "ruff>=0.6",
+]
+
+
+[project.scripts]
+framevitals = "framevitals.cli:main"
+
+
+[project.urls]
+Repository = "https://github.com/parthdongre/DataLens-AI"
+Issues = "https://github.com/parthdongre/DataLens-AI/issues"
+
+
+[tool.setuptools]
+packages = [
+    "framevitals",
+    "modules",
+]
+
+
+[tool.setuptools.package-dir]
+framevitals = "src/framevitals"
+modules = "modules"
