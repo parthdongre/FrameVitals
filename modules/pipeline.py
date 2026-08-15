@@ -50,7 +50,7 @@ from framevitals.model_leaderboard import run_model_leaderboard
 from framevitals.signal_engine import build_signals
 from framevitals.text_profile import profile_text_columns
 from framevitals.time_series import detect_and_analyze_time_series
-from modules.visualizer import generate_charts
+from framevitals.visualizer import generate_charts
 
 
 logger = logging.getLogger("datalens.pipeline")
