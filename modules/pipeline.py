@@ -36,17 +36,17 @@ from typing import Any, Callable
 from framevitals.advanced_indicators import calculate_advanced_indicators
 from framevitals.column_roles import infer_column_roles, summarize_roles
 from framevitals.dataset_signals import detect_dataset_signals
-from modules.anomaly_ensemble import detect_anomalies_ensemble
+from framevitals.anomaly_ensemble import detect_anomalies_ensemble
 from framevitals.cleaner import create_cleaned_dataset
 from modules.ai_insights import generate_ai_report
 from framevitals.analysis_selector import select_analyses
 from framevitals.deep_statistics_v2 import run_deep_statistics_v2
-from modules.explainability import explain_winner
+from framevitals.explainability import explain_winner
 from framevitals.health_score import calculate_health_score
 from framevitals.loader import load_dataset
 from framevitals.ml_readiness import calculate_ml_readiness
 from framevitals.profiler import build_profile
-from modules.model_leaderboard import run_model_leaderboard
+from framevitals.model_leaderboard import run_model_leaderboard
 from framevitals.signal_engine import build_signals
 from framevitals.text_profile import profile_text_columns
 from framevitals.time_series import detect_and_analyze_time_series
