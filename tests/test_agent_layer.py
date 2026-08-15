@@ -27,6 +27,11 @@ def make_result():
                 "rows": 4,
                 "columns": 3,
             },
+            "columns": [
+                "age",
+                "region",
+                "revenue",
+            ],
             "dtypes": {
                 "age": "int64",
                 "region": "object",
