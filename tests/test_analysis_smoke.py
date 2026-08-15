@@ -38,3 +38,9 @@ def test_quick_analysis(tmp_path, monkeypatch):
     health_score = report["health"]["overall_score"]
 
     assert 0 <= health_score <= 100
+    cleaning = report["cleaning"]
+
+    assert cleaning["missing_after"] == 0
+
+    cleaned_path = tmp_path / cleaning["output_path"]
+    assert cleaned_path.exists()
