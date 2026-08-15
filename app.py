@@ -1,8 +1,8 @@
 """
-Flask Application — Main Frontend Server
-==========================================
-Serves the Cluely-inspired TailwindCSS frontend.
-Streamlit remains as a separate admin/debug portal.
+FrameVitals Flask API and report server.
+
+Provides JSON endpoints for the React dashboard while keeping the existing
+server-rendered report routes available for local use.
 """
 
 import os
@@ -28,11 +28,10 @@ from framevitals.ai_insights import (
 from framevitals.ai_agent import (
     answer_with_agent,
 )
-
-from modules.report_generator import (
+from framevitals.report_generator import (
     generate_pdf_report,
 )
-from modules.frontend_api import (
+from framevitals.frontend_api import (
     build_dashboard_payload,
 )
 from framevitals.drift_analysis import (
@@ -73,7 +72,7 @@ def safe_jsonify(payload):
 
 app = Flask(__name__)
 app.secret_key = os.environ.get(
-    "DATALENS_SECRET_KEY",
+    "FRAMEVITALS_SECRET_KEY",
     "development-only-secret"
 )
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
@@ -385,7 +384,7 @@ def api_ask():
                 "error": "No cached analysis was found for this dataset. Run /api/analyze first.",
             }), 404
 
-        # Reload dataframe (cheap; cleaned files live under uploads/)
+        # Reload dataframe (cheap; uploaded files live under uploads/)
         file_path = session.get("file_path")
         df = None
         if file_path:
@@ -430,12 +429,11 @@ def api_ask():
         return jsonify({"error": str(exc)}), 500
 
 
-
 @app.route("/api/ai-report", methods=["POST"])
 def api_ai_report():
     """
     On-demand AI report generation. The pipeline skips this phase by default
-    (set DATALENS_ANALYZE_AI=1 to run it during /api/analyze). The frontend
+    (set FRAMEVITALS_ANALYZE_AI=1 to run it during /api/analyze). The frontend
     calls this endpoint when the user clicks "Generate AI report" on the
     AI Report tab.
 
@@ -456,7 +454,7 @@ def api_ai_report():
 
         from framevitals.ai_insights import (
             generate_ai_report,
-            )
+        )
 
         try:
             ai_report = generate_ai_report(
