@@ -978,7 +978,9 @@ def render_ask(result: dict):
         key="ask_question",
     )
     if st.button("Ask", key="ask_btn") and question.strip():
-        from modules.ai_agent import answer_with_agent
+        from framevitals.ai_agent import (
+             answer_with_agent,
+        )
         df = result.get("_df")
         with st.spinner("Thinking…"):
             try:
