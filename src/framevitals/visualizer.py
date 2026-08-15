@@ -955,7 +955,6 @@ def generate_charts(
     data. Renderers gracefully no-op when their input is missing.
     """
     column_roles = infer_column_roles(df)
-    from modules.profiler import build_profile
     profile = build_profile(df)
 
     context = {
