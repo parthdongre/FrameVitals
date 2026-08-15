@@ -5,9 +5,9 @@ from modules.profiler import build_profile
 from modules.security import sanitize_csv_value
 
 CLEANED_DIR = Path("cleaned")
-CLEANED_DIR.mkdir(exist_ok=True)
 
 def create_cleaned_dataset(dataset_id, df):
+    CLEANED_DIR.mkdir(parents=True, exist_ok=True)
     cleaned = df.copy()
     actions = []
 
