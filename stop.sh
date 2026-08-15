@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ============================================================================
-# DataLens AI — emergency stop
+# FrameVitals — emergency stop
 #
-# Forcefully shuts down every DataLens process, even if run.sh's Ctrl+C trap
-# was bypassed (closed terminal, kernel suspend, force-quit, etc.).
+# Forcefully shuts down every FrameVitals development process, even if
+# run.sh's Ctrl+C trap was bypassed (closed terminal, suspend, force-quit, etc.).
 #
 # Three-pass kill:
 #   1. By port    — every listener on :5055 :5173 :8501 :11434
@@ -155,7 +155,7 @@ echo ""
 if [ "$KILLED_TOTAL" -eq 0 ]; then
     printf "${_D}Nothing was running. Project is already stopped.${_R}\n"
 else
-    printf "${_T}DataLens fully stopped. ${KILLED_TOTAL} process(es) terminated.${_R}\n"
+    printf "${_T}FrameVitals fully stopped. ${KILLED_TOTAL} process(es) terminated.${_R}\n"
 fi
 
 # Final port check — anything still listening is a problem
