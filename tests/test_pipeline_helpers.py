@@ -9,6 +9,9 @@ from framevitals.analysis_selector import (
 from framevitals.cleaner import (
     create_cleaned_dataset,
 )
+from framevitals.column_roles import (
+    infer_column_roles,
+)
 from framevitals.dataset_signals import (
     detect_dataset_signals,
 )
@@ -70,6 +73,32 @@ def test_analysis_selector():
 
     assert "ingestion_analysis" in selected_ids
     assert "structural_profile" in selected_ids
+
+
+def test_dataset_signals_cached_roles_match_standalone():
+    df = pd.DataFrame({
+        "customer_id": ["A1", "A2", "A3", "A3"],
+        "email": [
+            "a@example.com",
+            "b@example.com",
+            None,
+            None,
+        ],
+        "notes": [
+            "x" * 220,
+            "short",
+            "another short note",
+            "another short note",
+        ],
+        "value": [1.0, 2.0, 3.0, 3.0],
+    })
+    profile = build_profile(df)
+    roles = infer_column_roles(df)
+
+    standalone = detect_dataset_signals(df, profile)
+    cached = detect_dataset_signals(df, profile, column_roles=roles)
+
+    assert cached == standalone
 
 
 def test_display_signals():
