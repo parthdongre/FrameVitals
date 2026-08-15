@@ -38,6 +38,7 @@ First public alpha release of FrameVitals.
 - Heavy ML, Ollama, and web dependencies moved into optional extras
 - Reusable Python analysis no longer writes cleaned datasets or charts unless `artifacts=True`
 - Repository layout is package-first, with the Flask API and React dashboard kept as optional interfaces
+- Frontend module documentation now points directly at canonical `src/framevitals/` implementations
 - Development setup standardized on `.venv`
 
 ### Removed
@@ -49,3 +50,4 @@ First public alpha release of FrameVitals.
 - Large legacy demo CSVs and their one-off inspection harness
 - Redundant Streamlit console and its configuration
 - Legacy shell launcher/install scripts and duplicate `requirements.txt` development wrapper
+- Deprecated top-level `modules/` compatibility namespace after application imports moved to `framevitals.*`
