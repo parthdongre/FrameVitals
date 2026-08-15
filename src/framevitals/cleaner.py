@@ -36,7 +36,10 @@ def create_cleaned_dataset(
     if before_health is None:
         before_health = calculate_health_score(df, before_profile)
 
-    duplicate_count = int(before_profile.get("duplicate_rows", df.duplicated().sum()))
+    cached_duplicates = before_profile.get("duplicate_rows")
+    duplicate_count = int(
+        cached_duplicates if cached_duplicates is not None else df.duplicated().sum()
+    )
     missing_before = sum(
         int(value)
         for value in before_profile.get("missing_counts", {}).values()
@@ -77,6 +80,11 @@ def create_cleaned_dataset(
 
     after_profile = build_profile(cleaned)
     after_health = calculate_health_score(cleaned, after_profile)
+    missing_after = sum(
+        int(value)
+        for value in after_profile.get("missing_counts", {}).values()
+        if value is not None
+    )
 
     output_path: Path | None = None
     if write_output:
@@ -92,11 +100,7 @@ def create_cleaned_dataset(
         "after_health": after_health,
         "output_path": str(output_path) if output_path is not None else None,
         "missing_before": int(missing_before),
-        "missing_after": int(after_profile["missing_counts"] and sum(
-            int(value)
-            for value in after_profile["missing_counts"].values()
-            if value is not None
-        )),
+        "missing_after": int(missing_after),
         "duplicates_before": duplicate_count,
         "duplicates_after": int(after_profile.get("duplicate_rows", 0)),
     }
