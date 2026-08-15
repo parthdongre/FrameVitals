@@ -1,12 +1,16 @@
 import numpy as np
 
+
+_CATEGORICAL_DTYPES = ["object", "string", "category", "bool"]
+
+
 def calculate_ml_readiness(df):
     rows, columns = df.shape
 
     missing_percent = float(df.isna().sum().sum() / max(rows * columns, 1) * 100)
     duplicate_percent = float(df.duplicated().sum() / max(rows, 1) * 100)
 
-    categorical_cols = df.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
+    categorical_cols = df.select_dtypes(include=_CATEGORICAL_DTYPES).columns.tolist()
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
     encoding_penalty = min(20, len(categorical_cols) * 2)

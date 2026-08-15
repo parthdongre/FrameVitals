@@ -1,10 +1,11 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 SENSITIVE_KEYWORDS = [
     "gender", "sex", "age", "race", "religion",
-    "region", "location", "income", "salary", "caste"
+    "region", "location", "income", "salary", "caste",
 ]
+
 
 def calculate_column_utility(df):
     rows = max(len(df), 1)
@@ -42,6 +43,7 @@ def calculate_column_utility(df):
 
     return sorted(results, key=lambda x: x["score"], reverse=True)
 
+
 def calculate_anomalies(df):
     numeric = df.select_dtypes(include=[np.number])
 
@@ -76,6 +78,7 @@ def calculate_anomalies(df):
         ],
     }
 
+
 def detect_fairness_review(df):
     found = []
 
@@ -97,6 +100,7 @@ def detect_fairness_review(df):
         "message": "No obvious demographic-like columns detected.",
     }
 
+
 def calculate_freshness(df):
     date_columns = []
 
@@ -104,7 +108,7 @@ def calculate_freshness(df):
         if pd.api.types.is_numeric_dtype(df[col]):
             continue
 
-        parsed = pd.to_datetime(df[col], errors="coerce")
+        parsed = pd.to_datetime(df[col], errors="coerce", format="mixed")
 
         if parsed.notna().mean() >= 0.7:
             date_columns.append((col, parsed))
@@ -123,6 +127,7 @@ def calculate_freshness(df):
         "latest_record": str(max_date.date()) if pd.notna(max_date) else None,
         "message": f"Date coverage detected using column '{col}'.",
     }
+
 
 def calculate_advanced_indicators(df):
     return {

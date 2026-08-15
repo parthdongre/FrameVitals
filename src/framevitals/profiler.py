@@ -1,5 +1,6 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
+
 
 def clean_value(value):
     if pd.isna(value):
@@ -10,12 +11,16 @@ def clean_value(value):
         return float(value)
     return value
 
+
 def series_to_dict(series):
     return {str(k): clean_value(v) for k, v in series.to_dict().items()}
 
+
 def detect_column_types(df):
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    categorical_cols = df.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
+    categorical_cols = df.select_dtypes(
+        include=["object", "string", "category", "bool"]
+    ).columns.tolist()
     date_cols = []
 
     for col in df.columns:
@@ -24,11 +29,12 @@ def detect_column_types(df):
         sample = df[col].dropna().astype(str).head(25)
         if len(sample) == 0:
             continue
-        parsed = pd.to_datetime(sample, errors="coerce")
+        parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
         if parsed.notna().mean() >= 0.7:
             date_cols.append(col)
 
     return numeric_cols, categorical_cols, date_cols
+
 
 def build_profile(df):
     rows, columns = df.shape
