@@ -26,7 +26,10 @@ import math
 from typing import Any
 
 
-__all__ = ["build_dataset_brief"]
+__all__ = [
+    "build_dataset_brief",
+    "render_brief_block",
+]
 
 # ----------------------------------------------------------------------------
 # Internal helpers
