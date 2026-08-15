@@ -1,21 +1,13 @@
 """
-Backward-compatible column role imports.
+Backward-compatible dataset signal imports.
 
-Deprecated: use framevitals.column_roles instead.
+Deprecated: use framevitals.dataset_signals instead.
 """
 
-from framevitals.column_roles import (
-    get_columns_with_role,
-    get_meaningful_categorical_columns,
-    get_meaningful_numeric_columns,
-    infer_column_roles,
-    summarize_roles,
+from framevitals.dataset_signals import (
+    detect_dataset_signals,
 )
 
 __all__ = [
-    "get_columns_with_role",
-    "get_meaningful_categorical_columns",
-    "get_meaningful_numeric_columns",
-    "infer_column_roles",
-    "summarize_roles",
+    "detect_dataset_signals",
 ]
