@@ -16,20 +16,35 @@ from framevitals.profiler import (
 def make_dataset():
     return pd.DataFrame({
         "age": [
-            20, 21, 22, 23, 24,
+            20, 21, 22, 23, 24, 25,
+            26, 27, 28, 29, 30, 31,
         ],
         "income": [
             30000,
             32000,
-            35000,
-            37000,
+            34000,
+            36000,
+            38000,
             40000,
+            42000,
+            44000,
+            46000,
+            48000,
+            50000,
+            52000,
         ],
         "city": [
             "Pune",
             "Mumbai",
             "Pune",
             "Nashik",
+            "Mumbai",
+            "Pune",
+            "Mumbai",
+            "Pune",
+            "Nashik",
+            "Mumbai",
+            "Pune",
             "Mumbai",
         ],
     })
