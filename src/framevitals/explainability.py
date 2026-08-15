@@ -41,7 +41,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.pipeline import Pipeline
 
-from modules.ml_preprocessing import (
+from framevitals.ml_preprocessing import (
     build_sklearn_preprocessor,
     get_transformed_feature_names,
     prepare_ml_matrix,
