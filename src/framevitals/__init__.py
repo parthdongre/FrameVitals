@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 __version__ = "0.1.0.dev0"
 
 
 def analyze(
-    file_path: str | Path,
+    data: Any,
     *,
     target: str | None = None,
     mode: str = "standard",
+    artifacts: bool = False,
 ) -> dict[str, Any]:
-    """Analyze a tabular dataset.
+    """Analyze a tabular dataset from a DataFrame or supported file path.
 
     The implementation is imported lazily so ``import framevitals`` and
     ``framevitals --version`` do not initialize the complete analytics stack.
@@ -22,10 +22,29 @@ def analyze(
     from framevitals.api import analyze as _analyze
 
     return _analyze(
-        file_path,
+        data,
         target=target,
         mode=mode,
+        artifacts=artifacts,
     )
 
 
-__all__ = ["analyze", "__version__"]
+def compare(
+    reference: Any,
+    current: Any,
+    *,
+    columns: list[str] | None = None,
+    max_columns: int = 30,
+) -> dict[str, Any]:
+    """Compare two datasets and return a structured drift report."""
+    from framevitals.api import compare as _compare
+
+    return _compare(
+        reference,
+        current,
+        columns=columns,
+        max_columns=max_columns,
+    )
+
+
+__all__ = ["analyze", "compare", "__version__"]
