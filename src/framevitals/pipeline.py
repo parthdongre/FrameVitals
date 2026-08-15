@@ -119,7 +119,11 @@ def run_full_analysis(
     timings_ms["column_roles"] = (time.perf_counter() - t0) * 1000
 
     t0 = time.perf_counter()
-    dataset_signals = detect_dataset_signals(df, profile)
+    dataset_signals = detect_dataset_signals(
+        df,
+        profile,
+        column_roles=column_roles,
+    )
     timings_ms["dataset_signals"] = (time.perf_counter() - t0) * 1000
 
     t0 = time.perf_counter()
