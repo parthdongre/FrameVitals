@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 
 def choose_segment_columns(df, max_unique=12):

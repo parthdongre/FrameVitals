@@ -1,5 +1,3 @@
-import pandas as pd
-
 from sklearn.ensemble import (
     RandomForestClassifier,
     RandomForestRegressor,
@@ -316,17 +314,12 @@ def run_feature_importance(
                 "Random Forest impurity "
                 "importance + mutual information"
             ),
-
-            # New canonical frontend/API key.
             "global_importance": (
                 global_importance
             ),
-
-            # Backward-compatible legacy key.
             "top_features": (
                 global_importance
             ),
-
             "mutual_information": (
                 mutual_information[:15]
             ),

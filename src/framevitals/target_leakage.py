@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 
 def same_ratio_non_missing(a, b):
@@ -67,7 +66,6 @@ def run_target_leakage_analysis(df, target_column):
             continue
 
         feature = df[column]
-
         same_ratio, same_overlap = same_ratio_non_missing(feature, target)
 
         corr = None
