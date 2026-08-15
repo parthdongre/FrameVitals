@@ -28,29 +28,21 @@ def test_framevitals_has_no_legacy_module_imports():
         )
 
 
-def test_distribution_only_packages_framevitals():
-    pyproject_path = (
-        ROOT
-        / "pyproject.toml"
+def test_distribution_discovers_only_framevitals_from_src():
+    pyproject_path = ROOT / "pyproject.toml"
+
+    with pyproject_path.open("rb") as handle:
+        pyproject = tomllib.load(handle)
+
+    setuptools = pyproject["tool"]["setuptools"]
+
+    assert setuptools["package-dir"] == {"": "src"}
+
+    discovery = setuptools["packages"]["find"]
+
+    assert discovery["where"] == ["src"]
+    assert discovery["include"] == ["framevitals*"]
+    assert all(
+        "modules" not in pattern
+        for pattern in discovery["include"]
     )
-
-    with pyproject_path.open(
-        "rb"
-    ) as handle:
-        pyproject = tomllib.load(
-            handle
-        )
-
-    packages = (
-        pyproject[
-            "tool"
-        ][
-            "setuptools"
-        ][
-            "packages"
-        ]
-    )
-
-    assert packages == [
-        "framevitals",
-    ]
