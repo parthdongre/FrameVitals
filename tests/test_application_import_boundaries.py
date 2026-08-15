@@ -60,19 +60,28 @@ def test_streamlit_app_uses_framevitals():
         "streamlit_app.py"
     )
     
-def test_ai_agent_uses_framevitals_agent_layer():
+def test_framevitals_ai_agent_has_no_legacy_imports():
     source = (
-        ROOT / "modules" / "ai_agent.py"
+        ROOT
+        / "src"
+        / "framevitals"
+        / "ai_agent.py"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert "from modules." not in source
+
+def test_component_harness_uses_framevitals_ai_agent():
+    source = (
+        ROOT
+        / "tools"
+        / "component_test.py"
     ).read_text(
         encoding="utf-8"
     )
 
     assert (
-        "from modules.agent_tools import"
-        not in source
-    )
-
-    assert (
-        "from modules.agent_brief import"
+        "from modules.ai_agent import"
         not in source
     )
