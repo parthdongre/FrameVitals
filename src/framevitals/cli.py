@@ -14,6 +14,19 @@ def _add_output_argument(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _load_contract(path: Path) -> dict:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"Contract file not found: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Contract file is not valid JSON: {path}") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("Contract JSON must contain an object.")
+    return payload
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="framevitals",
@@ -85,6 +98,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_output_argument(compare_parser)
 
+    infer_contract_parser = subparsers.add_parser(
+        "infer-contract",
+        help="Infer a reusable data contract from a reference dataset.",
+    )
+    infer_contract_parser.add_argument(
+        "file",
+        type=Path,
+        help="Path to the reference dataset.",
+    )
+    _add_output_argument(infer_contract_parser)
+
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate a dataset against a JSON data contract.",
+    )
+    validate_parser.add_argument(
+        "file",
+        type=Path,
+        help="Path to the dataset to validate.",
+    )
+    validate_parser.add_argument(
+        "--contract",
+        type=Path,
+        required=True,
+        help="Path to a JSON contract created by infer-contract.",
+    )
+    _add_output_argument(validate_parser)
+
     return parser
 
 
@@ -141,6 +182,23 @@ def main() -> int:
         )
         _emit(report, args.output)
         return 0
+
+    if args.command == "infer-contract":
+        from framevitals.api import infer_contract
+
+        report = infer_contract(args.file)
+        _emit(report, args.output)
+        return 0
+
+    if args.command == "validate":
+        from framevitals.api import validate
+
+        report = validate(
+            args.file,
+            _load_contract(args.contract),
+        )
+        _emit(report, args.output)
+        return 0 if report["valid"] else 1
 
     parser.print_help()
     return 0

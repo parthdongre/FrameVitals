@@ -1,4 +1,6 @@
-from framevitals.cli import build_parser
+import json
+
+from framevitals.cli import build_parser, main
 
 
 def test_cli_parser():
@@ -62,3 +64,62 @@ def test_cli_compare_parser():
     assert args.columns == "age,income"
     assert args.max_columns == 12
     assert args.output.name == "drift.json"
+
+
+def test_cli_contract_parsers():
+    parser = build_parser()
+
+    infer_args = parser.parse_args([
+        "infer-contract",
+        "reference.csv",
+        "--output",
+        "contract.json",
+    ])
+    validate_args = parser.parse_args([
+        "validate",
+        "candidate.csv",
+        "--contract",
+        "contract.json",
+        "--output",
+        "validation.json",
+    ])
+
+    assert infer_args.command == "infer-contract"
+    assert infer_args.file.name == "reference.csv"
+    assert infer_args.output.name == "contract.json"
+    assert validate_args.command == "validate"
+    assert validate_args.file.name == "candidate.csv"
+    assert validate_args.contract.name == "contract.json"
+    assert validate_args.output.name == "validation.json"
+
+
+def test_cli_validate_returns_nonzero_for_contract_errors(tmp_path, monkeypatch):
+    dataset = tmp_path / "candidate.csv"
+    contract = tmp_path / "contract.json"
+    dataset.write_text("age\n15\n", encoding="utf-8")
+    contract.write_text(
+        json.dumps({
+            "version": 1,
+            "columns": {
+                "age": {
+                    "type": "integer",
+                    "nullable": False,
+                    "minimum": 18,
+                    "maximum": 100,
+                },
+            },
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "framevitals",
+            "validate",
+            str(dataset),
+            "--contract",
+            str(contract),
+        ],
+    )
+
+    assert main() == 1
