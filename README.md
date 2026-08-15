@@ -7,8 +7,8 @@
 **A Python toolkit for data-quality diagnostics, drift detection, anomaly analysis, and ML-readiness checks on pandas and tabular data.**
 
 [![Tests](https://github.com/parthdongre/FrameVitals/actions/workflows/test.yml/badge.svg)](https://github.com/parthdongre/FrameVitals/actions/workflows/test.yml)
+[![PyPI](https://img.shields.io/pypi/v/framevitals.svg)](https://pypi.org/project/framevitals/)
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Release](https://img.shields.io/badge/release-0.1.0%20alpha-6f42c1)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/parthdongre/FrameVitals?style=social)](https://github.com/parthdongre/FrameVitals)
 
@@ -61,7 +61,7 @@ FrameVitals is **package-first**. The core library lives under `src/framevitals/
 
 ## Installation
 
-FrameVitals supports **Python 3.11, 3.12, and 3.13**.
+FrameVitals supports **Python 3.11, 3.12, and 3.13**. The current public release is **0.1.0 (alpha)** and is available on PyPI.
 
 ```bash
 pip install framevitals
@@ -191,19 +191,40 @@ print(report["cleaning"]["output_path"])
 
 FrameVitals also ships with a CLI for scripts, terminals, and future CI workflows.
 
-```bash
-framevitals --version
+Start by discovering the available commands and options:
 
+```bash
+framevitals --help
+framevitals analyze --help
+framevitals compare --help
+framevitals --version
+```
+
+Analyze a dataset:
+
+```bash
 framevitals analyze dataset.csv
 framevitals analyze dataset.csv --mode quick
 framevitals analyze dataset.csv --target churn --mode deep
 framevitals analyze dataset.csv --output report.json
 framevitals analyze dataset.csv --artifacts
+```
 
+A useful end-to-end smoke test is:
+
+```bash
+framevitals analyze dataset.csv --target churn --mode deep --artifacts --output report.json
+```
+
+Compare two datasets for drift:
+
+```bash
 framevitals compare train.csv production.csv
 framevitals compare train.csv production.csv --columns age,income
 framevitals compare train.csv production.csv --output drift.json
 ```
+
+In `0.1.0`, `framevitals analyze` prints a compact analysis summary to the terminal. `--output report.json` writes that CLI summary to the requested path. `--artifacts` enables generated files in the current working directory, including a cleaned dataset under `cleaned/` and generated charts under `static/charts/`. The full structured analysis result is available through the Python API with `framevitals.analyze(...)`.
 
 ## Optional ML and AI features
 
