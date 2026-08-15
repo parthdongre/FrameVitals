@@ -59,7 +59,8 @@ def test_streamlit_app_uses_framevitals():
     assert_no_migrated_module_imports(
         "streamlit_app.py"
     )
-    
+
+
 def test_framevitals_ai_agent_has_no_legacy_imports():
     source = (
         ROOT
@@ -71,6 +72,7 @@ def test_framevitals_ai_agent_has_no_legacy_imports():
     )
 
     assert "from modules." not in source
+
 
 def test_component_harness_uses_framevitals_ai_agent():
     source = (
