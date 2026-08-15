@@ -38,7 +38,7 @@ from framevitals.column_roles import infer_column_roles, summarize_roles
 from framevitals.dataset_signals import detect_dataset_signals
 from framevitals.anomaly_ensemble import detect_anomalies_ensemble
 from framevitals.cleaner import create_cleaned_dataset
-from modules.ai_insights import generate_ai_report
+from framevitals.ai_insights import generate_ai_report
 from framevitals.analysis_selector import select_analyses
 from framevitals.deep_statistics_v2 import run_deep_statistics_v2
 from framevitals.explainability import explain_winner
@@ -53,7 +53,7 @@ from framevitals.time_series import detect_and_analyze_time_series
 from framevitals.visualizer import generate_charts
 
 
-logger = logging.getLogger("datalens.pipeline")
+logger = logging.getLogger("framevitals.pipeline")
 if not logger.handlers:
     logger.addHandler(logging.NullHandler())
 
