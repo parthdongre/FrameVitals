@@ -25,10 +25,10 @@ from framevitals.pipeline import (
 from framevitals.ai_insights import (
     answer_dataset_question,
 )
-
-from modules.ai_agent import (
+from framevitals.ai_agent import (
     answer_with_agent,
 )
+
 from modules.report_generator import (
     generate_pdf_report,
 )
