@@ -5,7 +5,7 @@ import framevitals
 
 
 def test_package_version():
-    assert framevitals.__version__ == "0.1.0.dev0"
+    assert framevitals.__version__ == "0.1.0"
 
 
 def test_analyze_is_public():
