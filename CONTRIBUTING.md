@@ -11,7 +11,13 @@ git switch dev
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -e ".[dev,web]"
+pip install -e ".[all,dev]"
+```
+
+On Windows PowerShell, activate the environment with:
+
+```powershell
+.venv\Scripts\Activate.ps1
 ```
 
 Run the test suite before making changes:
@@ -24,44 +30,39 @@ pytest
 
 `main` is kept release-ready. Ongoing development is integrated through `dev`.
 
-1. Start new work from the latest `dev` branch.
-2. Create a focused feature/fix branch.
-3. Open the pull request against `dev`.
-4. Keep release-only version/changelog changes on the release path to `main`.
+1. Start from the latest `dev` branch.
+2. Create a focused feature or fix branch.
+3. Add or update tests for behavioral changes.
+4. Open the pull request against `dev`.
+5. Promote tested release changes from `dev` to `main` through a release pull request.
 
 ## Source layout
 
-`src/framevitals/` is the canonical Python package. New library code should live there and should import other library code through the `framevitals.*` namespace.
+`src/framevitals/` is the canonical Python package. New reusable code belongs there and should import through the `framevitals.*` namespace.
 
-`modules/` exists only as a temporary compatibility layer for older application code. Do not add new functionality there.
-
-## Making a change
-
-1. Create a focused branch from `dev`.
-2. Keep the change small enough to review.
-3. Add or update tests for behavioral changes.
-4. Run the relevant tests locally.
-5. Update documentation when public behavior changes.
-6. Open a pull request targeting `dev` and describe the problem, solution, and verification.
-
-For large features or public-API changes, open an issue first so the design can be discussed before implementation.
+The Flask API and React dashboard are optional interfaces around the package. Product logic should stay in `src/framevitals/` rather than being duplicated in application code.
 
 ## Tests
 
-The full suite is:
+Useful checks include:
 
 ```bash
 pytest
-```
-
-Useful focused checks include:
-
-```bash
 pytest tests/test_public_api.py
 pytest tests/test_framevitals_pipeline.py
 pytest tests/test_package_boundary.py
-python -m compileall src/framevitals
+python -m compileall src/framevitals app.py
+python -m build
+python -m twine check dist/*
 framevitals --version
+```
+
+For the optional React dashboard:
+
+```bash
+cd frontend
+npm ci
+npm run build
 ```
 
 ## Style
@@ -70,17 +71,19 @@ framevitals --version
 - Keep the public API deliberate and small.
 - Avoid hidden global state in reusable library code.
 - Return structured, JSON-friendly values where practical.
-- Do not make optional analyses crash the entire pipeline when they can fail gracefully.
+- Optional analyses should fail gracefully when a dependency is unavailable.
 - Do not commit generated reports, uploads, cleaned datasets, caches, virtual environments, build output, or frontend compiler artifacts.
 
 ## Pull requests
 
 A good pull request explains:
 
-- What problem is being solved?
-- Why is the chosen approach appropriate?
-- What behavior changed?
-- What tests were run?
-- Are there compatibility or performance implications?
+- the problem being solved;
+- why the chosen approach is appropriate;
+- what behavior changed;
+- what tests were run;
+- any compatibility or performance implications.
+
+For large features or public-API changes, open an issue first so the design can be discussed before implementation.
 
 By contributing, you agree that your contribution will be licensed under the project's MIT License.
