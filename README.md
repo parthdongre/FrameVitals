@@ -5,21 +5,37 @@
 FrameVitals is an open-source Python toolkit for inspecting tabular datasets before they reach a model or production pipeline. It combines structural profiling, quality scoring, statistical diagnostics, anomaly detection, drift and time-series analysis, ML-readiness checks, target-aware modeling, explainability, cleaning, visualization, and optional AI-assisted interpretation behind one package.
 
 > Package: `framevitals`  
-> Status: `0.1.0.dev0` — pre-alpha
+> Status: `0.1.0` — alpha
 
 ## Install
 
 FrameVitals supports Python 3.11, 3.12, and 3.13.
 
-For a development install from GitHub:
+```bash
+pip install framevitals
+```
+
+Optional feature groups are available when you need the heavier integrations:
+
+```bash
+pip install "framevitals[ml]"   # XGBoost, LightGBM, PyOD, SHAP
+pip install "framevitals[ai]"   # Ollama client
+pip install "framevitals[web]"  # Flask, Streamlit, Gunicorn
+pip install "framevitals[all]"  # every optional runtime feature
+```
+
+The core engine still works without the optional ML libraries: XGBoost, LightGBM, PyOD, and SHAP are detected lazily and their analyses fall back or skip cleanly when unavailable.
+
+For development from source:
 
 ```bash
 git clone https://github.com/parthdongre/FrameVitals.git
 cd FrameVitals
+git switch dev
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -e .
+pip install -e ".[all,dev]"
 ```
 
 On Windows PowerShell, activate the environment with:
@@ -27,26 +43,6 @@ On Windows PowerShell, activate the environment with:
 ```powershell
 .venv\Scripts\Activate.ps1
 ```
-
-After the first PyPI release, the intended command is simply:
-
-```bash
-pip install framevitals
-```
-
-### Optional features
-
-FrameVitals keeps heavyweight integrations out of the default installation.
-
-```bash
-pip install -e ".[ml]"      # XGBoost, LightGBM, PyOD, SHAP
-pip install -e ".[ai]"      # Ollama client
-pip install -e ".[web]"     # Flask, Streamlit, Gunicorn
-pip install -e ".[all]"     # every optional runtime feature
-pip install -e ".[all,dev]" # contributor/development environment
-```
-
-The core engine still works without the optional ML libraries: XGBoost, LightGBM, PyOD, and SHAP are detected lazily and their analyses fall back or skip cleanly when unavailable.
 
 ## Python API
 
@@ -194,7 +190,10 @@ New reusable Python code should import through `framevitals.*`, never `modules.*
 
 ## Development
 
+Ongoing development happens on `dev`; `main` is kept release-ready.
+
 ```bash
+git switch dev
 pip install -e ".[all,dev]"
 pytest
 python -m build
@@ -207,7 +206,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ## Packaging and releases
 
-The distribution is built from the `src/` layout and explicitly excludes the legacy `modules/` compatibility namespace. GitHub Actions validates the wheel on every push and pull request.
+The distribution is built from the `src/` layout and explicitly excludes the legacy `modules/` compatibility namespace. GitHub Actions validates the wheel on `dev`, `main`, and pull requests.
 
 Release publishing is configured for PyPI Trusted Publishing. See [RELEASING.md](RELEASING.md) for the one-time PyPI/GitHub environment setup and release checklist.
 
@@ -224,7 +223,7 @@ Near-term product priorities:
 - Add configurable thresholds and custom checks without requiring users to fork the library.
 - Improve large-dataset behavior with deterministic sampling and resource budgets.
 - Add benchmark datasets and performance/accuracy regression suites.
-- Publish the first PyPI release and stabilize the public API through `0.1.x`.
+- Stabilize the public API through the `0.1.x` series.
 
 ## Contributing
 
