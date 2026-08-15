@@ -104,10 +104,8 @@ Issues = "https://github.com/parthdongre/DataLens-AI/issues"
 [tool.setuptools]
 packages = [
     "framevitals",
-    "modules",
 ]
 
 
 [tool.setuptools.package-dir]
 framevitals = "src/framevitals"
-modules = "modules"
