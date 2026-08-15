@@ -44,6 +44,9 @@ from framevitals.agent_tools import (
     run_tool,
 )
 
+__all__ = [
+    "answer_with_agent",
+]
 
 _DEFAULT_OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
 _DEFAULT_OPENROUTER_MODEL = os.environ.get(
