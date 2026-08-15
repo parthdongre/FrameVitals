@@ -23,7 +23,7 @@ First public alpha release of FrameVitals.
 - Missingness, duplicate, cardinality, statistical, anomaly, target-aware, time-series, and text diagnostics
 - Drift comparison using PSI plus numeric/categorical statistical tests
 - Optional artifact generation for reusable Python workflows
-- Optional ML, AI, and web dependency groups
+- Optional ML, AI, and Flask/React web dependency groups
 - Python 3.11, 3.12, and 3.13 test matrix
 - Package-build, wheel-boundary, Twine, and clean-install validation
 - PyPI Trusted Publishing release workflow
@@ -37,11 +37,15 @@ First public alpha release of FrameVitals.
 - Top-level package import and CLI version path load the analytics pipeline lazily
 - Heavy ML, Ollama, and web dependencies moved into optional extras
 - Reusable Python analysis no longer writes cleaned datasets or charts unless `artifacts=True`
+- Repository layout is package-first, with the Flask API and React dashboard kept as optional interfaces
 - Development setup standardized on `.venv`
-- Legacy `modules/` implementations converted to compatibility shims where migrated
 
 ### Removed
 
 - Unused runtime dependencies including Optuna, imbalanced-learn, Pingouin, Plotly, Missingno, fpdf2, Jinja2, Joblib, and Loguru
 - Academic report, presentation, and whitepaper artifacts
 - Generated TypeScript compiler metadata and generated Vite JavaScript/config declarations
+- Tracked runtime-output directories for uploads, reports, and cleaned datasets
+- Large legacy demo CSVs and their one-off inspection harness
+- Redundant Streamlit console and its configuration
+- Legacy shell launcher/install scripts and duplicate `requirements.txt` development wrapper
