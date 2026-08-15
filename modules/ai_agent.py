@@ -38,7 +38,7 @@ from framevitals.rag_index import (
     retrieve as rag_retrieve,
 )
 
-from modules.agent_tools import (
+from framevitals.agent_tools import (
     AgentContext,
     list_tools,
     run_tool,
@@ -751,7 +751,10 @@ def answer_with_agent(
         # 1. Pack the dataset brief — schema, quality, signals, ML headlines,
         #    sample rows, AI narrative. This is the "what is this dataset"
         #    grounding the model needs to answer concretely.
-        from modules.agent_brief import build_dataset_brief, render_brief_block
+        from framevitals.agent_brief import (
+             build_dataset_brief,
+             render_brief_block,
+        )
 
         brief = build_dataset_brief(analysis_result)
         brief_block = render_brief_block(brief)
