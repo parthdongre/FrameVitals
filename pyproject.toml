@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "framevitals"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Automated diagnostics, data-quality analysis, anomaly detection, drift analysis, and ML-readiness checks for tabular data."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,7 +22,7 @@ keywords = [
     "tabular-data",
 ]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Operating System :: OS Independent",

@@ -7,6 +7,7 @@ Thanks for considering a contribution to FrameVitals.
 ```bash
 git clone https://github.com/parthdongre/FrameVitals.git
 cd FrameVitals
+git switch dev
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -19,6 +20,15 @@ Run the test suite before making changes:
 pytest
 ```
 
+## Branch workflow
+
+`main` is kept release-ready. Ongoing development is integrated through `dev`.
+
+1. Start new work from the latest `dev` branch.
+2. Create a focused feature/fix branch.
+3. Open the pull request against `dev`.
+4. Keep release-only version/changelog changes on the release path to `main`.
+
 ## Source layout
 
 `src/framevitals/` is the canonical Python package. New library code should live there and should import other library code through the `framevitals.*` namespace.
@@ -27,12 +37,12 @@ pytest
 
 ## Making a change
 
-1. Create a focused branch from the current development base.
+1. Create a focused branch from `dev`.
 2. Keep the change small enough to review.
 3. Add or update tests for behavioral changes.
 4. Run the relevant tests locally.
 5. Update documentation when public behavior changes.
-6. Open a pull request describing the problem, the solution, and how it was verified.
+6. Open a pull request targeting `dev` and describe the problem, solution, and verification.
 
 For large features or public-API changes, open an issue first so the design can be discussed before implementation.
 
