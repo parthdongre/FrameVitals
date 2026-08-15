@@ -635,7 +635,11 @@ def probe_agent_brief(result: dict) -> dict:
 
 
 def probe_rag_index(result: dict) -> dict:
-    from modules.rag_index import build_fact_index, retrieve, render_facts_block
+    from framevitals.rag_index import (
+         build_fact_index,
+         render_facts_block,
+         retrieve,
+    )
     facts = build_fact_index(result)
     if not facts:
         return {"summary": "no facts indexed", "metrics": {}}
