@@ -2,10 +2,15 @@
 
 **Data-health diagnostics, drift detection, and ML-readiness checks for tabular data.**
 
-FrameVitals is an open-source Python toolkit for inspecting tabular datasets before they reach a model or production pipeline. It combines structural profiling, quality scoring, statistical diagnostics, anomaly detection, drift and time-series analysis, ML-readiness checks, target-aware modeling, explainability, cleaning, visualization, and optional AI-assisted interpretation behind one package.
+[![Tests](https://github.com/parthdongre/FrameVitals/actions/workflows/test.yml/badge.svg)](https://github.com/parthdongre/FrameVitals/actions/workflows/test.yml)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+FrameVitals is an open-source Python toolkit for checking whether tabular data is healthy enough for analysis and machine learning. It combines structural profiling, data-quality scoring, statistical diagnostics, anomaly detection, drift analysis, ML-readiness checks, target-aware analysis, and optional AI-assisted interpretation behind one package.
+
+> Version: `0.1.0` — alpha  
 > Package: `framevitals`  
-> Status: `0.1.0` — alpha
+> License: MIT
 
 ## Install
 
@@ -15,52 +20,48 @@ FrameVitals supports Python 3.11, 3.12, and 3.13.
 pip install framevitals
 ```
 
-Optional feature groups are available when you need the heavier integrations:
+Optional feature groups:
 
 ```bash
 pip install "framevitals[ml]"   # XGBoost, LightGBM, PyOD, SHAP
 pip install "framevitals[ai]"   # Ollama client
-pip install "framevitals[web]"  # Flask, Streamlit, Gunicorn
-pip install "framevitals[all]"  # every optional runtime feature
+pip install "framevitals[web]"  # Flask web API runtime
+pip install "framevitals[all]"  # all optional runtime features
 ```
-
-The core engine still works without the optional ML libraries: XGBoost, LightGBM, PyOD, and SHAP are detected lazily and their analyses fall back or skip cleanly when unavailable.
 
 For development from source:
 
 ```bash
 git clone https://github.com/parthdongre/FrameVitals.git
 cd FrameVitals
-git switch dev
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -e ".[all,dev]"
 ```
 
-On Windows PowerShell, activate the environment with:
+On Windows PowerShell:
 
 ```powershell
 .venv\Scripts\Activate.ps1
 ```
 
-## Python API
+## Quick start
 
-FrameVitals accepts both in-memory pandas DataFrames and supported dataset files.
+FrameVitals accepts pandas DataFrames directly.
 
 ```python
 import pandas as pd
 import framevitals as fv
 
-# Analyze data already in memory.
-df = pd.read_csv("customers.csv")
-report = fv.analyze(df, mode="standard")
+_df = pd.read_csv("customers.csv")
+report = fv.analyze(_df)
 
 print(report["health"]["overall_score"])
 print(report["ml_readiness"])
 ```
 
-File paths work directly too:
+File paths work too:
 
 ```python
 report = fv.analyze("customers.csv", mode="quick")
@@ -70,7 +71,7 @@ With a supervised target:
 
 ```python
 report = fv.analyze(
-    df,
+    _df,
     target="churn",
     mode="deep",
 )
@@ -80,8 +81,6 @@ print(report["explainability"])
 ```
 
 ### Compare datasets for drift
-
-Use a known reference dataset as a baseline and compare newer data against it:
 
 ```python
 reference = pd.read_csv("train.csv")
@@ -93,21 +92,19 @@ print(drift["summary"]["overall_verdict"])
 print(drift["columns"][:3])
 ```
 
-Reference/current inputs can independently be DataFrames or file paths. Numeric columns report PSI, KS statistics, and standardized mean shift; categorical columns report PSI and chi-square diagnostics.
+Numeric columns use PSI, KS statistics, and standardized mean shift. Categorical columns use PSI and chi-square diagnostics.
 
 ### Filesystem artifacts are opt-in
 
-Reusable Python calls do not write cleaned datasets or charts unless requested:
+Reusable Python calls do not write cleaned datasets or charts unless requested.
 
 ```python
-report = fv.analyze(df, mode="standard")
+report = fv.analyze(_df)
 assert report["cleaning"]["output_path"] is None
 
-report = fv.analyze(df, mode="standard", artifacts=True)
+report = fv.analyze(_df, artifacts=True)
 print(report["cleaning"]["output_path"])
 ```
-
-The Flask/Streamlit application layer still enables its artifact workflow explicitly.
 
 ## CLI
 
@@ -124,8 +121,6 @@ framevitals compare train.csv production.csv --columns age,income
 framevitals compare train.csv production.csv --output drift.json
 ```
 
-`framevitals --version` and importing the top-level package are intentionally lightweight; the analytics pipeline is loaded only when an analysis is requested.
-
 ## Analysis modes
 
 | Mode | Intended use |
@@ -138,38 +133,50 @@ framevitals compare train.csv production.csv --output drift.json
 ## Core capabilities
 
 - pandas DataFrame plus CSV, TSV, Excel, and JSON inputs
-- Structural profiling and semantic column-role inference
-- Data-health and ML-readiness scoring
-- Missingness, duplicate, cardinality, and quality diagnostics
-- Deep statistical analysis
-- Ensemble anomaly detection
-- Reference-vs-current dataset drift comparison
-- Dedicated target-leakage and multicollinearity diagnostics
-- Time-series and text-column profiling
-- Target-aware model leaderboard
-- Explainability with deterministic fallback when SHAP is unavailable
-- Conservative cleaning and optional chart/artifact generation
+- structural profiling and semantic column-role inference
+- data-health and ML-readiness scoring
+- missingness, duplicate, cardinality, and quality diagnostics
+- deep statistical analysis
+- ensemble anomaly detection
+- reference-vs-current dataset drift comparison
+- target leakage and multicollinearity diagnostics
+- time-series and text-column profiling
+- target-aware baseline/model leaderboard
+- explainability with deterministic fallback when SHAP is unavailable
+- conservative cleaning and optional chart/artifact generation
 - JSON-friendly structured results
 - Python API and CLI
 
-Optional integrations add XGBoost, LightGBM, PyOD detectors, SHAP plots, Ollama-backed AI, and the Flask/React/Streamlit application stack.
+Optional integrations add XGBoost, LightGBM, PyOD detectors, SHAP, Ollama-backed AI, and the Flask/React application stack.
 
-## Web development stack
+## Optional web dashboard
 
-For contributors who want the existing application interfaces as well as the package:
+The reusable library lives under `src/framevitals/`. The repository also includes an optional Flask API and React dashboard for interactive use.
+
+Install the web dependencies:
 
 ```bash
-./install.sh
-./run.sh
+pip install -e ".[web]"
+```
+
+Start the Flask API:
+
+```bash
+python app.py
+```
+
+Then, in another terminal:
+
+```bash
+cd frontend
+npm ci
+npm run dev
 ```
 
 Typical local endpoints:
 
 - Flask API: `http://127.0.0.1:5055`
 - React dashboard: `http://127.0.0.1:5173`
-- Streamlit console: `http://127.0.0.1:8501`
-
-The application is an interface around FrameVitals. `src/framevitals/` is the canonical reusable library.
 
 ## Project layout
 
@@ -178,52 +185,43 @@ The application is an interface around FrameVitals. `src/framevitals/` is the ca
 ├── src/framevitals/          # Canonical installable Python package
 ├── tests/                    # Automated tests
 ├── frontend/                 # Optional React + TypeScript dashboard
-├── modules/                  # Temporary compatibility shims
-├── demo_datasets/            # Example datasets
-├── app.py                    # Optional Flask application
-├── streamlit_app.py          # Optional Streamlit console
+├── templates/                # Optional Flask report pages
+├── static/                   # Optional web/report assets
+├── app.py                    # Optional Flask API/server
 ├── pyproject.toml            # Package metadata and dependency groups
-└── .github/workflows/        # Tests, package validation, publishing
+└── .github/workflows/        # CI, packaging, and publishing
 ```
 
-New reusable Python code should import through `framevitals.*`, never `modules.*`.
+New reusable Python code should live in `src/framevitals/` and import through the `framevitals.*` namespace.
 
 ## Development
 
-Ongoing development happens on `dev`; `main` is kept release-ready.
-
 ```bash
-git switch dev
 pip install -e ".[all,dev]"
 pytest
 python -m build
 python -m twine check dist/*
 ```
 
-CI tests the core installation across Python 3.11–3.13, separately smoke-tests the optional feature set, validates dependency consistency, and installs the built wheel in a clean virtual environment.
+CI tests the core installation across Python 3.11–3.13, separately smoke-tests optional features, validates dependency consistency, builds the React dashboard, checks the wheel contents, and installs the built wheel in a clean environment.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+Development happens on `dev`; `main` is kept release-ready. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-## Packaging and releases
+## Releases
 
-The distribution is built from the `src/` layout and explicitly excludes the legacy `modules/` compatibility namespace. GitHub Actions validates the wheel on `dev`, `main`, and pull requests.
+FrameVitals publishes through PyPI Trusted Publishing from GitHub Releases. See [RELEASING.md](RELEASING.md) for the release checklist.
 
-Release publishing is configured for PyPI Trusted Publishing. See [RELEASING.md](RELEASING.md) for the one-time PyPI/GitHub environment setup and release checklist.
+## Roadmap
 
-## Product roadmap
+Near-term priorities include:
 
-Near-term product priorities:
-
-- Introduce **FrameVitals Contracts**: infer data-health expectations from a reference dataset and validate future data with pass/warn/fail results.
-- Add CI-friendly `framevitals validate` / `framevitals check` commands with meaningful exit codes.
-- Turn analysis results into a stable report/result object with JSON and HTML export methods.
-- Make the signal-driven analysis selector actually control which expensive diagnostics execute.
-- Integrate target analysis, target leakage, multicollinearity, model diagnostics, and segment analysis into one coherent target-aware workflow.
-- Add reusable baseline snapshots for recurring drift and schema-change monitoring.
-- Add configurable thresholds and custom checks without requiring users to fork the library.
-- Improve large-dataset behavior with deterministic sampling and resource budgets.
-- Add benchmark datasets and performance/accuracy regression suites.
-- Stabilize the public API through the `0.1.x` series.
+- FrameVitals Contracts and CI-friendly validation gates
+- adaptive analysis execution based on dataset signals and resource budgets
+- unified target intelligence for leakage, imbalance, redundancy, diagnostics, and explainability
+- reusable baseline snapshots for monitoring drift and schema changes
+- stable result/report objects with JSON and HTML exports
+- configurable thresholds and custom checks
+- deterministic large-dataset sampling and benchmark suites
 
 ## Contributing
 
@@ -233,4 +231,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+FrameVitals is released under the [MIT License](LICENSE).
