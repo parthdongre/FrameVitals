@@ -19,7 +19,7 @@ DEFAULT_OPENROUTER_MODEL = os.environ.get(
 )
 DEFAULT_OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
 OPENROUTER_SITE_URL = os.environ.get("OPENROUTER_SITE_URL", "http://127.0.0.1:5055")
-OPENROUTER_APP_NAME = os.environ.get("OPENROUTER_APP_NAME", "DataLens AI")
+OPENROUTER_APP_NAME = os.environ.get("OPENROUTER_APP_NAME", "FrameVitals")
 
 
 def compact_context(profile, health, signals, ml_readiness, advanced=None, column_roles_summary=None, dataset_signals=None):

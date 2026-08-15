@@ -81,7 +81,7 @@ jobs:
         run: framevitals --version
 
       - name: Compile Python source
-        run: python -m compileall src/framevitals modules app.py streamlit_app.py
+        run: python -m compileall src/framevitals app.py
 
       - name: Run tests
         run: pytest -v
@@ -119,7 +119,6 @@ jobs:
           import ollama
           import pyod
           import shap
-          import streamlit
           import xgboost
           print("Optional dependency smoke test passed")
           PY

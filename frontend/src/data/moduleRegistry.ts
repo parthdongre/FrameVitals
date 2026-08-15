@@ -1,12 +1,8 @@
 /**
- * Module registry — single source of truth for
- *   - the `/modules` page listing
- *   - the per-tab `<HowThisWorks/>` disclosures
+ * Canonical analysis-module registry used by the dashboard.
  *
- * Each entry maps to one or more report tabs by `id`. The id is the same as
- * the tab id used in `pages/report/tabRegistry.ts`, with a few extra entries
- * (`profile`, `analysis_selector`, etc.) that aren't tabs but appear on the
- * `/modules` page.
+ * Source paths deliberately point at `src/framevitals/`, which is the only
+ * maintained Python implementation namespace.
  */
 
 export interface ModuleRegistryEntry {
@@ -22,285 +18,226 @@ export interface ModuleRegistryEntry {
     | "Drift"
     | "AI"
     | "Cleaning";
-  /**
-   * One-line description for the modules table.
-   */
   oneLiner: string;
-  /**
-   * What the module produces.
-   */
   what: string;
-  /**
-   * How the module works algorithmically.
-   */
   how: string;
-  /**
-   * Algorithms/libraries actually used.
-   */
   algorithms: string[];
-  /**
-   * Source path under the repo root.
-   */
   source: string;
 }
 
 export const MODULES: ModuleRegistryEntry[] = [
-  /* ---- Profiling ----------------------------------------------------- */
   {
     id: "profile",
     name: "Dataset Profile",
     category: "Profiling",
-    oneLiner: "Schema, dtypes, missingness, duplicates, correlations.",
-    what:
-      "Computes shape, dtypes, missing counts, duplicate rows, numeric/categorical/date column lists, descriptive statistics for numeric columns, top values for categorical columns, a Pearson correlation matrix, and a 15-row preview.",
-    how: "Pandas describe + dtype inference + per-column null rates + Pearson/Spearman correlation matrix.",
+    oneLiner: "Schema, dtypes, missingness, duplicates, and correlations.",
+    what: "Builds the structural snapshot consumed by downstream diagnostics.",
+    how: "Uses pandas dtype inference, descriptive statistics, null rates, value counts, date detection, and correlation matrices.",
     algorithms: ["pandas", "numpy"],
-    source: "modules/loader.py + modules/profiler.py",
+    source: "src/framevitals/loader.py + src/framevitals/profiler.py",
   },
   {
     id: "rolesSummary",
     name: "Column Roles",
     category: "Profiling",
-    oneLiner: "Tags each column with semantic roles.",
-    what:
-      "Assigns id_like, sensitive, target_candidate, high_cardinality, constant, severe_missing, and numeric_meaningful tags so downstream modules can make smarter decisions.",
-    how: "Combines column-name keyword matching, cardinality ratios, missing percentages, and dtype checks into a small rule engine.",
-    algorithms: ["keyword matching", "cardinality + missingness rules"],
-    source: "modules/column_roles.py",
+    oneLiner: "Infers semantic roles for each column.",
+    what: "Tags ID-like, sensitive, target-candidate, high-cardinality, constant, severely-missing, and meaningful numeric columns.",
+    how: "Combines column-name, dtype, cardinality, uniqueness, and missingness heuristics.",
+    algorithms: ["rule engine", "cardinality heuristics"],
+    source: "src/framevitals/column_roles.py",
   },
   {
     id: "datasetSignals",
     name: "Dataset Signals",
     category: "Profiling",
-    oneLiner: "Boolean flags about the dataset as a whole.",
-    what:
-      "has_potential_leakage, has_class_imbalance, has_high_cardinality, has_dates, has_text, has_severe_missing, and similar flags.",
-    how: "Aggregates the profiler + column-roles output through small rule predicates.",
+    oneLiner: "Summarizes dataset-level conditions that affect analysis.",
+    what: "Produces flags for dates, text, high cardinality, severe missingness, potential leakage, imbalance, and related conditions.",
+    how: "Aggregates profile and column-role evidence through deterministic predicates.",
     algorithms: ["rule predicates"],
-    source: "modules/dataset_signals.py",
+    source: "src/framevitals/dataset_signals.py",
   },
   {
     id: "analysis_selector",
     name: "Analysis Selector",
     category: "Profiling",
-    oneLiner: "Decides which analyses to actually run.",
-    what:
-      "Given the dataset signals + analysis mode, marks each analysis as selected, recommended, or skipped.",
-    how: "Looks up an analysis inventory and applies signal-driven gates per analysis.",
+    oneLiner: "Plans which diagnostics are relevant for a dataset.",
+    what: "Marks analyses as selected, recommended, or skipped for the chosen mode and target.",
+    how: "Evaluates the analysis inventory against dataset signals and analysis mode.",
     algorithms: ["signal-gated selection"],
-    source: "modules/analysis_selector.py",
+    source: "src/framevitals/analysis_selector.py",
   },
-
-  /* ---- Statistics ---------------------------------------------------- */
   {
     id: "statistics",
-    name: "Deep Statistics v2",
+    name: "Deep Statistics",
     category: "Statistics",
-    oneLiner: "Univariate + bivariate statistics with effect sizes.",
-    what:
-      "Per-column normality battery (Shapiro · D'Agostino · Anderson), best-fit distribution by AIC across six candidates, BCa bootstrap CIs, and bivariate tests including Mann-Whitney, Kruskal-Wallis, Cramér's V, and point-biserial.",
-    how: "scipy.stats normality tests, AIC distribution selection, BCa bootstrap, bivariate effect-size estimators.",
-    algorithms: ["scipy.stats", "numpy"],
-    source: "modules/deep_statistics_v2.py",
+    oneLiner: "Univariate and bivariate statistical diagnostics.",
+    what: "Runs normality, distribution-fit, bootstrap, association, and effect-size analyses.",
+    how: "Uses SciPy and statsmodels tests with bounded pairwise analysis budgets.",
+    algorithms: ["Shapiro-Wilk", "D'Agostino", "Anderson-Darling", "bootstrap", "Cramer's V"],
+    source: "src/framevitals/deep_statistics_v2.py",
   },
-
-  /* ---- Anomalies ----------------------------------------------------- */
   {
     id: "anomalies",
     name: "Anomaly Ensemble",
     category: "Quality",
-    oneLiner: "Multi-detector outlier scoring.",
-    what:
-      "Seven detectors run in parallel: IsolationForest, LOF, EllipticEnvelope, robust z-score, Mahalanobis, ECOD, COPOD. Their normalized scores are averaged into a single ensemble.",
-    how: "Each detector emits a [0,1] score, scores are averaged, and rows above the configured threshold are flagged.",
-    algorithms: ["scikit-learn", "pyod"],
-    source: "modules/anomaly_ensemble.py",
+    oneLiner: "Combines multiple detectors into row-level anomaly scores.",
+    what: "Scores suspicious rows and reports the strongest anomaly candidates.",
+    how: "Normalizes scores from available statistical and ML detectors before combining them.",
+    algorithms: ["IsolationForest", "LOF", "EllipticEnvelope", "MAD", "Mahalanobis", "ECOD", "COPOD"],
+    source: "src/framevitals/anomaly_ensemble.py",
   },
-
-  /* ---- ML lab -------------------------------------------------------- */
   {
     id: "ml-lab",
     name: "Model Leaderboard",
     category: "ML",
-    oneLiner: "Quick model bake-off with cross-validated metrics.",
-    what:
-      "5-fold cross-validated leaderboard across up to 8 models including XGBoost and LightGBM, with calibrated holdout metrics. The winner is selected by primary metric and is the model used for SHAP attribution.",
-    how: "Stratified K-fold CV for classification, plain K-fold for regression. Each model is wrapped in a small preprocessing pipeline (impute, encode, scale where appropriate).",
-    algorithms: ["scikit-learn", "xgboost", "lightgbm"],
-    source: "modules/model_leaderboard.py",
+    oneLiner: "Builds a small cross-validated supervised-learning benchmark.",
+    what: "Compares baseline, linear, nearest-neighbor, tree, boosting, and optional gradient-boosting models.",
+    how: "Uses shared preprocessing plus cross-validation appropriate to classification or regression.",
+    algorithms: ["scikit-learn", "XGBoost", "LightGBM"],
+    source: "src/framevitals/model_leaderboard.py",
   },
   {
     id: "targetAnalysis",
     name: "Target Analysis",
     category: "ML",
-    oneLiner: "Inspects the chosen target column.",
-    what:
-      "Detects task type (classification / regression), distribution skew, class imbalance, and target leakage candidates.",
-    how: "Heuristics on dtype, cardinality, and value distribution; cross-checks against column roles.",
+    oneLiner: "Inspects task type and target health.",
+    what: "Detects classification versus regression, imbalance, skew, outliers, and target warnings.",
+    how: "Uses dtype, cardinality, distribution, and role heuristics.",
     algorithms: ["pandas", "scipy.stats"],
-    source: "modules/target_analyzer.py",
+    source: "src/framevitals/target_analyzer.py",
   },
   {
     id: "featureImportance",
     name: "Feature Importance",
     category: "ML",
-    oneLiner: "Global feature importance.",
-    what:
-      "Ranks features by mean absolute SHAP for tree models, falling back to permutation importance.",
-    how: "TreeSHAP via the `shap` library; permutation importance from scikit-learn.",
-    algorithms: ["shap", "scikit-learn"],
-    source: "modules/feature_importance.py",
+    oneLiner: "Ranks features by predictive contribution.",
+    what: "Produces a global feature ranking for target-aware analysis.",
+    how: "Uses model-native, SHAP, or permutation-based importance when available.",
+    algorithms: ["SHAP", "permutation importance"],
+    source: "src/framevitals/feature_importance.py",
   },
   {
     id: "baselineModel",
     name: "Baseline Model",
     category: "ML",
-    oneLiner: "Reference model the leaderboard compares against.",
-    what:
-      "A simple baseline (DummyClassifier / DummyRegressor) so improvements over uninformed predictions are visible.",
-    how: "5-fold CV with the strategy `most_frequent` (classification) or `mean` (regression).",
+    oneLiner: "Provides an uninformed reference model.",
+    what: "Makes it clear whether trained models beat a simple baseline.",
+    how: "Uses DummyClassifier or DummyRegressor with cross-validation.",
     algorithms: ["scikit-learn"],
-    source: "modules/baseline_model.py",
+    source: "src/framevitals/baseline_model.py",
   },
-
-  /* ---- SHAP / Explainability ---------------------------------------- */
   {
     id: "shap",
-    name: "Explainability (SHAP)",
+    name: "Explainability",
     category: "ML",
-    oneLiner: "Global + per-row attributions for the winner.",
-    what:
-      "Mean |SHAP| values across the validation set, plus per-row stories that decompose each prediction into its top contributing features.",
-    how: "TreeSHAP for tree models, permutation importance fallback for non-tree models.",
-    algorithms: ["shap", "scikit-learn"],
-    source: "modules/explainability.py",
+    oneLiner: "Explains the strongest model globally and per row.",
+    what: "Produces global feature rankings and local contribution stories.",
+    how: "Uses SHAP when supported and deterministic permutation importance as a fallback.",
+    algorithms: ["SHAP", "permutation importance"],
+    source: "src/framevitals/explainability.py",
   },
-
-  /* ---- Time series --------------------------------------------------- */
   {
     id: "timeseries",
     name: "Time Series",
     category: "Time",
-    oneLiner: "Frequency, stationarity, decomposition, ACF/PACF, forecast.",
-    what:
-      "Detects the date column, infers frequency and seasonality, runs ADF + KPSS, performs STL decomposition, computes ACF/PACF, and produces a Holt-Winters forecast.",
-    how: "statsmodels for ADF/KPSS/STL/ACF/PACF; Holt-Winters from statsmodels.tsa.holtwinters.",
-    algorithms: ["statsmodels"],
-    source: "modules/time_series.py",
+    oneLiner: "Diagnoses temporal structure when date-like data is present.",
+    what: "Checks frequency, stationarity, decomposition, autocorrelation, and a forecast preview.",
+    how: "Uses date-confidence heuristics plus statsmodels time-series routines.",
+    algorithms: ["ADF", "KPSS", "STL", "ACF", "PACF", "Holt-Winters"],
+    source: "src/framevitals/time_series.py",
   },
-
-  /* ---- Text ---------------------------------------------------------- */
   {
     id: "text",
     name: "Text Profile",
     category: "Text",
-    oneLiner: "Vocabulary, n-grams, topic scatter.",
-    what:
-      "Per-column linguistic stats: vocabulary size, average length, regex pattern hits, top n-grams, and a TF-IDF + LSA document map.",
-    how: "TF-IDF vectorization, truncated SVD for the LSA scatter, English stopwords filtered.",
-    algorithms: ["scikit-learn"],
-    source: "modules/text_profile.py",
+    oneLiner: "Profiles free-text columns without requiring a full NLP stack.",
+    what: "Reports vocabulary, lengths, n-grams, patterns, lightweight language/sentiment signals, and a document map.",
+    how: "Uses regex tokenization, TF-IDF, stopword filtering, and truncated SVD.",
+    algorithms: ["TF-IDF", "TruncatedSVD", "regex"],
+    source: "src/framevitals/text_profile.py",
   },
-
-  /* ---- Drift --------------------------------------------------------- */
   {
     id: "drift",
-    name: "Drift",
+    name: "Drift Analysis",
     category: "Drift",
-    oneLiner: "Distribution shift between two datasets.",
-    what:
-      "Per-column drift report comparing a reference dataset to a current dataset (or one dataset split chronologically).",
-    how: "Per-column KS test for numeric, chi-square for categorical, and Population Stability Index. Severity bucketed into stable / minor / moderate / severe.",
-    algorithms: ["scipy.stats", "numpy"],
-    source: "modules/drift_analysis.py",
+    oneLiner: "Measures distribution changes between reference and current data.",
+    what: "Reports per-column drift severity plus an overall verdict.",
+    how: "Combines PSI with numeric KS tests or categorical chi-square tests.",
+    algorithms: ["PSI", "Kolmogorov-Smirnov", "chi-square"],
+    source: "src/framevitals/drift_analysis.py",
   },
-
-  /* ---- Diagnostics --------------------------------------------------- */
   {
     id: "diagnostics",
     name: "Model Diagnostics",
     category: "ML",
-    oneLiner: "Residuals, calibration, fairness slices.",
-    what:
-      "Holdout residuals, reliability bins, and slice-level error metrics for the winning model.",
-    how: "Residuals from a holdout split + calibration via reliability diagrams.",
+    oneLiner: "Inspects the behavior of a fitted classification or regression model.",
+    what: "Produces residual, calibration, and task-specific diagnostic evidence.",
+    how: "Uses holdout predictions and standard classification/regression diagnostic metrics.",
     algorithms: ["scikit-learn", "numpy"],
-    source: "modules/model_diagnostics.py",
+    source: "src/framevitals/model_diagnostics.py",
   },
   {
     id: "multicollinearity",
     name: "Multicollinearity",
     category: "ML",
-    oneLiner: "VIF per feature.",
-    what:
-      "Variance Inflation Factor for each numeric feature; flags variables that are heavily explained by their peers.",
-    how: "OLS regression of each feature on the rest, VIF = 1 / (1 - R^2).",
-    algorithms: ["statsmodels"],
-    source: "modules/multicollinearity.py",
+    oneLiner: "Finds redundant numeric predictors.",
+    what: "Reports VIF and groups of strongly redundant variables.",
+    how: "Measures how well each numeric feature is explained by its peers.",
+    algorithms: ["VIF", "correlation grouping"],
+    source: "src/framevitals/multicollinearity.py",
   },
   {
     id: "targetLeakage",
     name: "Target Leakage",
     category: "ML",
-    oneLiner: "Feature → target mutual information heuristics.",
-    what:
-      "Surfaces features whose mutual information with the target is suspiciously high or whose names match common leakage patterns.",
-    how: "scikit-learn mutual_info_* + correlation thresholding + name heuristics.",
-    algorithms: ["scikit-learn"],
-    source: "modules/target_leakage.py",
+    oneLiner: "Flags features that may reveal the target improperly.",
+    what: "Surfaces direct matches, suspicious correlations, and target-like naming patterns with severity evidence.",
+    how: "Combines direct-value, correlation, and name-similarity checks.",
+    algorithms: ["correlation", "name similarity", "direct-match checks"],
+    source: "src/framevitals/target_leakage.py",
   },
-
-  /* ---- Segments ------------------------------------------------------ */
   {
     id: "segments",
-    name: "Segments",
+    name: "Segment Analysis",
     category: "ML",
-    oneLiner: "Subgroup metrics.",
-    what:
-      "Group-by slices on detected categorical or binned numeric columns; compares target-relevant metrics per slice.",
-    how: "Pandas group-by with a small picker that prefers low-cardinality interpretable columns.",
-    algorithms: ["pandas"],
-    source: "modules/segment_analysis.py",
+    oneLiner: "Compares meaningful subgroups in the data.",
+    what: "Builds low-cardinality slices and target-by-segment summaries.",
+    how: "Uses bounded pandas group-by analysis on interpretable segment candidates.",
+    algorithms: ["pandas group-by"],
+    source: "src/framevitals/segment_analysis.py",
   },
-
-  /* ---- Cleaning ------------------------------------------------------ */
   {
     id: "cleaning",
     name: "Cleaning",
     category: "Cleaning",
-    oneLiner: "Imputation + dedupe + normalization.",
-    what:
-      "Removes duplicate rows, imputes missing values (median for numeric, mode for categorical), clips extreme outliers, and writes a cleaned CSV to disk.",
-    how: "pandas + scikit-learn pipelines. Health is rescored on the cleaned dataset to quantify the gain.",
+    oneLiner: "Creates a conservative cleaned dataset when artifacts are enabled.",
+    what: "Handles duplicates, missing values, and selected quality issues while recording what changed.",
+    how: "Uses deterministic pandas/scikit-learn transformations and keeps filesystem output opt-in for the public API.",
     algorithms: ["pandas", "scikit-learn"],
-    source: "modules/cleaner.py",
+    source: "src/framevitals/cleaner.py",
   },
-
-  /* ---- AI ------------------------------------------------------------ */
   {
     id: "ai-report",
     name: "AI Narrative",
     category: "AI",
-    oneLiner: "Generated executive summary.",
-    what:
-      "A grounded narrative report describing the dataset's quality, ML readiness, anomalies, time-series structure, and recommended next steps.",
-    how: "LLM agent loop on Ollama (qwen3:4b) with Pydantic-validated output, falling back to OpenRouter, then to a deterministic writer that quotes RAG-retrieved facts.",
-    algorithms: ["LLM", "RAG"],
-    source: "modules/ai_insights.py + modules/ai_agent.py",
+    oneLiner: "Turns computed diagnostics into a grounded narrative.",
+    what: "Summarizes quality, ML readiness, risks, and suggested next steps.",
+    how: "Uses OpenRouter or Ollama when configured and falls back to deterministic evidence-based text.",
+    algorithms: ["LLM", "deterministic fallback"],
+    source: "src/framevitals/ai_insights.py",
   },
   {
     id: "ask",
     name: "Ask Anything",
     category: "AI",
-    oneLiner: "Agentic Q&A grounded in this dataset.",
-    what:
-      "A chat panel that answers questions about the current dataset using the cached analysis result.",
-    how: "Planner → Executor → Critic → Writer loop. Tools are scoped to the cached profile, signals, leaderboard, and explainability — answers cite the exact rows/columns they used.",
-    algorithms: ["LLM agent loop"],
-    source: "modules/ai_agent.py + /api/ask",
+    oneLiner: "Answers dataset questions using computed FrameVitals evidence.",
+    what: "Provides agentic Q&A over the cached analysis result.",
+    how: "Runs a planner/executor/critic/writer loop over scoped analysis tools with deterministic fallback.",
+    algorithms: ["tool-calling agent", "RAG"],
+    source: "src/framevitals/ai_agent.py",
   },
 ];
 
 export function moduleById(id: string): ModuleRegistryEntry | undefined {
-  return MODULES.find((m) => m.id === id);
+  return MODULES.find((module) => module.id === id);
 }
