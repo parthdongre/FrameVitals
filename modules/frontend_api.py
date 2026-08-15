@@ -11,8 +11,12 @@ from modules.deep_statistics import run_deep_statistics
 from modules.target_analyzer import analyze_target
 from modules.feature_importance import run_feature_importance
 from modules.baseline_model import run_baseline_model
-from modules.target_leakage import run_target_leakage_analysis
-from modules.multicollinearity import run_multicollinearity_analysis
+from framevitals.target_leakage import (
+    run_target_leakage_analysis,
+)
+from framevitals.multicollinearity import (
+    run_multicollinearity_analysis,
+)
 from modules.model_diagnostics import run_model_diagnostics
 from modules.segment_analysis import run_segment_analysis
 
