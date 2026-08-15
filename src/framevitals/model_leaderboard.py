@@ -58,8 +58,10 @@ from sklearn.model_selection import KFold, StratifiedKFold, cross_validate, trai
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.pipeline import Pipeline
 
-from modules.ml_preprocessing import build_sklearn_preprocessor, prepare_ml_matrix
-
+from framevitals.ml_preprocessing import (
+    build_sklearn_preprocessor,
+    prepare_ml_matrix,
+)
 
 # ---------------------------------------------------------------------------
 # Optional heavy models — imported lazily so missing libs don't break import
