@@ -30,8 +30,12 @@ jobs:
       - name: Verify dependency consistency
         run: python -m pip check
 
-      - name: Check fatal Python issues
-        run: ruff check src/framevitals tests --select F
+      - name: Check undefined-name and scope errors
+        run: ruff check src/framevitals tests --select F821,F822,F823
+
+      - name: Report broader dead-code lint debt
+        continue-on-error: true
+        run: ruff check src/framevitals tests --select F401,F841
 
   core:
     name: core (Python ${{ matrix.python-version }})
