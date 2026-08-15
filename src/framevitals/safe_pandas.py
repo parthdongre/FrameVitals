@@ -7,7 +7,7 @@ Only a small whitelist of node types, names, and attribute accesses are
 permitted. Anything else raises UnsafeExpression.
 
 Usage:
-    from modules.safe_pandas import safe_eval, UnsafeExpression
+    from framevitals.safe_pandas import safe_eval, UnsafeExpression
     result = safe_eval("df['age'].mean()", df)
     result = safe_eval("df.groupby('region')['revenue'].sum().head(5)", df)
 
