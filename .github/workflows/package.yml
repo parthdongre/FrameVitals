@@ -25,8 +25,7 @@ jobs:
           pip install build twine
 
       - name: Build package
-        run: |
-          python -m build
+        run: python -m build
 
       - name: Verify wheel contents
         run: |
@@ -35,31 +34,37 @@ jobs:
           import zipfile
 
           wheels = list(Path("dist").glob("*.whl"))
-
-          assert len(wheels) == 1, (
-              f"Expected exactly one wheel, found {len(wheels)}"
-          )
+          assert len(wheels) == 1, f"Expected exactly one wheel, found {len(wheels)}"
 
           wheel = wheels[0]
-
           with zipfile.ZipFile(wheel) as archive:
               names = archive.namelist()
 
-          assert any(
-              name.startswith("framevitals/")
-              for name in names
-          ), "framevitals package missing from wheel"
-
-          assert not any(
-              name.startswith("modules/")
-              for name in names
-          ), "legacy modules package leaked into wheel"
-
-          print(
-              f"Verified distribution boundary: {wheel.name}"
+          assert any(name.startswith("framevitals/") for name in names), (
+              "framevitals package missing from wheel"
           )
+          assert not any(name.startswith("modules/") for name in names), (
+              "legacy modules package leaked into wheel"
+          )
+          print(f"Verified distribution boundary: {wheel.name}")
           PY
 
       - name: Validate distributions
+        run: python -m twine check dist/*
+
+      - name: Smoke-test built wheel
         run: |
-          python -m twine check dist/*
+          python -m venv /tmp/framevitals-wheel-smoke
+          /tmp/framevitals-wheel-smoke/bin/python -m pip install --no-deps dist/*.whl
+          cd /tmp
+          /tmp/framevitals-wheel-smoke/bin/python - <<'PY'
+          from importlib.metadata import version
+          import framevitals
+
+          installed = version("framevitals")
+          assert installed == framevitals.__version__, (
+              f"metadata version {installed} != package version {framevitals.__version__}"
+          )
+          print(f"Imported FrameVitals {installed} from built wheel")
+          PY
+          /tmp/framevitals-wheel-smoke/bin/framevitals --version

@@ -5,6 +5,34 @@ on:
   pull_request:
 
 jobs:
+  quality:
+    name: package quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package and development tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Verify dependency consistency
+        run: python -m pip check
+
+      - name: Check fatal Python issues
+        run: ruff check src/framevitals tests --select F
+
   core:
     name: core (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -30,6 +58,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+
+      - name: Verify dependency consistency
+        run: python -m pip check
 
       - name: Verify lightweight package import
         run: |
@@ -71,6 +102,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[all,dev]"
+
+      - name: Verify dependency consistency
+        run: python -m pip check
 
       - name: Verify optional dependencies
         run: |
