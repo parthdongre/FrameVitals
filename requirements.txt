@@ -1,3 +1,3 @@
-# Development/application environment.
-# Package dependencies are defined once in pyproject.toml.
--e .[dev,web]
+# Full development/application environment.
+# Runtime and optional dependency groups are defined in pyproject.toml.
+-e .[all,dev]

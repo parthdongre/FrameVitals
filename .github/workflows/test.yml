@@ -5,12 +5,13 @@ on:
   pull_request:
 
 jobs:
-  test:
+  core:
+    name: core (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout repository
@@ -25,23 +26,68 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Install FrameVitals and test dependencies
+      - name: Install core package and test dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,web]"
+          pip install -e ".[dev]"
 
-      - name: Verify package import
+      - name: Verify lightweight package import
         run: |
-          python -c "import framevitals; print(framevitals.__version__)"
+          python - <<'PY'
+          import sys
+          import framevitals
+
+          assert "framevitals.pipeline" not in sys.modules
+          print(framevitals.__version__)
+          PY
 
       - name: Verify CLI
-        run: |
-          framevitals --version
+        run: framevitals --version
 
       - name: Compile Python source
-        run: |
-          python -m compileall src/framevitals modules app.py streamlit_app.py
+        run: python -m compileall src/framevitals modules app.py streamlit_app.py
 
       - name: Run tests
+        run: pytest -v
+
+  optional-features:
+    name: optional features (Python 3.12)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install full feature set
         run: |
-          pytest -v
+          python -m pip install --upgrade pip
+          pip install -e ".[all,dev]"
+
+      - name: Verify optional dependencies
+        run: |
+          python - <<'PY'
+          import flask
+          import lightgbm
+          import ollama
+          import pyod
+          import shap
+          import streamlit
+          import xgboost
+          print("Optional dependency smoke test passed")
+          PY
+
+      - name: Run feature-focused tests
+        run: |
+          pytest -v \
+            tests/test_ai_agent.py \
+            tests/test_ml_engine.py \
+            tests/test_model_diagnostics.py

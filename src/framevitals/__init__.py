@@ -1,15 +1,31 @@
-"""
-FrameVitals
-===========
+"""FrameVitals public package interface."""
 
-Automated diagnostics and ML-readiness analysis for tabular datasets.
-"""
+from __future__ import annotations
 
-from framevitals.api import analyze
+from pathlib import Path
+from typing import Any
 
 __version__ = "0.1.0.dev0"
 
-__all__ = [
-    "analyze",
-    "__version__",
-]
+
+def analyze(
+    file_path: str | Path,
+    *,
+    target: str | None = None,
+    mode: str = "standard",
+) -> dict[str, Any]:
+    """Analyze a tabular dataset.
+
+    The implementation is imported lazily so ``import framevitals`` and
+    ``framevitals --version`` do not initialize the complete analytics stack.
+    """
+    from framevitals.api import analyze as _analyze
+
+    return _analyze(
+        file_path,
+        target=target,
+        mode=mode,
+    )
+
+
+__all__ = ["analyze", "__version__"]
