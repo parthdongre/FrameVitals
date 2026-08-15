@@ -1,7 +1,7 @@
 from pathlib import Path
 from uuid import uuid4
 
-from modules.pipeline import run_full_analysis
+from framevitals.pipeline import run_full_analysis
 
 
 VALID_MODES = {
