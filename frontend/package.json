@@ -17,14 +17,14 @@
     "highcharts": "^12.2.0",
     "highcharts-react-official": "^3.2.1",
     "lucide-react": "^0.453.0",
-    "react": "^19.0.0",
+    "react": "^19.2.8",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^22.13.4",
-    "@types/react": "^19.0.10",
+    "@types/react": "^19.2.18",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.20",
