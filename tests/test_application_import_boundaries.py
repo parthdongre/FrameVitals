@@ -24,6 +24,7 @@ MIGRATED_MODULES = {
     "text_profile",
     "time_series",
     "visualizer",
+    "ai_agent",
 }
 
 
