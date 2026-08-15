@@ -8,6 +8,12 @@ FrameVitals follows semantic versioning while the public API matures. The 0.x se
 
 Development continues on the `dev` branch. Changes intended for the next release should be documented here before they are promoted to `main`.
 
+### Added
+
+- Data-contract inference through `framevitals.infer_contract()`
+- Structured contract validation through `framevitals.validate()`
+- `framevitals infer-contract` and `framevitals validate` CLI commands for CI-friendly data gates
+
 ## 0.1.0 - 2026-08-15
 
 First public alpha release of FrameVitals.

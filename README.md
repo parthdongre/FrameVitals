@@ -27,6 +27,8 @@ import framevitals as fv
 
 report = fv.analyze(df)
 drift = fv.compare(reference_df, current_df)
+contract = fv.infer_contract(reference_df)
+validation = fv.validate(current_df, contract)
 ```
 
 The goal is simple: **catch bad data before it becomes a bad model, a broken dashboard, or a production incident.**
@@ -128,6 +130,24 @@ print(result["columns"][:3])
 
 Numeric drift uses **PSI, Kolmogorov-Smirnov statistics, and standardized mean shift**. Categorical drift uses **PSI and chi-square diagnostics**.
 
+### Validate a data contract
+
+Infer a contract once from a trusted reference dataset, then validate later
+batches before they reach downstream jobs:
+
+```python
+contract = fv.infer_contract(reference)
+result = fv.validate(current, contract)
+
+if not result["valid"]:
+    for finding in result["errors"]:
+        print(finding["message"])
+```
+
+Contracts capture required columns, broad data types, nullability, and finite
+numeric bounds. They are plain JSON-friendly dictionaries, so a contract can
+be committed with a pipeline or stored with a dataset baseline.
+
 ## The public API
 
 The public API is intentionally small while FrameVitals is in alpha.
@@ -136,7 +156,8 @@ The public API is intentionally small while FrameVitals is in alpha.
 | --- | --- | --- |
 | `framevitals.analyze(...)` | Available in `0.1.0` | Profile and diagnose one dataset |
 | `framevitals.compare(...)` | Available in `0.1.0` | Compare reference and current data for drift |
-| `framevitals.validate(...)` | In development | Validate data against an inferred or explicit contract |
+| `framevitals.infer_contract(...)` | Available on `dev` | Infer a reusable data contract from reference data |
+| `framevitals.validate(...)` | Available on `dev` | Validate data against an inferred or explicit contract |
 | snapshots / monitoring | Roadmap | Reuse baselines for recurring schema and drift checks |
 
 This keeps the library easy to learn while leaving room for the result model and validation system to mature before `1.0`.
@@ -223,6 +244,16 @@ framevitals compare train.csv production.csv
 framevitals compare train.csv production.csv --columns age,income
 framevitals compare train.csv production.csv --output drift.json
 ```
+
+Create and use a contract from the terminal:
+
+```bash
+framevitals infer-contract training_data.csv --output contract.json
+framevitals validate production_batch.csv --contract contract.json
+```
+
+The validation command exits with status `1` when the contract has errors,
+which makes it suitable for CI jobs and scheduled ingestion checks.
 
 In `0.1.0`, `framevitals analyze` prints a compact analysis summary to the terminal. `--output report.json` writes that CLI summary to the requested path. `--artifacts` enables generated files in the current working directory, including a cleaned dataset under `cleaned/` and generated charts under `static/charts/`. The full structured analysis result is available through the Python API with `framevitals.analyze(...)`.
 

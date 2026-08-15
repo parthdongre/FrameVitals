@@ -16,6 +16,11 @@ def test_compare_is_public():
     assert callable(framevitals.compare)
 
 
+def test_contract_apis_are_public():
+    assert callable(framevitals.infer_contract)
+    assert callable(framevitals.validate)
+
+
 def test_missing_dataset():
     with pytest.raises(FileNotFoundError):
         framevitals.analyze("this_file_does_not_exist.csv")
