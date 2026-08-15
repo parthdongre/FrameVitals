@@ -22,8 +22,6 @@ from framevitals.chart_planner import build_chart_plan
 from framevitals.profiler import build_profile
 
 CHART_DIR = Path("static/charts")
-CHART_DIR.mkdir(parents=True, exist_ok=True)
-
 
 # ---------------------------------------------------------------------------
 # Editorial palette  (mirror of frontend tokens in styles/globals.css)
@@ -101,6 +99,11 @@ plt.rcParams.update({
 # ---------------------------------------------------------------------------
 
 def _save(dataset_id, name):
+    CHART_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
     safe = str(name).replace("/", "_").replace(" ", "_")
     path = CHART_DIR / f"{dataset_id}_{safe}.png"
     plt.tight_layout()
