@@ -11,16 +11,21 @@ FrameVitals is an open-source Python toolkit for inspecting tabular datasets bef
 
 FrameVitals supports Python 3.11, 3.12, and 3.13.
 
-For the core library from this development branch:
+For a development install from GitHub:
 
 ```bash
 git clone https://github.com/parthdongre/DataLens-AI.git
 cd DataLens-AI
-git switch refactor/framevitals-package
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -e .
+```
+
+On Windows PowerShell, activate the environment with:
+
+```powershell
+.venv\Scripts\Activate.ps1
 ```
 
 After the first PyPI release, the intended command is simply:
@@ -41,7 +46,7 @@ pip install -e ".[all]"     # every optional runtime feature
 pip install -e ".[all,dev]" # contributor/development environment
 ```
 
-The core engine still works without the optional ML libraries: XGBoost, LightGBM, PyOD and SHAP are detected lazily and their analyses fall back or skip cleanly when they are unavailable.
+The core engine still works without the optional ML libraries: XGBoost, LightGBM, PyOD, and SHAP are detected lazily and their analyses fall back or skip cleanly when unavailable.
 
 ## Python API
 
@@ -149,7 +154,7 @@ python -m build
 python -m twine check dist/*
 ```
 
-CI tests the core installation across Python 3.11–3.13 and separately smoke-tests the optional feature set.
+CI tests the core installation across Python 3.11–3.13, separately smoke-tests the optional feature set, validates dependency consistency, and installs the built wheel in a clean virtual environment.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
@@ -165,7 +170,7 @@ Near-term priorities:
 
 - Stabilize the public API for `0.1.x`
 - Finish migrating application imports away from compatibility shims
-- Reduce pandas compatibility warnings
+- Resolve remaining advisory dead-code lint findings
 - Add schema-change and drift regression tests
 - Improve large-dataset performance
 - Publish benchmark datasets and performance measurements
