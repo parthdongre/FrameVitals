@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "framevitals"
 version = "0.1.0"
-description = "Automated diagnostics, data-quality analysis, anomaly detection, drift analysis, and ML-readiness checks for tabular data."
+description = "Data-health diagnostics, drift detection, and ML-readiness checks for tabular data."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -57,7 +57,6 @@ ai = [
 ]
 web = [
     "flask>=3.0",
-    "streamlit>=1.36",
     "gunicorn>=22.0",
     "werkzeug>=3.0",
 ]
@@ -68,7 +67,6 @@ all = [
     "shap>=0.45",
     "ollama>=0.3",
     "flask>=3.0",
-    "streamlit>=1.36",
     "gunicorn>=22.0",
     "werkzeug>=3.0",
 ]
