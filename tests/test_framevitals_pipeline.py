@@ -75,3 +75,38 @@ def test_quick_pipeline(tmp_path, monkeypatch):
     )
 
     assert "total" in result["timings_ms"]
+    from framevitals import analyze
+
+
+def test_public_api_uses_pipeline(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    path = tmp_path / "customers.csv"
+
+    pd.DataFrame({
+        "age": [20, 30, 40],
+        "income": [30000, 40000, 50000],
+    }).to_csv(
+        path,
+        index=False,
+    )
+
+    result = analyze(
+        path,
+        mode="quick",
+    )
+
+    assert result["filename"] == (
+        "customers.csv"
+    )
+
+    assert result["analysis_mode"] == (
+        "quick"
+    )
+
+    assert result["dataset_id"].startswith(
+        "fv_"
+    )
