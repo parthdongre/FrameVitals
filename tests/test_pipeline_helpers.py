@@ -104,6 +104,16 @@ def test_display_signals():
     assert "ML Readiness" in names
 
 
+def test_ml_readiness_cached_profile_matches_standalone():
+    df = pd.DataFrame({
+        "age": [20, None, 22, 22],
+        "city": ["Pune", "Mumbai", None, None],
+    })
+    profile = build_profile(df)
+
+    assert calculate_ml_readiness(df, profile=profile) == calculate_ml_readiness(df)
+
+
 def test_cleaner(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
@@ -134,3 +144,27 @@ def test_cleaner(tmp_path, monkeypatch):
     )
 
     assert cleaned_path.exists()
+
+
+def test_cleaner_cached_inputs_match_standalone(tmp_path):
+    df = pd.DataFrame({
+        "age": [20, None, 30, 30],
+        "city": ["Pune", "Mumbai", None, None],
+    })
+    profile = build_profile(df)
+    health = calculate_health_score(df, profile)
+
+    standalone = create_cleaned_dataset(
+        "standalone",
+        df,
+        write_output=False,
+    )
+    cached = create_cleaned_dataset(
+        "cached",
+        df,
+        write_output=False,
+        before_profile=profile,
+        before_health=health,
+    )
+
+    assert cached == standalone
