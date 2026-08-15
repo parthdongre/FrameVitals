@@ -9,7 +9,7 @@ planner can light up advanced charts (leaderboard bars, target overlays,
 time-series trends, etc.) when those phases produced data.
 """
 
-from modules.column_roles import (
+from framevitals.column_roles import (
     get_meaningful_numeric_columns,
     get_meaningful_categorical_columns,
     get_columns_with_role,
