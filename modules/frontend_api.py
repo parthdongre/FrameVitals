@@ -16,7 +16,9 @@ from framevitals.target_analyzer import (
     analyze_target,
 )
 from modules.feature_importance import run_feature_importance
-from modules.baseline_model import run_baseline_model
+from framevitals.baseline_model import (
+    run_baseline_model,
+)
 from framevitals.target_leakage import (
     run_target_leakage_analysis,
 )
