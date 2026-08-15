@@ -276,106 +276,108 @@ def _ml(p: dict) -> dict:
             ],
         }
 
-    # Diagnostics summary
-md = (
-    p.get("modelDiagnostics")
-    or p.get("model_diagnostics")
-    or {}
-)
+        # Diagnostics summary
+    md = (
+        p.get("modelDiagnostics")
+        or p.get("model_diagnostics")
+        or {}
+    )
 
-if isinstance(md, dict) and md.get(
-    "available"
-):
-    diagnostics = {
-        "task_type": md.get(
-            "task_type"
-        ),
-        "target_column": md.get(
-            "target_column"
-        ),
-    }
-
-    if md.get("task_type") == (
-        "classification"
+    if isinstance(md, dict) and md.get(
+        "available"
     ):
-        diagnostics.update({
-            "accuracy": _round(
-                md.get("accuracy"),
-                4,
+        diagnostics = {
+            "task_type": md.get(
+                "task_type"
             ),
-            "precision_weighted": _round(
-                md.get(
-                    "precision_weighted"
+            "target_column": md.get(
+                "target_column"
+            ),
+        }
+
+        if md.get("task_type") == (
+            "classification"
+        ):
+            diagnostics.update({
+                "accuracy": _round(
+                    md.get("accuracy"),
+                    4,
+                ),
+                "precision_weighted": _round(
+                    md.get(
+                        "precision_weighted"
+                    ),
+                    4,
+                ),
+                "recall_weighted": _round(
+                    md.get(
+                        "recall_weighted"
+                    ),
+                    4,
+                ),
+                "f1_weighted": _round(
+                    md.get("f1_weighted"),
+                    4,
+                ),
+            })
+
+            cv = (
+                md.get("cross_validation")
+                or {}
+            )
+
+            diagnostics[
+                "mean_cv_f1_weighted"
+            ] = _round(
+                cv.get(
+                    "mean_f1_weighted"
                 ),
                 4,
-            ),
-            "recall_weighted": _round(
-                md.get(
-                    "recall_weighted"
+            )
+
+        elif md.get("task_type") == (
+            "regression"
+        ):
+            residuals = (
+                md.get("residual_summary")
+                or {}
+            )
+
+            diagnostics.update({
+                "mean_abs_residual": _round(
+                    residuals.get(
+                        "mean_abs_residual"
+                    ),
+                    4,
                 ),
-                4,
-            ),
-            "f1_weighted": _round(
-                md.get("f1_weighted"),
-                4,
-            ),
-        })
-
-        cv = (
-            md.get("cross_validation")
-            or {}
-        )
-
-        diagnostics[
-            "mean_cv_f1_weighted"
-        ] = _round(
-            cv.get(
-                "mean_f1_weighted"
-            ),
-            4,
-        )
-
-    elif md.get("task_type") == (
-        "regression"
-    ):
-        residuals = (
-            md.get("residual_summary")
-            or {}
-        )
-
-        diagnostics.update({
-            "mean_abs_residual": _round(
-                residuals.get(
-                    "mean_abs_residual"
+                "std_residual": _round(
+                    residuals.get(
+                        "std_residual"
+                    ),
+                    4,
                 ),
+            })
+
+            cv = (
+                md.get("cross_validation")
+                or {}
+            )
+
+            diagnostics[
+                "mean_cv_r2"
+            ] = _round(
+                cv.get("mean_r2"),
                 4,
-            ),
-            "std_residual": _round(
-                residuals.get(
-                    "std_residual"
-                ),
-                4,
-            ),
-        })
+            )
 
-        cv = (
-            md.get("cross_validation")
-            or {}
-        )
+        out["model_diagnostics"] = {
+            key: value
+            for key, value
+            in diagnostics.items()
+            if value is not None
+        }
 
-        diagnostics[
-            "mean_cv_r2"
-        ] = _round(
-            cv.get("mean_r2"),
-            4,
-        )
-
-    out["model_diagnostics"] = {
-        key: value
-        for key, value
-        in diagnostics.items()
-        if value is not None
-    }
+    return out
 
 
 def _time_text_drift(p: dict) -> dict:
