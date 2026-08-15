@@ -1,13 +1,19 @@
 from pathlib import Path
+
 import pandas as pd
-from modules.health_score import calculate_health_score
-from modules.profiler import build_profile
-from modules.security import sanitize_csv_value
+
+from framevitals.health_score import calculate_health_score
+from framevitals.profiler import build_profile
+from framevitals.security import sanitize_csv_value
 
 CLEANED_DIR = Path("cleaned")
-CLEANED_DIR.mkdir(exist_ok=True)
 
 def create_cleaned_dataset(dataset_id, df):
+    CLEANED_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
     cleaned = df.copy()
     actions = []
 
