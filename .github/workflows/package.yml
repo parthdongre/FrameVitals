@@ -25,7 +25,39 @@ jobs:
       - name: Build package
         run: |
           python -m build
+          
+      - name: Verify wheel contents
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
 
+          wheels = list(Path("dist").glob("*.whl"))
+
+          assert len(wheels) == 1, (
+              f"Expected exactly one wheel, found {len(wheels)}"
+          )
+
+          wheel = wheels[0]
+
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+
+          assert any(
+              name.startswith("framevitals/")
+              for name in names
+          ), "framevitals package missing from wheel"
+
+          assert not any(
+              name.startswith("modules/")
+              for name in names
+          ), "legacy modules package leaked into wheel"
+
+          print(
+              f"Verified distribution boundary: {wheel.name}"
+          )
+          PY
+          
       - name: Validate distributions
         run: |
           python -m twine check dist/*
