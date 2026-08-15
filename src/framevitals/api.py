@@ -5,6 +5,11 @@ from uuid import uuid4
 
 import pandas as pd
 
+from framevitals.contracts import (
+    infer_contract as _infer_contract,
+    load_contract,
+    validate_contract,
+)
 from framevitals.drift_analysis import compare_datasets
 from framevitals.loader import load_dataset
 from framevitals.pipeline import run_full_analysis
@@ -18,6 +23,7 @@ VALID_MODES = {
 }
 
 DataInput = str | Path | pd.DataFrame
+ContractInput = dict | str | Path
 
 
 def _validated_path(value: str | Path, *, label: str = "Dataset") -> Path:
@@ -56,30 +62,9 @@ def analyze(
 ) -> dict:
     """Analyze a tabular dataset with FrameVitals.
 
-    Parameters
-    ----------
-    data:
-        A pandas DataFrame or a path to a CSV, TSV, Excel, or JSON dataset.
-    target:
-        Optional supervised-learning target column.
-    mode:
-        Analysis depth: ``quick``, ``standard``, ``deep``, or ``research``.
-    artifacts:
-        When ``True``, persist cleaned CSV/chart artifacts. The reusable Python
-        API defaults to ``False`` so analysis does not modify the filesystem.
-
-    Returns
-    -------
-    dict
-        Structured FrameVitals analysis results.
-
-    Examples
-    --------
-    >>> import pandas as pd
-    >>> import framevitals as fv
-    >>> df = pd.DataFrame({"age": [20, 30], "income": [30000, 50000]})
-    >>> report = fv.analyze(df, mode="quick")
-    >>> print(report["health"]["overall_score"])
+    ``data`` may be a pandas DataFrame or a path to CSV, TSV, Excel, or JSON.
+    Reusable library calls do not persist cleaned/chart artifacts unless
+    ``artifacts=True`` is supplied.
     """
     if mode not in VALID_MODES:
         raise ValueError(
@@ -126,12 +111,7 @@ def compare(
     columns: list[str] | None = None,
     max_columns: int = 30,
 ) -> dict:
-    """Compare reference and current datasets for distribution drift.
-
-    Both inputs may independently be pandas DataFrames or supported dataset
-    paths. Numeric features use PSI, KS statistics, and standardized mean
-    shift; categorical features use PSI and chi-square diagnostics.
-    """
+    """Compare reference and current datasets for distribution drift."""
     if max_columns < 1:
         raise ValueError("max_columns must be at least 1.")
 
@@ -147,3 +127,46 @@ def compare(
     result["reference_name"] = ref_name
     result["current_name"] = cur_name
     return result
+
+
+def infer_contract(
+    reference: DataInput,
+    *,
+    missing_tolerance: float = 0.05,
+    duplicate_tolerance: float = 0.02,
+    max_allowed_values: int = 20,
+) -> dict:
+    """Infer a reusable data-health contract from a known-good dataset."""
+    df, source_name = _load_input(reference, label="Reference")
+    return _infer_contract(
+        df,
+        source_name=source_name,
+        missing_tolerance=missing_tolerance,
+        duplicate_tolerance=duplicate_tolerance,
+        max_allowed_values=max_allowed_values,
+    )
+
+
+def validate(
+    data: DataInput,
+    contract: ContractInput,
+) -> dict:
+    """Validate a dataset against a FrameVitals contract.
+
+    ``contract`` may be the dictionary returned by :func:`infer_contract` or a
+    path to a JSON contract written by the CLI.
+    """
+    df, source_name = _load_input(data, label="Dataset")
+
+    if isinstance(contract, dict):
+        contract_value = contract
+    elif isinstance(contract, (str, Path)):
+        contract_value = load_contract(contract)
+    else:
+        raise TypeError("contract must be a dictionary or a path to a JSON contract.")
+
+    return validate_contract(
+        df,
+        contract_value,
+        source_name=source_name,
+    )
