@@ -49,8 +49,6 @@ from framevitals.ml_preprocessing import (
 
 
 CHART_DIR = Path("static/charts")
-CHART_DIR.mkdir(parents=True, exist_ok=True)
-
 
 # ---------------------------------------------------------------------------
 # Estimator rebuilds (mirrors model_leaderboard registry)
@@ -210,6 +208,11 @@ def _save_summary_plot(
 ) -> str | None:
     try:
         import shap
+
+        CHART_DIR.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
         plt.figure(figsize=(9, 6))
         shap.summary_plot(
