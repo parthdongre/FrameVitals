@@ -619,7 +619,10 @@ def probe_frontend_api(result: dict, df: pd.DataFrame, csv_path: Path,
 
 
 def probe_agent_brief(result: dict) -> dict:
-    from modules.agent_brief import build_dataset_brief, render_brief_block
+    from framevitals.agent_brief import (
+         build_dataset_brief,
+         render_brief_block,
+    )
     brief = build_dataset_brief(
         result,
         max_columns=30,
@@ -635,7 +638,11 @@ def probe_agent_brief(result: dict) -> dict:
 
 
 def probe_rag_index(result: dict) -> dict:
-    from modules.rag_index import build_fact_index, retrieve, render_facts_block
+    from framevitals.rag_index import (
+         build_fact_index,
+         render_facts_block,
+         retrieve,
+    )
     facts = build_fact_index(result)
     if not facts:
         return {"summary": "no facts indexed", "metrics": {}}
@@ -654,7 +661,9 @@ def probe_rag_index(result: dict) -> dict:
 
 
 def probe_ai_agent(result: dict, df: pd.DataFrame) -> dict:
-    from modules.ai_agent import answer_with_agent
+    from framevitals.ai_agent import (
+         answer_with_agent,
+    )
     out = answer_with_agent(
         question="Give me a 1-sentence summary of this dataset's quality.",
         df=df,

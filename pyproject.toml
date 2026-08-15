@@ -1,0 +1,109 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "framevitals"
+version = "0.1.0.dev0"
+description = "Automated diagnostics, data-quality analysis, anomaly detection, drift analysis, and ML-readiness checks for tabular data."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "Parth Dongre" }
+]
+keywords = [
+    "data-quality",
+    "data-profiling",
+    "machine-learning",
+    "anomaly-detection",
+    "data-drift",
+    "eda",
+    "tabular-data",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+dependencies = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
+    "scipy>=1.13",
+    "statsmodels>=0.14",
+    "scikit-learn>=1.5",
+    "pydantic>=2.7",
+]
+
+[project.optional-dependencies]
+ml = [
+    "xgboost>=2.0",
+    "lightgbm>=4.3",
+    "pyod>=2.0",
+    "shap>=0.45",
+]
+ai = [
+    "ollama>=0.3",
+]
+web = [
+    "flask>=3.0",
+    "streamlit>=1.36",
+    "gunicorn>=22.0",
+    "werkzeug>=3.0",
+]
+all = [
+    "xgboost>=2.0",
+    "lightgbm>=4.3",
+    "pyod>=2.0",
+    "shap>=0.45",
+    "ollama>=0.3",
+    "flask>=3.0",
+    "streamlit>=1.36",
+    "gunicorn>=22.0",
+    "werkzeug>=3.0",
+]
+dev = [
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "hypothesis>=6.100",
+    "build>=1.2",
+    "twine>=5.1",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+framevitals = "framevitals.cli:main"
+
+[project.urls]
+Documentation = "https://github.com/parthdongre/FrameVitals#readme"
+Repository = "https://github.com/parthdongre/FrameVitals"
+Issues = "https://github.com/parthdongre/FrameVitals/issues"
+Changelog = "https://github.com/parthdongre/FrameVitals/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["framevitals*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

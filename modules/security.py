@@ -1,20 +1,20 @@
-from pathlib import Path
-from werkzeug.utils import secure_filename
+"""
+Backward-compatible security imports.
 
-ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".tsv", ".json"}
+Deprecated: use framevitals.security instead.
+"""
 
-def validate_file(filename: str):
-    suffix = Path(filename).suffix.lower()
-    if suffix not in ALLOWED_EXTENSIONS:
-        raise ValueError(
-            f"Unsupported file type '{suffix}'. "
-            "Allowed formats are CSV, XLSX, XLS, TSV, and JSON."
-        )
+from framevitals.security import (
+    ALLOWED_EXTENSIONS,
+    make_safe_filename,
+    sanitize_csv_value,
+    validate_file,
+)
 
-def make_safe_filename(filename: str):
-    return secure_filename(filename)
 
-def sanitize_csv_value(value):
-    if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
-        return "'" + value
-    return value
+__all__ = [
+    "ALLOWED_EXTENSIONS",
+    "make_safe_filename",
+    "sanitize_csv_value",
+    "validate_file",
+]

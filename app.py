@@ -15,13 +15,30 @@ from threading import Lock, Thread
 from flask import Flask, render_template, request, redirect, url_for, send_file, session, jsonify
 from werkzeug.exceptions import ClientDisconnected
 
-from modules.loader import save_uploaded_file, load_dataset
-from modules.pipeline import run_full_analysis
-from modules.ai_insights import answer_dataset_question
-from modules.ai_agent import answer_with_agent
-from modules.report_generator import generate_pdf_report
-from modules.frontend_api import build_dashboard_payload
-from modules.drift_analysis import compare_datasets, split_by_date
+from framevitals.loader import (
+    load_dataset,
+    save_uploaded_file,
+)
+from framevitals.pipeline import (
+    run_full_analysis,
+)
+from framevitals.ai_insights import (
+    answer_dataset_question,
+)
+from framevitals.ai_agent import (
+    answer_with_agent,
+)
+
+from modules.report_generator import (
+    generate_pdf_report,
+)
+from modules.frontend_api import (
+    build_dashboard_payload,
+)
+from framevitals.drift_analysis import (
+    compare_datasets,
+    split_by_date,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -437,7 +454,9 @@ def api_ai_report():
         if cached is None:
             return jsonify({"error": "No cached analysis for this dataset. Re-run /api/analyze."}), 404
 
-        from modules.ai_insights import generate_ai_report
+        from framevitals.ai_insights import (
+            generate_ai_report,
+            )
 
         try:
             ai_report = generate_ai_report(

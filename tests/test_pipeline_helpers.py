@@ -1,0 +1,136 @@
+import pandas as pd
+
+from framevitals.advanced_indicators import (
+    calculate_advanced_indicators,
+)
+from framevitals.analysis_selector import (
+    select_analyses,
+)
+from framevitals.cleaner import (
+    create_cleaned_dataset,
+)
+from framevitals.dataset_signals import (
+    detect_dataset_signals,
+)
+from framevitals.health_score import (
+    calculate_health_score,
+)
+from framevitals.ml_readiness import (
+    calculate_ml_readiness,
+)
+from framevitals.profiler import (
+    build_profile,
+)
+from framevitals.signal_engine import (
+    build_signals,
+)
+
+
+def make_dataset():
+    return pd.DataFrame({
+        "age": [20, 21, 22, 23, 24],
+        "income": [
+            30000,
+            32000,
+            35000,
+            37000,
+            40000,
+        ],
+        "city": [
+            "Pune",
+            "Mumbai",
+            "Pune",
+            "Nashik",
+            "Mumbai",
+        ],
+    })
+
+
+def test_analysis_selector():
+    df = make_dataset()
+
+    profile = build_profile(df)
+
+    dataset_signals = detect_dataset_signals(
+        df,
+        profile,
+    )
+
+    selection = select_analyses(
+        dataset_signals,
+        analysis_mode="quick",
+    )
+
+    assert selection["summary"]["selected_count"] > 0
+
+    selected_ids = {
+        item["id"]
+        for item in selection["selected_analyses"]
+    }
+
+    assert "ingestion_analysis" in selected_ids
+    assert "structural_profile" in selected_ids
+
+
+def test_display_signals():
+    df = make_dataset()
+
+    profile = build_profile(df)
+
+    health = calculate_health_score(
+        df,
+        profile,
+    )
+
+    readiness = calculate_ml_readiness(df)
+    advanced = calculate_advanced_indicators(df)
+
+    signals = build_signals(
+        profile,
+        health,
+        readiness,
+        advanced,
+    )
+
+    assert isinstance(signals, list)
+    assert len(signals) > 0
+
+    names = {
+        signal["name"]
+        for signal in signals
+    }
+
+    assert "Data Completeness" in names
+    assert "ML Readiness" in names
+
+
+def test_cleaner(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    df = pd.DataFrame({
+        "age": [
+            20,
+            None,
+            30,
+        ],
+        "city": [
+            "Pune",
+            "Mumbai",
+            None,
+        ],
+    })
+
+    result = create_cleaned_dataset(
+        "test_dataset",
+        df,
+    )
+
+    assert result["missing_before"] == 2
+    assert result["missing_after"] == 0
+
+    cleaned_path = (
+        tmp_path
+        / result["output_path"]
+    )
+
+    assert cleaned_path.exists()
