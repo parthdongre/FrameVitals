@@ -343,64 +343,67 @@ PIPELINE_STEPS = [
 
 def run_pipeline(uploaded, mode: str, target: str | None) -> dict | None:
     from framevitals.loader import (
-    load_dataset,
-)
-from framevitals.profiler import (
-    build_profile,
-)
-from framevitals.column_roles import (
-    infer_column_roles,
-    summarize_roles,
-)
-from framevitals.dataset_signals import (
-    detect_dataset_signals,
-)
-from framevitals.analysis_selector import (
-    select_analyses,
-)
-from framevitals.health_score import (
-    calculate_health_score,
-)
-from framevitals.ml_readiness import (
-    calculate_ml_readiness,
-)
-from framevitals.advanced_indicators import (
-    calculate_advanced_indicators,
-)
-from framevitals.signal_engine import (
-    build_signals,
-)
-from framevitals.cleaner import (
-    create_cleaned_dataset,
-)
-from framevitals.deep_statistics_v2 import (
-    run_deep_statistics_v2,
-)
-from framevitals.anomaly_ensemble import (
-    detect_anomalies_ensemble,
-)
-from framevitals.model_leaderboard import (
-    run_model_leaderboard,
-)
-from framevitals.explainability import (
-    explain_winner,
-)
-from framevitals.time_series import (
-    detect_and_analyze_time_series,
-)
-from framevitals.text_profile import (
-    profile_text_columns,
-)
-from framevitals.visualizer import (
-    generate_charts,
-)
-from modules.ai_agent import (
-    answer_with_agent,
-)
-    from modules.report_generator import generate_pdf_report
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    import os
+        load_dataset,
+    )
+    from framevitals.profiler import (
+        build_profile,
+    )
+    from framevitals.column_roles import (
+        infer_column_roles,
+        summarize_roles,
+    )
+    from framevitals.dataset_signals import (
+        detect_dataset_signals,
+    )
+    from framevitals.analysis_selector import (
+        select_analyses,
+    )
+    from framevitals.health_score import (
+        calculate_health_score,
+    )
+    from framevitals.ml_readiness import (
+        calculate_ml_readiness,
+    )
+    from framevitals.advanced_indicators import (
+        calculate_advanced_indicators,
+    )
+    from framevitals.signal_engine import (
+        build_signals,
+    )
+    from framevitals.cleaner import (
+        create_cleaned_dataset,
+    )
+    from framevitals.deep_statistics_v2 import (
+        run_deep_statistics_v2,
+    )
+    from framevitals.anomaly_ensemble import (
+        detect_anomalies_ensemble,
+    )
+    from framevitals.model_leaderboard import (
+        run_model_leaderboard,
+    )
+    from framevitals.explainability import (
+        explain_winner,
+    )
+    from framevitals.time_series import (
+        detect_and_analyze_time_series,
+    )
+    from framevitals.text_profile import (
+        profile_text_columns,
+    )
+    from framevitals.visualizer import (
+        generate_charts,
+    )
 
+    from modules.report_generator import (
+        generate_pdf_report,
+    )
+
+    from concurrent.futures import (
+        ThreadPoolExecutor,
+        as_completed,
+    )
+    import os
     n_steps = len(PIPELINE_STEPS)
     progress_bar = st.progress(0, text="Initialising…")
     status_area = st.empty()
