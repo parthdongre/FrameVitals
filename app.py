@@ -21,7 +21,10 @@ from modules.ai_insights import answer_dataset_question
 from modules.ai_agent import answer_with_agent
 from modules.report_generator import generate_pdf_report
 from modules.frontend_api import build_dashboard_payload
-from modules.drift_analysis import compare_datasets, split_by_date
+from framevitals.drift_analysis import (
+    compare_datasets,
+    split_by_date,
+)
 
 
 # ---------------------------------------------------------------------------
