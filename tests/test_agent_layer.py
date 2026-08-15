@@ -345,3 +345,72 @@ def test_unknown_agent_tool():
     )
 
     assert output["ok"] is False
+
+def test_brief_classification_diagnostics():
+    result = make_result()
+
+    result["modelDiagnostics"] = {
+        "available": True,
+        "task_type": "classification",
+        "target_column": "churn",
+        "accuracy": 0.91,
+        "precision_weighted": 0.90,
+        "recall_weighted": 0.91,
+        "f1_weighted": 0.905,
+        "cross_validation": {
+            "mean_f1_weighted": 0.89,
+        },
+    }
+
+    brief = build_dataset_brief(
+        result
+    )
+
+    diagnostics = brief["ml"][
+        "model_diagnostics"
+    ]
+
+    assert diagnostics[
+        "accuracy"
+    ] == 0.91
+
+    assert diagnostics[
+        "f1_weighted"
+    ] == 0.905
+
+    assert diagnostics[
+        "mean_cv_f1_weighted"
+    ] == 0.89
+
+
+def test_brief_regression_diagnostics():
+    result = make_result()
+
+    result["modelDiagnostics"] = {
+        "available": True,
+        "task_type": "regression",
+        "target_column": "price",
+        "residual_summary": {
+            "mean_abs_residual": 4.25,
+            "std_residual": 5.75,
+        },
+        "cross_validation": {
+            "mean_r2": 0.82,
+        },
+    }
+
+    brief = build_dataset_brief(
+        result
+    )
+
+    diagnostics = brief["ml"][
+        "model_diagnostics"
+    ]
+
+    assert diagnostics[
+        "mean_abs_residual"
+    ] == 4.25
+
+    assert diagnostics[
+        "mean_cv_r2"
+    ] == 0.82
