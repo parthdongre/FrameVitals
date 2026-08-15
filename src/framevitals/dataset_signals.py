@@ -64,20 +64,38 @@ def _detect_potential_leakage(df: pd.DataFrame, column_roles: dict) -> bool:
     return False
 
 
-def detect_dataset_signals(df: pd.DataFrame, profile: dict) -> dict:
-    """Scan the dataframe and profile to produce a flat signal dictionary."""
+def detect_dataset_signals(
+    df: pd.DataFrame,
+    profile: dict,
+    column_roles: dict | None = None,
+) -> dict:
+    """Produce structural signals, reusing cached pipeline metadata when supplied.
+
+    ``column_roles`` is optional for backward compatibility. The main analysis
+    pipeline passes its already-computed role map so this stage does not repeat
+    the most expensive per-column semantic scan.
+    """
     rows, cols = df.shape
 
     numeric_cols = profile.get("numeric_columns", [])
     categorical_cols = profile.get("categorical_columns", [])
     date_cols = profile.get("date_columns", [])
 
-    missing_cells = int(df.isna().sum().sum())
+    missing_cells = sum(
+        int(value)
+        for value in profile.get("missing_counts", {}).values()
+        if value is not None
+    )
     total_cells = max(rows * cols, 1)
     missing_pct = round(missing_cells / total_cells * 100, 2)
-    duplicate_rows = int(df.duplicated().sum())
 
-    column_roles = infer_column_roles(df)
+    cached_duplicates = profile.get("duplicate_rows")
+    duplicate_rows = int(
+        cached_duplicates if cached_duplicates is not None else df.duplicated().sum()
+    )
+
+    if column_roles is None:
+        column_roles = infer_column_roles(df)
 
     id_like = get_columns_with_role(column_roles, "id_like")
     price_like = get_columns_with_role(column_roles, "price_like")
@@ -91,7 +109,9 @@ def detect_dataset_signals(df: pd.DataFrame, profile: dict) -> dict:
     unique_like = get_columns_with_role(column_roles, "unique_like")
     target_candidates = get_columns_with_role(column_roles, "target_candidate")
 
-    long_text = _detect_long_text_columns(df)
+    # Column-role inference already computes the same full-column text-length
+    # rule, so reuse it instead of scanning text columns a second time.
+    long_text = get_columns_with_role(column_roles, "long_text")
     email_like = _detect_email_columns(df)
     has_leakage_risk = _detect_potential_leakage(df, column_roles)
 
