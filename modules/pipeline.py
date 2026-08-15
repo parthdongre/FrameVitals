@@ -38,8 +38,8 @@ from framevitals.column_roles import infer_column_roles, summarize_roles
 from framevitals.dataset_signals import detect_dataset_signals
 from modules.anomaly_ensemble import detect_anomalies_ensemble
 from modules.cleaner import create_cleaned_dataset
-from modules.column_roles import infer_column_roles, summarize_roles
-from modules.dataset_signals import detect_dataset_signals
+from modules.ai_insights import generate_ai_report
+from modules.analysis_selector import select_analyses
 from modules.deep_statistics_v2 import run_deep_statistics_v2
 from modules.explainability import explain_winner
 from framevitals.health_score import calculate_health_score
