@@ -619,7 +619,10 @@ def probe_frontend_api(result: dict, df: pd.DataFrame, csv_path: Path,
 
 
 def probe_agent_brief(result: dict) -> dict:
-    from modules.agent_brief import build_dataset_brief, render_brief_block
+    from framevitals.agent_brief import (
+         build_dataset_brief,
+         render_brief_block,
+    )
     brief = build_dataset_brief(
         result,
         max_columns=30,
