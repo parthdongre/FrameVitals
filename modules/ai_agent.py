@@ -30,9 +30,19 @@ import pandas as pd
 import pydantic
 from pydantic import BaseModel, Field, ValidationError
 
-from modules.agent_tools import AgentContext, list_tools, run_tool
-from modules.rag_index import build_fact_index, render_facts_block
-from modules.rag_index import retrieve as rag_retrieve
+from framevitals.rag_index import (
+    build_fact_index,
+    render_facts_block,
+)
+from framevitals.rag_index import (
+    retrieve as rag_retrieve,
+)
+
+from modules.agent_tools import (
+    AgentContext,
+    list_tools,
+    run_tool,
+)
 
 
 _DEFAULT_OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
