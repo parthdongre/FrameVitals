@@ -5,7 +5,7 @@ Signal-driven engine that decides which analyses to run, skip, or recommend.
 No hardcoded domain logic — decisions are purely based on signals + inventory rules.
 """
 
-from modules.analysis_inventory import ANALYSIS_INVENTORY
+from framevitals.analysis_inventory import ANALYSIS_INVENTORY
 
 
 def _mode_allowed(analysis, mode):
