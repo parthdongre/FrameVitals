@@ -4,14 +4,30 @@ import numpy as np
 _CATEGORICAL_DTYPES = ["object", "string", "category", "bool"]
 
 
-def calculate_ml_readiness(df):
+def calculate_ml_readiness(df, profile=None):
+    """Calculate ML-readiness while reusing profile metrics when available.
+
+    ``profile`` is optional to preserve the standalone helper API. The main
+    pipeline passes the already-built profile so FrameVitals does not rescan
+    the full dataset for missing values, duplicates, and basic column groups.
+    """
     rows, columns = df.shape
 
-    missing_percent = float(df.isna().sum().sum() / max(rows * columns, 1) * 100)
-    duplicate_percent = float(df.duplicated().sum() / max(rows, 1) * 100)
-
-    categorical_cols = df.select_dtypes(include=_CATEGORICAL_DTYPES).columns.tolist()
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    if profile is None:
+        missing_percent = float(df.isna().sum().sum() / max(rows * columns, 1) * 100)
+        duplicate_percent = float(df.duplicated().sum() / max(rows, 1) * 100)
+        categorical_cols = df.select_dtypes(include=_CATEGORICAL_DTYPES).columns.tolist()
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    else:
+        missing_total = sum(
+            int(value)
+            for value in profile.get("missing_counts", {}).values()
+            if value is not None
+        )
+        missing_percent = float(missing_total / max(rows * columns, 1) * 100)
+        duplicate_percent = float(profile.get("duplicate_percent", 0.0))
+        categorical_cols = list(profile.get("categorical_columns", []))
+        numeric_cols = list(profile.get("numeric_columns", []))
 
     encoding_penalty = min(20, len(categorical_cols) * 2)
     missing_penalty = min(30, missing_percent)

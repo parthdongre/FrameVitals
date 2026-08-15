@@ -15,17 +15,36 @@ def create_cleaned_dataset(
     *,
     write_output: bool = True,
     output_dir: str | Path | None = None,
+    before_profile: dict | None = None,
+    before_health: dict | None = None,
 ):
     """Build a conservative cleaned copy and optionally persist it as CSV.
 
     Library callers can set ``write_output=False`` to keep analysis free of
     filesystem side effects. Application callers retain the historical
     behavior by leaving ``write_output`` enabled.
+
+    ``before_profile`` and ``before_health`` are optional cached values. The
+    main pipeline supplies them to avoid profiling/scoring the original data a
+    second time; standalone callers can omit them with unchanged behavior.
     """
     cleaned = df.copy()
     actions = []
 
-    duplicate_count = int(cleaned.duplicated().sum())
+    if before_profile is None:
+        before_profile = build_profile(df)
+    if before_health is None:
+        before_health = calculate_health_score(df, before_profile)
+
+    cached_duplicates = before_profile.get("duplicate_rows")
+    duplicate_count = int(
+        cached_duplicates if cached_duplicates is not None else df.duplicated().sum()
+    )
+    missing_before = sum(
+        int(value)
+        for value in before_profile.get("missing_counts", {}).values()
+        if value is not None
+    )
 
     if duplicate_count:
         cleaned = cleaned.drop_duplicates()
@@ -35,9 +54,9 @@ def create_cleaned_dataset(
             "risk": "Low",
         })
 
-    for col in cleaned.columns:
-        missing = int(cleaned[col].isna().sum())
-
+    missing_counts = cleaned.isna().sum()
+    for col, missing_value in missing_counts.items():
+        missing = int(missing_value)
         if missing == 0:
             continue
 
@@ -59,11 +78,13 @@ def create_cleaned_dataset(
                 "risk": "Medium",
             })
 
-    before_profile = build_profile(df)
-    before_health = calculate_health_score(df, before_profile)
-
     after_profile = build_profile(cleaned)
     after_health = calculate_health_score(cleaned, after_profile)
+    missing_after = sum(
+        int(value)
+        for value in after_profile.get("missing_counts", {}).values()
+        if value is not None
+    )
 
     output_path: Path | None = None
     if write_output:
@@ -78,8 +99,8 @@ def create_cleaned_dataset(
         "before_health": before_health,
         "after_health": after_health,
         "output_path": str(output_path) if output_path is not None else None,
-        "missing_before": int(df.isna().sum().sum()),
-        "missing_after": int(cleaned.isna().sum().sum()),
-        "duplicates_before": int(df.duplicated().sum()),
-        "duplicates_after": int(cleaned.duplicated().sum()),
+        "missing_before": int(missing_before),
+        "missing_after": int(missing_after),
+        "duplicates_before": duplicate_count,
+        "duplicates_after": int(after_profile.get("duplicate_rows", 0)),
     }

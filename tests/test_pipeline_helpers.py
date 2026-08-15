@@ -9,6 +9,9 @@ from framevitals.analysis_selector import (
 from framevitals.cleaner import (
     create_cleaned_dataset,
 )
+from framevitals.column_roles import (
+    infer_column_roles,
+)
 from framevitals.dataset_signals import (
     detect_dataset_signals,
 )
@@ -72,6 +75,32 @@ def test_analysis_selector():
     assert "structural_profile" in selected_ids
 
 
+def test_dataset_signals_cached_roles_match_standalone():
+    df = pd.DataFrame({
+        "customer_id": ["A1", "A2", "A3", "A3"],
+        "email": [
+            "a@example.com",
+            "b@example.com",
+            None,
+            None,
+        ],
+        "notes": [
+            "x" * 220,
+            "short",
+            "another short note",
+            "another short note",
+        ],
+        "value": [1.0, 2.0, 3.0, 3.0],
+    })
+    profile = build_profile(df)
+    roles = infer_column_roles(df)
+
+    standalone = detect_dataset_signals(df, profile)
+    cached = detect_dataset_signals(df, profile, column_roles=roles)
+
+    assert cached == standalone
+
+
 def test_display_signals():
     df = make_dataset()
 
@@ -104,6 +133,16 @@ def test_display_signals():
     assert "ML Readiness" in names
 
 
+def test_ml_readiness_cached_profile_matches_standalone():
+    df = pd.DataFrame({
+        "age": [20, None, 22, 22],
+        "city": ["Pune", "Mumbai", None, None],
+    })
+    profile = build_profile(df)
+
+    assert calculate_ml_readiness(df, profile=profile) == calculate_ml_readiness(df)
+
+
 def test_cleaner(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
@@ -134,3 +173,27 @@ def test_cleaner(tmp_path, monkeypatch):
     )
 
     assert cleaned_path.exists()
+
+
+def test_cleaner_cached_inputs_match_standalone(tmp_path):
+    df = pd.DataFrame({
+        "age": [20, None, 30, 30],
+        "city": ["Pune", "Mumbai", None, None],
+    })
+    profile = build_profile(df)
+    health = calculate_health_score(df, profile)
+
+    standalone = create_cleaned_dataset(
+        "standalone",
+        df,
+        write_output=False,
+    )
+    cached = create_cleaned_dataset(
+        "cached",
+        df,
+        write_output=False,
+        before_profile=profile,
+        before_health=health,
+    )
+
+    assert cached == standalone

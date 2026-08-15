@@ -75,6 +75,23 @@ def test_categorical_drift_detection():
     ]
 
 
+def test_categorical_drift_preserves_new_and_missing_category_order():
+    reference = pd.DataFrame({
+        "group": ["A"] * 10 + ["B"] * 10 + ["C"] * 10,
+    })
+    current = pd.DataFrame({
+        "group": ["B"] * 10 + ["C"] * 10 + ["D"] * 10 + ["E"] * 10,
+    })
+
+    result = compare_datasets(reference, current)
+    column = result["columns"][0]
+
+    assert column["new_categories"] == ["D", "E"]
+    assert column["missing_categories"] == ["A"]
+    assert column["n_categories_ref"] == 3
+    assert column["n_categories_cur"] == 4
+
+
 def test_split_by_date():
     df = pd.DataFrame({
         "date": pd.date_range(

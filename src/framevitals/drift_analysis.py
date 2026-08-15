@@ -68,7 +68,8 @@ def _classify_psi(psi: float | None) -> str:
 
 
 def _shared_columns(df_a: pd.DataFrame, df_b: pd.DataFrame) -> list[str]:
-    return [c for c in df_a.columns if c in df_b.columns]
+    other_columns = set(df_b.columns)
+    return [column for column in df_a.columns if column in other_columns]
 
 
 def _psi_numeric(ref: np.ndarray, cur: np.ndarray, bins: int = 10) -> float | None:
@@ -169,13 +170,17 @@ def _numeric_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict:
     }
 
 
-def _psi_categorical(ref: pd.Series, cur: pd.Series) -> tuple[float | None, list[str], dict]:
+def _psi_categorical(
+    ref: pd.Series,
+    cur: pd.Series,
+) -> tuple[float | None, list[str], dict, pd.Series, pd.Series]:
+    """Calculate categorical PSI and keep counts for downstream chi-square use."""
     ref_counts = ref.astype(str).value_counts(dropna=False)
     cur_counts = cur.astype(str).value_counts(dropna=False)
 
     categories = sorted(set(ref_counts.index) | set(cur_counts.index))
     if len(categories) < 2:
-        return None, categories, {}
+        return None, categories, {}, ref_counts, cur_counts
 
     ref_total = max(int(ref_counts.sum()), 1)
     cur_total = max(int(cur_counts.sum()), 1)
@@ -195,7 +200,13 @@ def _psi_categorical(ref: pd.Series, cur: pd.Series) -> tuple[float | None, list
         "cur_props": [round(float(p), 4) for p in cur_props[:30]],
     }
 
-    return (psi if math.isfinite(psi) else None), categories, distribution
+    return (
+        psi if math.isfinite(psi) else None,
+        categories,
+        distribution,
+        ref_counts,
+        cur_counts,
+    )
 
 
 def _categorical_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict:
@@ -210,7 +221,10 @@ def _categorical_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict
             "reason": "n<10 in one side",
         }
 
-    psi, categories, distribution = _psi_categorical(ref_clean, cur_clean)
+    psi, categories, distribution, ref_counts, cur_counts = _psi_categorical(
+        ref_clean,
+        cur_clean,
+    )
     if psi is None:
         return {
             "column": name,
@@ -222,8 +236,6 @@ def _categorical_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict
     chi2_stat, chi2_p, dof = None, None, None
     try:
         top_categories = categories[:30]
-        ref_counts = ref_clean.astype(str).value_counts()
-        cur_counts = cur_clean.astype(str).value_counts()
         table = np.array(
             [
                 [int(ref_counts.get(c, 0)) for c in top_categories],
@@ -237,6 +249,11 @@ def _categorical_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict
     except Exception:
         pass
 
+    ref_unique = ref_clean.unique()
+    cur_unique = cur_clean.unique()
+    ref_unique_set = set(ref_unique)
+    cur_unique_set = set(cur_unique)
+
     return {
         "column": name,
         "type": "categorical",
@@ -249,14 +266,10 @@ def _categorical_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict
         "chi2_p_value": _safe_float(chi2_p),
         "chi2_dof": int(dof) if dof is not None else None,
         "chi2_significant": bool(chi2_p is not None and chi2_p < 0.01),
-        "n_categories_ref": int(ref_clean.nunique(dropna=True)),
-        "n_categories_cur": int(cur_clean.nunique(dropna=True)),
-        "new_categories": [
-            c for c in cur_clean.unique() if c not in set(ref_clean.unique())
-        ][:10],
-        "missing_categories": [
-            c for c in ref_clean.unique() if c not in set(cur_clean.unique())
-        ][:10],
+        "n_categories_ref": int(len(ref_unique)),
+        "n_categories_cur": int(len(cur_unique)),
+        "new_categories": [c for c in cur_unique if c not in ref_unique_set][:10],
+        "missing_categories": [c for c in ref_unique if c not in cur_unique_set][:10],
         "distribution": distribution,
     }
 
@@ -270,7 +283,8 @@ def compare_datasets(
     """Compare two dataframes column by column and return a drift report."""
     shared = _shared_columns(df_ref, df_cur)
     if columns:
-        shared = [c for c in shared if c in columns]
+        requested = set(columns)
+        shared = [column for column in shared if column in requested]
     shared = shared[:max_columns]
 
     if not shared:
@@ -318,7 +332,13 @@ def compare_datasets(
         sev = entry.get("psi_severity") if entry.get("available") else "unknown"
         severity_counts[sev] = severity_counts.get(sev, 0) + 1
 
-    severity_rank = {"severe": 0, "moderate": 1, "minor": 2, "stable": 3, "unknown": 4}
+    severity_rank = {
+        "severe": 0,
+        "moderate": 1,
+        "minor": 2,
+        "stable": 3,
+        "unknown": 4,
+    }
 
     def _rank(entry):
         sev = entry.get("psi_severity") if entry.get("available") else "unknown"

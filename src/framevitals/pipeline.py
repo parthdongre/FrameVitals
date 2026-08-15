@@ -119,7 +119,11 @@ def run_full_analysis(
     timings_ms["column_roles"] = (time.perf_counter() - t0) * 1000
 
     t0 = time.perf_counter()
-    dataset_signals = detect_dataset_signals(df, profile)
+    dataset_signals = detect_dataset_signals(
+        df,
+        profile,
+        column_roles=column_roles,
+    )
     timings_ms["dataset_signals"] = (time.perf_counter() - t0) * 1000
 
     t0 = time.perf_counter()
@@ -136,7 +140,7 @@ def run_full_analysis(
     timings_ms["health"] = (time.perf_counter() - t0) * 1000
 
     t0 = time.perf_counter()
-    ml_readiness = calculate_ml_readiness(df)
+    ml_readiness = calculate_ml_readiness(df, profile=profile)
     timings_ms["ml_readiness"] = (time.perf_counter() - t0) * 1000
 
     t0 = time.perf_counter()
@@ -224,6 +228,8 @@ def run_full_analysis(
         dataset_id,
         df,
         write_output=write_artifacts,
+        before_profile=profile,
+        before_health=health,
     )
     timings_ms["cleaning"] = (time.perf_counter() - t0) * 1000
 
