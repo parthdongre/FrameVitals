@@ -17,8 +17,9 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 
-from modules.column_roles import infer_column_roles
-from modules.chart_planner import build_chart_plan
+from framevitals.column_roles import infer_column_roles
+from framevitals.chart_planner import build_chart_plan
+from framevitals.profiler import build_profile
 
 CHART_DIR = Path("static/charts")
 CHART_DIR.mkdir(parents=True, exist_ok=True)
