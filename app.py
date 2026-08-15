@@ -55,7 +55,11 @@ def safe_jsonify(payload):
 
 
 app = Flask(__name__)
-app.secret_key = "datalens-ai-secret-key"
+app.secret_key = os.environ.get(
+    "DATALENS_SECRET_KEY",
+    "development-only-secret"
+)
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)

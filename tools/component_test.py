@@ -840,7 +840,7 @@ def main(out_path: Path | None = None) -> int:
     n_total = sum(len(r.components) for r in runs)
     n_ok = sum(1 for r in runs for c in r.components if c.ok)
     print(f"\nComponent tests: {n_ok} / {n_total} passed across {len(runs)} datasets")
-    return 0 if n_ok == n_total else 0  # we return 0 even on individual probe
+    return 0 if n_ok == n_total else 1  # we return 0 even on individual probe
                                           # failures so the whitepaper is built;
                                           # the manifest reflects the truth.
 
