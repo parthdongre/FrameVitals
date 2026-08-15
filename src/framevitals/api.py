@@ -1,6 +1,12 @@
+from __future__ import annotations
+
 from pathlib import Path
 from uuid import uuid4
 
+import pandas as pd
+
+from framevitals.drift_analysis import compare_datasets
+from framevitals.loader import load_dataset
 from framevitals.pipeline import run_full_analysis
 
 
@@ -11,27 +17,56 @@ VALID_MODES = {
     "research",
 }
 
+DataInput = str | Path | pd.DataFrame
+
+
+def _validated_path(value: str | Path, *, label: str = "Dataset") -> Path:
+    path = Path(value)
+    if not path.exists():
+        raise FileNotFoundError(f"{label} not found: {path}")
+    if not path.is_file():
+        raise ValueError(f"Expected a file for {label.lower()}, got: {path}")
+    return path
+
+
+def _load_input(value: DataInput, *, label: str) -> tuple[pd.DataFrame, str]:
+    if isinstance(value, pd.DataFrame):
+        if value.empty:
+            raise ValueError(f"{label} DataFrame is empty.")
+        return value.copy(), "<dataframe>"
+
+    if isinstance(value, (str, Path)):
+        path = _validated_path(value, label=label)
+        df = load_dataset(path)
+        if df.empty:
+            raise ValueError(f"{label} dataset is empty: {path}")
+        return df, path.name
+
+    raise TypeError(
+        f"{label} must be a pandas DataFrame or a path to a supported dataset."
+    )
+
 
 def analyze(
-    file_path: str | Path,
+    data: DataInput,
     *,
     target: str | None = None,
     mode: str = "standard",
+    artifacts: bool = False,
 ) -> dict:
-    """
-    Analyze a tabular dataset with FrameVitals.
+    """Analyze a tabular dataset with FrameVitals.
 
     Parameters
     ----------
-    file_path:
-        Path to a CSV, TSV, Excel, or JSON dataset.
-
+    data:
+        A pandas DataFrame or a path to a CSV, TSV, Excel, or JSON dataset.
     target:
         Optional supervised-learning target column.
-
     mode:
-        Analysis depth. One of:
-        ``quick``, ``standard``, ``deep``, or ``research``.
+        Analysis depth: ``quick``, ``standard``, ``deep``, or ``research``.
+    artifacts:
+        When ``True``, persist cleaned CSV/chart artifacts. The reusable Python
+        API defaults to ``False`` so analysis does not modify the filesystem.
 
     Returns
     -------
@@ -40,23 +75,12 @@ def analyze(
 
     Examples
     --------
+    >>> import pandas as pd
     >>> import framevitals as fv
-    >>> report = fv.analyze("customers.csv")
+    >>> df = pd.DataFrame({"age": [20, 30], "income": [30000, 50000]})
+    >>> report = fv.analyze(df, mode="quick")
     >>> print(report["health"]["overall_score"])
     """
-
-    path = Path(file_path)
-
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Dataset not found: {path}"
-        )
-
-    if not path.is_file():
-        raise ValueError(
-            f"Expected a file, got: {path}"
-        )
-
     if mode not in VALID_MODES:
         raise ValueError(
             f"Invalid analysis mode '{mode}'. "
@@ -65,11 +89,61 @@ def analyze(
 
     dataset_id = f"fv_{uuid4().hex[:12]}"
 
-    return run_full_analysis(
-        dataset_id=dataset_id,
-        file_path=path,
-        original_filename=path.name,
-        analysis_mode=mode,
-        target_column=target,
-        skip_ai=True,
+    if isinstance(data, pd.DataFrame):
+        if data.empty:
+            raise ValueError("Dataset DataFrame is empty.")
+        return run_full_analysis(
+            dataset_id=dataset_id,
+            dataframe=data,
+            original_filename="<dataframe>",
+            analysis_mode=mode,
+            target_column=target,
+            skip_ai=True,
+            write_artifacts=artifacts,
+        )
+
+    if isinstance(data, (str, Path)):
+        path = _validated_path(data)
+        return run_full_analysis(
+            dataset_id=dataset_id,
+            file_path=path,
+            original_filename=path.name,
+            analysis_mode=mode,
+            target_column=target,
+            skip_ai=True,
+            write_artifacts=artifacts,
+        )
+
+    raise TypeError(
+        "data must be a pandas DataFrame or a path to a supported dataset."
     )
+
+
+def compare(
+    reference: DataInput,
+    current: DataInput,
+    *,
+    columns: list[str] | None = None,
+    max_columns: int = 30,
+) -> dict:
+    """Compare reference and current datasets for distribution drift.
+
+    Both inputs may independently be pandas DataFrames or supported dataset
+    paths. Numeric features use PSI, KS statistics, and standardized mean
+    shift; categorical features use PSI and chi-square diagnostics.
+    """
+    if max_columns < 1:
+        raise ValueError("max_columns must be at least 1.")
+
+    ref_df, ref_name = _load_input(reference, label="Reference")
+    cur_df, cur_name = _load_input(current, label="Current")
+
+    result = compare_datasets(
+        ref_df,
+        cur_df,
+        columns=columns,
+        max_columns=max_columns,
+    )
+    result["reference_name"] = ref_name
+    result["current_name"] = cur_name
+    return result

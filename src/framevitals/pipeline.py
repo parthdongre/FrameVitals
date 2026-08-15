@@ -1,28 +1,8 @@
-"""
-Analysis Pipeline (v3 — parallel orchestrator)
-==============================================
-Runs the full DataLens analytics in parallel where it's safe to:
+"""FrameVitals analysis pipeline.
 
-    Phase 1 — Structural understanding (sequential, fast):
-        load -> profile -> column_roles -> dataset_signals -> analysis_selection
-
-    Phase 2 — Quality scoring (sequential, fast, depends on profile):
-        health -> ml_readiness -> advanced
-
-    Phase 3 — Pure-compute analytics (PARALLEL, ThreadPoolExecutor):
-        deep_statistics_v2, anomaly_ensemble, time_series, text_profile
-
-    Phase 4 — ML chain (sequential, target-aware):
-        leaderboard -> explainability  (explainability needs the leaderboard winner)
-
-    Phase 5 — Cleaning + charts (sequential, charts use matplotlib which is not thread-safe)
-
-    Phase 6 — Display signals + AI report (sequential, AI report uses everything)
-
-Each parallel branch is wrapped in `_safe_call`, which converts any exception
-into `{"available": False, "error": "..."}` so a single failure can't sink the
-whole pipeline. Timings for every phase + each parallel task are returned in
-`result["timings_ms"]`.
+Runs the full analytics stack in phases and parallelizes independent analyses
+where safe. Optional failures are converted into structured error payloads so a
+single diagnostic does not sink the whole report.
 """
 
 from __future__ import annotations
@@ -33,20 +13,22 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
+import pandas as pd
+
 from framevitals.advanced_indicators import calculate_advanced_indicators
-from framevitals.column_roles import infer_column_roles, summarize_roles
-from framevitals.dataset_signals import detect_dataset_signals
-from framevitals.anomaly_ensemble import detect_anomalies_ensemble
-from framevitals.cleaner import create_cleaned_dataset
 from framevitals.ai_insights import generate_ai_report
 from framevitals.analysis_selector import select_analyses
+from framevitals.anomaly_ensemble import detect_anomalies_ensemble
+from framevitals.cleaner import create_cleaned_dataset
+from framevitals.column_roles import infer_column_roles, summarize_roles
+from framevitals.dataset_signals import detect_dataset_signals
 from framevitals.deep_statistics_v2 import run_deep_statistics_v2
 from framevitals.explainability import explain_winner
 from framevitals.health_score import calculate_health_score
 from framevitals.loader import load_dataset
 from framevitals.ml_readiness import calculate_ml_readiness
-from framevitals.profiler import build_profile
 from framevitals.model_leaderboard import run_model_leaderboard
+from framevitals.profiler import build_profile
 from framevitals.signal_engine import build_signals
 from framevitals.text_profile import profile_text_columns
 from framevitals.time_series import detect_and_analyze_time_series
@@ -58,61 +40,74 @@ if not logger.handlers:
     logger.addHandler(logging.NullHandler())
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _safe_call(name: str, fn: Callable[[], Any]) -> tuple[str, Any, float]:
-    """
-    Run a callable, time it, and convert exceptions into a JSON-safe error dict.
-
-    Returns (name, value, elapsed_ms).
-    """
+    """Run a callable, time it, and convert failures into JSON-safe results."""
     t0 = time.perf_counter()
     try:
         value = fn()
-    except Exception as exc:  # noqa: BLE001 — we want to swallow + report
+    except Exception as exc:  # noqa: BLE001 - optional analyses should fail soft
         logger.exception("pipeline task %s failed", name)
         value = {"available": False, "error": f"{type(exc).__name__}: {exc}"}
     elapsed_ms = (time.perf_counter() - t0) * 1000
     return name, value, elapsed_ms
 
 
-# ---------------------------------------------------------------------------
-# Public entry point
-# ---------------------------------------------------------------------------
-
 def run_full_analysis(
     dataset_id: str,
-    file_path,
-    original_filename: str,
+    file_path=None,
+    original_filename: str = "<dataframe>",
     analysis_mode: str = "standard",
     skip_ai: bool = False,
     target_column: str | None = None,
     parallel_workers: int = 4,
+    dataframe: pd.DataFrame | None = None,
+    write_artifacts: bool = True,
 ) -> dict:
-    """
-    Run the complete DataLens analysis pipeline.
+    """Run the complete FrameVitals analysis pipeline.
 
-    Args:
-        dataset_id:        unique id, used for chart filenames + cleaned-csv path.
-        file_path:         path-like to the uploaded dataset.
-        original_filename: original user filename for display.
-        analysis_mode:     one of "quick", "standard", "deep", "research".
-        skip_ai:           skip the LLM report (Q&A flow uses this for speed).
-        target_column:     optional target column name. Unlocks ML lab.
-        parallel_workers:  ThreadPool size for the parallel analytics phase.
-
-    Returns:
-        Result dict (JSON-safe) consumed by the React/Streamlit frontends.
+    Parameters
+    ----------
+    dataset_id:
+        Unique identifier used for optional artifact filenames.
+    file_path:
+        Path-like dataset source. Omit when ``dataframe`` is supplied.
+    original_filename:
+        Source label included in the result.
+    analysis_mode:
+        One of ``quick``, ``standard``, ``deep``, or ``research``.
+    skip_ai:
+        Skip the optional LLM report.
+    target_column:
+        Optional supervised-learning target column.
+    parallel_workers:
+        Worker count for independent diagnostic tasks.
+    dataframe:
+        Optional in-memory DataFrame. When supplied it takes precedence over
+        ``file_path`` and is copied before analysis.
+    write_artifacts:
+        Persist cleaned CSV/chart artifacts. Web application callers keep this
+        enabled; reusable library calls can disable filesystem side effects.
     """
     overall_start = time.perf_counter()
-    timings_ms: dict[str, float] = {}
+    timings_ms: dict[str, Any] = {}
 
-    # -------------------------------------------------------------------- Phase 1
+    # Phase 1: load and understand structure.
     t0 = time.perf_counter()
-    df = load_dataset(file_path)
+    if dataframe is not None:
+        if not isinstance(dataframe, pd.DataFrame):
+            raise TypeError("dataframe must be a pandas DataFrame")
+        df = dataframe.copy()
+    elif file_path is not None:
+        df = load_dataset(file_path)
+    else:
+        raise ValueError("Provide either file_path or dataframe.")
     timings_ms["load"] = (time.perf_counter() - t0) * 1000
+
+    if df.empty:
+        raise ValueError("Dataset is empty.")
+
+    if target_column is not None and target_column not in df.columns:
+        raise ValueError(f"Target column not found: {target_column}")
 
     t0 = time.perf_counter()
     profile = build_profile(df)
@@ -135,7 +130,7 @@ def run_full_analysis(
     )
     timings_ms["analysis_selection"] = (time.perf_counter() - t0) * 1000
 
-    # -------------------------------------------------------------------- Phase 2
+    # Phase 2: quality scoring.
     t0 = time.perf_counter()
     health = calculate_health_score(df, profile)
     timings_ms["health"] = (time.perf_counter() - t0) * 1000
@@ -148,7 +143,7 @@ def run_full_analysis(
     advanced = calculate_advanced_indicators(df)
     timings_ms["advanced"] = (time.perf_counter() - t0) * 1000
 
-    # -------------------------------------------------------------------- Phase 3 (parallel)
+    # Phase 3: independent heavier analyses.
     deep_statistics_v2 = None
     anomalies_v2 = None
     time_series_analysis = None
@@ -157,9 +152,15 @@ def run_full_analysis(
     if analysis_mode in {"standard", "deep", "research"}:
         tasks: list[tuple[str, Callable[[], Any]]] = [
             ("deep_statistics_v2", lambda: run_deep_statistics_v2(df)),
-            ("anomalies_v2",       lambda: detect_anomalies_ensemble(df)),
-            ("time_series",        lambda: detect_and_analyze_time_series(df, target_column=target_column)),
-            ("text_profile",       lambda: profile_text_columns(df)),
+            ("anomalies_v2", lambda: detect_anomalies_ensemble(df)),
+            (
+                "time_series",
+                lambda: detect_and_analyze_time_series(
+                    df,
+                    target_column=target_column,
+                ),
+            ),
+            ("text_profile", lambda: profile_text_columns(df)),
         ]
 
         results: dict[str, Any] = {}
@@ -170,8 +171,8 @@ def run_full_analysis(
             futures = {
                 executor.submit(_safe_call, name, fn): name for name, fn in tasks
             }
-            for fut in as_completed(futures):
-                name, value, elapsed = fut.result()
+            for future in as_completed(futures):
+                name, value, elapsed = future.result()
                 results[name] = value
                 per_task_ms[name] = elapsed
 
@@ -180,10 +181,12 @@ def run_full_analysis(
         time_series_analysis = results.get("time_series")
         text_profile = results.get("text_profile")
 
-        timings_ms["phase3_parallel_total"] = (time.perf_counter() - phase3_start) * 1000
-        timings_ms["phase3_tasks"] = per_task_ms  # type: ignore[assignment]
+        timings_ms["phase3_parallel_total"] = (
+            time.perf_counter() - phase3_start
+        ) * 1000
+        timings_ms["phase3_tasks"] = per_task_ms
 
-    # -------------------------------------------------------------------- Phase 4 (sequential ML chain)
+    # Phase 4: target-aware ML chain.
     model_leaderboard = None
     explainability = None
     if target_column and analysis_mode in {"standard", "deep", "research"}:
@@ -211,17 +214,21 @@ def run_full_analysis(
             )
             timings_ms["explainability"] = (time.perf_counter() - t0) * 1000
 
-    # -------------------------------------------------------------------- Phase 5
+    # Phase 5: signals, cleaning, and optional visual artifacts.
     t0 = time.perf_counter()
     signals = build_signals(profile, health, ml_readiness, advanced)
     timings_ms["signals"] = (time.perf_counter() - t0) * 1000
 
     t0 = time.perf_counter()
-    cleaning = create_cleaned_dataset(dataset_id, df)
+    cleaning = create_cleaned_dataset(
+        dataset_id,
+        df,
+        write_output=write_artifacts,
+    )
     timings_ms["cleaning"] = (time.perf_counter() - t0) * 1000
 
     charts: list[dict] = []
-    if analysis_mode in {"standard", "deep", "research"}:
+    if write_artifacts and analysis_mode in {"standard", "deep", "research"}:
         t0 = time.perf_counter()
         charts = generate_charts(
             dataset_id,
@@ -237,11 +244,13 @@ def run_full_analysis(
         )
         timings_ms["charts"] = (time.perf_counter() - t0) * 1000
 
-    # -------------------------------------------------------------------- Phase 6
-    # The AI report is the slowest phase (LLM call). It's skipped by default
-    # so /api/analyze stays fast — the dashboard can request it on demand
-    # via /api/ai-report. Set DATALENS_ANALYZE_AI=1 to opt back in.
-    analyze_ai_default = os.environ.get("DATALENS_ANALYZE_AI", "0").strip().lower() in {"1", "true", "yes"}
+    # Phase 6: optional AI interpretation.
+    ai_env = os.environ.get(
+        "FRAMEVITALS_ANALYZE_AI",
+        os.environ.get("DATALENS_ANALYZE_AI", "0"),
+    )
+    analyze_ai_default = ai_env.strip().lower() in {"1", "true", "yes"}
+
     if skip_ai or not analyze_ai_default:
         ai_report = {
             "source": "deferred" if not skip_ai else "skipped",
@@ -280,6 +289,7 @@ def run_full_analysis(
         "dataset_id": dataset_id,
         "filename": original_filename,
         "analysis_mode": analysis_mode,
+        "artifacts_enabled": write_artifacts,
         "profile": profile,
         "column_roles": column_roles,
         "roles_summary": roles_summary,

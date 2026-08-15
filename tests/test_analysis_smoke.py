@@ -1,12 +1,8 @@
 import framevitals
 
 
-def test_quick_analysis(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-
-    dataset = tmp_path / "sample.csv"
-
-    dataset.write_text(
+def _write_sample_dataset(path):
+    path.write_text(
         "age,income,city\n"
         "21,30000,Pune\n"
         "22,32000,Mumbai\n"
@@ -20,13 +16,17 @@ def test_quick_analysis(tmp_path, monkeypatch):
         "30,52000,Mumbai\n"
     )
 
-    report = framevitals.analyze(
-        dataset,
-        mode="quick",
-    )
+
+def test_quick_analysis_is_side_effect_free_by_default(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    dataset = tmp_path / "sample.csv"
+    _write_sample_dataset(dataset)
+
+    report = framevitals.analyze(dataset, mode="quick")
 
     assert report["filename"] == "sample.csv"
     assert report["analysis_mode"] == "quick"
+    assert report["artifacts_enabled"] is False
 
     assert "profile" in report
     assert "health" in report
@@ -36,11 +36,25 @@ def test_quick_analysis(tmp_path, monkeypatch):
     assert report["profile"]["shape"]["columns"] == 3
 
     health_score = report["health"]["overall_score"]
-
     assert 0 <= health_score <= 100
+
     cleaning = report["cleaning"]
-
     assert cleaning["missing_after"] == 0
+    assert cleaning["output_path"] is None
+    assert not (tmp_path / "cleaned").exists()
 
-    cleaned_path = tmp_path / cleaning["output_path"]
+
+def test_quick_analysis_can_write_artifacts(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    dataset = tmp_path / "sample.csv"
+    _write_sample_dataset(dataset)
+
+    report = framevitals.analyze(
+        dataset,
+        mode="quick",
+        artifacts=True,
+    )
+
+    assert report["artifacts_enabled"] is True
+    cleaned_path = tmp_path / report["cleaning"]["output_path"]
     assert cleaned_path.exists()
