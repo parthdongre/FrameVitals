@@ -13,7 +13,7 @@ import re
 import pandas as pd
 import numpy as np
 
-from modules.column_roles import (
+from framevitals.column_roles import (
     infer_column_roles,
     get_columns_with_role,
     get_meaningful_numeric_columns,
