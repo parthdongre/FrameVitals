@@ -85,10 +85,10 @@ dev = [
 framevitals = "framevitals.cli:main"
 
 [project.urls]
-Documentation = "https://github.com/parthdongre/DataLens-AI#readme"
-Repository = "https://github.com/parthdongre/DataLens-AI"
-Issues = "https://github.com/parthdongre/DataLens-AI/issues"
-Changelog = "https://github.com/parthdongre/DataLens-AI/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/parthdongre/FrameVitals#readme"
+Repository = "https://github.com/parthdongre/FrameVitals"
+Issues = "https://github.com/parthdongre/FrameVitals/issues"
+Changelog = "https://github.com/parthdongre/FrameVitals/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

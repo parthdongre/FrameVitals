@@ -5,8 +5,8 @@ Thanks for considering a contribution to FrameVitals.
 ## Development setup
 
 ```bash
-git clone https://github.com/parthdongre/DataLens-AI.git
-cd DataLens-AI
+git clone https://github.com/parthdongre/FrameVitals.git
+cd FrameVitals
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip

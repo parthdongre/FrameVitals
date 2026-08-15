@@ -14,8 +14,8 @@ FrameVitals supports Python 3.11, 3.12, and 3.13.
 For a development install from GitHub:
 
 ```bash
-git clone https://github.com/parthdongre/DataLens-AI.git
-cd DataLens-AI
+git clone https://github.com/parthdongre/FrameVitals.git
+cd FrameVitals
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -174,7 +174,6 @@ Near-term priorities:
 - Add schema-change and drift regression tests
 - Improve large-dataset performance
 - Publish benchmark datasets and performance measurements
-- Rename the GitHub repository to match the FrameVitals project identity
 - Publish the first PyPI release
 
 ## Contributing
