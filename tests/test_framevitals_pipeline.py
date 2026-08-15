@@ -1,5 +1,6 @@
 import pandas as pd
 
+from framevitals import analyze
 from framevitals.pipeline import (
     run_full_analysis,
 )
@@ -75,7 +76,6 @@ def test_quick_pipeline(tmp_path, monkeypatch):
     )
 
     assert "total" in result["timings_ms"]
-    from framevitals import analyze
 
 
 def test_public_api_uses_pipeline(
