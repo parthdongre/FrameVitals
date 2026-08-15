@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pandas as pd
 
+from framevitals.contracts import infer_contract as _infer_contract
+from framevitals.contracts import validate_contract
 from framevitals.drift_analysis import compare_datasets
 from framevitals.loader import load_dataset
 from framevitals.pipeline import run_full_analysis
-
 
 VALID_MODES = {
     "quick",
@@ -146,4 +149,33 @@ def compare(
     )
     result["reference_name"] = ref_name
     result["current_name"] = cur_name
+    return result
+
+
+def infer_contract(data: DataInput) -> dict[str, Any]:
+    """Infer a JSON-serializable data contract from a reference dataset.
+
+    The result can be saved with :mod:`json` and passed to :func:`validate`
+    when checking later datasets in a pipeline or CI job.
+    """
+    dataframe, source_name = _load_input(data, label="Reference")
+    contract = _infer_contract(dataframe)
+    contract["reference_name"] = source_name
+    return contract
+
+
+def validate(
+    data: DataInput,
+    contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate a dataset against an inferred or explicit data contract.
+
+    Contract failures are returned as structured findings rather than raised,
+    allowing callers to decide whether warnings or errors should block a job.
+    Invalid contract definitions and unreadable datasets still raise clear
+    exceptions.
+    """
+    dataframe, source_name = _load_input(data, label="Dataset")
+    result = validate_contract(dataframe, contract)
+    result["dataset_name"] = source_name
     return result

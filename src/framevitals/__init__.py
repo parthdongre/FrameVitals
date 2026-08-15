@@ -47,4 +47,18 @@ def compare(
     )
 
 
-__all__ = ["analyze", "compare", "__version__"]
+def infer_contract(data: Any) -> dict[str, Any]:
+    """Infer a reusable data contract from a reference dataset."""
+    from framevitals.api import infer_contract as _infer_contract
+
+    return _infer_contract(data)
+
+
+def validate(data: Any, contract: dict[str, Any]) -> dict[str, Any]:
+    """Validate a dataset against an inferred or explicit data contract."""
+    from framevitals.api import validate as _validate
+
+    return _validate(data, contract)
+
+
+__all__ = ["analyze", "compare", "infer_contract", "validate", "__version__"]
