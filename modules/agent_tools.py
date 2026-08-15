@@ -30,9 +30,15 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from modules.rag_index import retrieve as rag_retrieve
-from modules.rag_index import render_facts_block
-from modules.safe_pandas import safe_eval
+from framevitals.rag_index import (
+    render_facts_block,
+)
+from framevitals.rag_index import (
+    retrieve as rag_retrieve,
+)
+from framevitals.safe_pandas import (
+    safe_eval,
+)
 
 
 # ---------------------------------------------------------------------------
