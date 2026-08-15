@@ -40,6 +40,12 @@ from framevitals.safe_pandas import (
     safe_eval,
 )
 
+__all__ = [
+    "AGENT_TOOLS",
+    "AgentContext",
+    "list_tools",
+    "run_tool",
+]
 
 # ---------------------------------------------------------------------------
 # Context object passed to every tool
