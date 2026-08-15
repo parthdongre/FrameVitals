@@ -1,8 +1,8 @@
 # FrameVitals
 
-**Diagnostics and ML-readiness checks for tabular data.**
+**Data-health diagnostics, drift detection, and ML-readiness checks for tabular data.**
 
-FrameVitals is an open-source Python toolkit for inspecting tabular datasets before they reach a model or production pipeline. It combines structural profiling, quality scoring, statistical diagnostics, anomaly detection, drift and time-series analysis, ML-readiness checks, target-aware baseline modeling, explainability, cleaning, visualization, and optional AI-assisted interpretation behind one package.
+FrameVitals is an open-source Python toolkit for inspecting tabular datasets before they reach a model or production pipeline. It combines structural profiling, quality scoring, statistical diagnostics, anomaly detection, drift and time-series analysis, ML-readiness checks, target-aware modeling, explainability, cleaning, visualization, and optional AI-assisted interpretation behind one package.
 
 > Package: `framevitals`  
 > Status: `0.1.0.dev0` — pre-alpha
@@ -50,20 +50,31 @@ The core engine still works without the optional ML libraries: XGBoost, LightGBM
 
 ## Python API
 
+FrameVitals accepts both in-memory pandas DataFrames and supported dataset files.
+
 ```python
+import pandas as pd
 import framevitals as fv
 
-report = fv.analyze("customers.csv", mode="standard")
+# Analyze data already in memory.
+df = pd.read_csv("customers.csv")
+report = fv.analyze(df, mode="standard")
 
 print(report["health"]["overall_score"])
 print(report["ml_readiness"])
+```
+
+File paths work directly too:
+
+```python
+report = fv.analyze("customers.csv", mode="quick")
 ```
 
 With a supervised target:
 
 ```python
 report = fv.analyze(
-    "customers.csv",
+    df,
     target="churn",
     mode="deep",
 )
@@ -72,6 +83,36 @@ print(report["model_leaderboard"])
 print(report["explainability"])
 ```
 
+### Compare datasets for drift
+
+Use a known reference dataset as a baseline and compare newer data against it:
+
+```python
+reference = pd.read_csv("train.csv")
+current = pd.read_csv("production_batch.csv")
+
+drift = fv.compare(reference, current)
+
+print(drift["summary"]["overall_verdict"])
+print(drift["columns"][:3])
+```
+
+Reference/current inputs can independently be DataFrames or file paths. Numeric columns report PSI, KS statistics, and standardized mean shift; categorical columns report PSI and chi-square diagnostics.
+
+### Filesystem artifacts are opt-in
+
+Reusable Python calls do not write cleaned datasets or charts unless requested:
+
+```python
+report = fv.analyze(df, mode="standard")
+assert report["cleaning"]["output_path"] is None
+
+report = fv.analyze(df, mode="standard", artifacts=True)
+print(report["cleaning"]["output_path"])
+```
+
+The Flask/Streamlit application layer still enables its artifact workflow explicitly.
+
 ## CLI
 
 ```bash
@@ -79,6 +120,12 @@ framevitals --version
 framevitals analyze dataset.csv
 framevitals analyze dataset.csv --mode quick
 framevitals analyze dataset.csv --target churn --mode deep
+framevitals analyze dataset.csv --artifacts
+framevitals analyze dataset.csv --output summary.json
+
+framevitals compare train.csv production.csv
+framevitals compare train.csv production.csv --columns age,income
+framevitals compare train.csv production.csv --output drift.json
 ```
 
 `framevitals --version` and importing the top-level package are intentionally lightweight; the analytics pipeline is loaded only when an analysis is requested.
@@ -88,24 +135,24 @@ framevitals analyze dataset.csv --target churn --mode deep
 | Mode | Intended use |
 | --- | --- |
 | `quick` | Fast structural, quality, and ML-readiness checks |
-| `standard` | Default deeper diagnostics and visual evidence |
+| `standard` | Default deeper diagnostics |
 | `deep` | Broader statistical and target-aware analysis |
 | `research` | Largest analysis budget |
 
 ## Core capabilities
 
-- CSV, TSV, Excel, and JSON loading
+- pandas DataFrame plus CSV, TSV, Excel, and JSON inputs
 - Structural profiling and semantic column-role inference
 - Data-health and ML-readiness scoring
 - Missingness, duplicate, cardinality, and quality diagnostics
 - Deep statistical analysis
 - Ensemble anomaly detection
-- Target leakage and multicollinearity checks
+- Reference-vs-current dataset drift comparison
+- Dedicated target-leakage and multicollinearity diagnostics
 - Time-series and text-column profiling
-- Dataset drift comparison
 - Target-aware model leaderboard
 - Explainability with deterministic fallback when SHAP is unavailable
-- Conservative cleaning and chart generation
+- Conservative cleaning and optional chart/artifact generation
 - JSON-friendly structured results
 - Python API and CLI
 
@@ -164,17 +211,20 @@ The distribution is built from the `src/` layout and explicitly excludes the leg
 
 Release publishing is configured for PyPI Trusted Publishing. See [RELEASING.md](RELEASING.md) for the one-time PyPI/GitHub environment setup and release checklist.
 
-## Roadmap
+## Product roadmap
 
-Near-term priorities:
+Near-term product priorities:
 
-- Stabilize the public API for `0.1.x`
-- Finish migrating application imports away from compatibility shims
-- Resolve remaining advisory dead-code lint findings
-- Add schema-change and drift regression tests
-- Improve large-dataset performance
-- Publish benchmark datasets and performance measurements
-- Publish the first PyPI release
+- Introduce **FrameVitals Contracts**: infer data-health expectations from a reference dataset and validate future data with pass/warn/fail results.
+- Add CI-friendly `framevitals validate` / `framevitals check` commands with meaningful exit codes.
+- Turn analysis results into a stable report/result object with JSON and HTML export methods.
+- Make the signal-driven analysis selector actually control which expensive diagnostics execute.
+- Integrate target analysis, target leakage, multicollinearity, model diagnostics, and segment analysis into one coherent target-aware workflow.
+- Add reusable baseline snapshots for recurring drift and schema-change monitoring.
+- Add configurable thresholds and custom checks without requiring users to fork the library.
+- Improve large-dataset behavior with deterministic sampling and resource budgets.
+- Add benchmark datasets and performance/accuracy regression suites.
+- Publish the first PyPI release and stabilize the public API through `0.1.x`.
 
 ## Contributing
 
