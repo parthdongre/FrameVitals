@@ -14,37 +14,37 @@ const FEATURES: { eyebrow: string; title: string; body: string }[] = [
     eyebrow: "01",
     title: "Statistical depth",
     body:
-      "Per-column normality battery (Shapiro · D'Agostino · Anderson), best-fit distribution by AIC across six candidates, BCa bootstrap CIs, and bivariate tests including Mann-Whitney, Kruskal-Wallis, Cramér's V, and point-biserial.",
+      "Per-column normality tests, distribution diagnostics, bootstrap confidence intervals, and bivariate tests surface structure that basic profiling misses.",
   },
   {
     eyebrow: "02",
     title: "Anomaly ensemble",
     body:
-      "Seven detectors run in parallel — IsolationForest, LOF, EllipticEnvelope, robust z-score, Mahalanobis, ECOD, COPOD — and their normalized scores are averaged into a single ensemble for honest agreement-based flagging.",
+      "Core detectors include IsolationForest, LOF, EllipticEnvelope, robust z-score, and Mahalanobis distance. Optional PyOD support adds ECOD and COPOD before scores are normalized into one ensemble view.",
   },
   {
     eyebrow: "03",
-    title: "Model leaderboard + SHAP",
+    title: "Model leaderboard + explainability",
     body:
-      "5-fold cross-validated leaderboard across up to 8 models including XGBoost and LightGBM, with calibrated holdout metrics. The winner gets full SHAP attribution — global ranking plus per-row stories.",
+      "Target-aware baseline models are cross-validated and compared consistently. Optional XGBoost and LightGBM expand the leaderboard, while SHAP is used when available with deterministic feature-importance fallbacks otherwise.",
   },
   {
     eyebrow: "04",
     title: "Time-series and text",
     body:
-      "Confidently date-like columns are auto-decomposed with STL, tested for stationarity (ADF + KPSS), and forecast with Holt-Winters. Free-text columns get linguistic stats, n-grams, regex pattern hits, and a TF-IDF/LSA document map.",
+      "Date-like columns can be inspected for temporal structure and stationarity, while free-text columns receive dedicated profiling so they are not treated as ordinary categories.",
   },
   {
     eyebrow: "05",
     title: "Drift / compare mode",
     body:
-      "Compare two datasets — or split one chronologically — and quantify column-by-column shift with PSI, Kolmogorov-Smirnov, and chi-square. Severity buckets surface the columns that actually changed.",
+      "Compare two datasets — or split one chronologically — and quantify column-by-column shift with PSI, Kolmogorov-Smirnov, and chi-square diagnostics.",
   },
   {
     eyebrow: "06",
-    title: "LLM AI agent",
+    title: "Optional AI interpretation",
     body:
-      "Planner → Executor → Critic → Writer loop running on local Ollama with Pydantic-validated structured output. Falls back gracefully to OpenRouter, then to a deterministic writer that quotes RAG-retrieved facts.",
+      "AI-assisted summaries can use a local Ollama service when configured. Core diagnostics do not require an LLM, and deterministic structured output remains available when AI integrations are absent.",
   },
 ];
 
@@ -61,7 +61,6 @@ export function HomePage({ onNavigate }: HomePageProps) {
   return (
     <>
       <Section className="relative pb-12 pt-6">
-        {/* Decorative parallax glyph — purely visual, doesn't carry semantics. */}
         <Parallax
           range={42}
           className="pointer-events-none absolute right-0 top-2 -z-0 hidden select-none md:block"
@@ -70,13 +69,13 @@ export function HomePage({ onNavigate }: HomePageProps) {
             aria-hidden="true"
             className="block font-mono text-[clamp(120px,12vw,200px)] font-bold leading-none text-[var(--ink-1)]/[0.04]"
           >
-            DL/v3
+            FV/0.1
           </span>
         </Parallax>
 
         <div className="relative">
-          <Eyebrow>LLM dataset analytics</Eyebrow>
-          <PageTitle subtitle="Upload a dataset and get a structured, evidence-backed report on data quality, machine-learning readiness, anomaly behavior, time-series structure, free-text content, drift, and an LLM narrative — all in one pass.">
+          <Eyebrow>Tabular data diagnostics</Eyebrow>
+          <PageTitle subtitle="Upload a dataset and get structured, evidence-backed diagnostics for data quality, ML readiness, anomaly behavior, time-series structure, text columns, drift, modelling, and optional AI-assisted interpretation.">
             Read the signal in your data.
           </PageTitle>
 
@@ -101,9 +100,9 @@ export function HomePage({ onNavigate }: HomePageProps) {
 
       <Section>
         <SectionHeader
-          eyebrow="What DataLens inspects"
+          eyebrow="What FrameVitals inspects"
           title="Six analytical lenses."
-          description="Each lens runs independently and is grounded in named algorithms. Every section of the report ties back to one of these."
+          description="Each lens is grounded in named algorithms and structured outputs. Optional integrations extend the core engine without becoming mandatory dependencies."
         />
 
         <motion.div
@@ -132,26 +131,21 @@ export function HomePage({ onNavigate }: HomePageProps) {
       <Section>
         <SectionHeader
           eyebrow="Honest about the tradeoffs"
-          title="This is a structured report, not proof."
-          description="DataLens is a structured report on the dataset you upload. It does not replace domain expertise, statistical sign-off on regulated decisions, or production model validation."
+          title="This is a structured diagnostic report, not proof."
+          description="FrameVitals reports on the dataset you provide. It does not replace domain expertise, statistical sign-off on regulated decisions, or production model validation."
         />
 
         <ul className="grid gap-3 text-[14px] leading-7 text-[var(--ink-2)] sm:grid-cols-2">
-          <li>· All analytics run locally on your machine. Nothing is uploaded to a third party unless you explicitly configure OpenRouter for the AI agent.</li>
-          <li>· ML metrics are baselines, not tuned production models. The leaderboard exists to surface which families respond well to the data.</li>
-          <li>· Anomaly scores are agreement-based across seven detectors. Some structural rows surface even when valid.</li>
-          <li>· The AI agent is grounded in retrieved facts and validated for structure, but should be treated as a summarizer, not an authority.</li>
+          <li>· Core analytics run locally. External AI services are only involved when you explicitly configure an optional integration.</li>
+          <li>· ML metrics are baselines, not tuned production models. The leaderboard surfaces which model families respond well to the data.</li>
+          <li>· Anomaly scores represent detector agreement. A flagged row can still be a valid observation.</li>
+          <li>· AI-assisted summaries should be treated as interpretation aids, not authorities.</li>
         </ul>
       </Section>
     </>
   );
 }
 
-/* --------------------------------------------------------------------------
- * Health chip — small live status pill rendered next to the hero CTAs.
- * Network failures are swallowed by `useHealthQuery` (`throwOnError: false`),
- * so the worst case is a muted "offline" pip.
- * -------------------------------------------------------------------------- */
 function HealthChip() {
   const { data, isLoading, isError } = useHealthQuery();
 

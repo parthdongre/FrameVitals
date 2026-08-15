@@ -20,7 +20,7 @@ interface SiteShellProps {
 }
 
 /**
- * Editorial shell, warm cream on near-black. Inspired by deepfake-analyzer-nine.
+ * Editorial shell for the optional FrameVitals React dashboard.
  */
 export function SiteShell({ route, onNavigate, children }: SiteShellProps) {
   return (
@@ -73,10 +73,10 @@ function TopNav({ route, onNavigate }: { route: Route; onNavigate: (r: Route) =>
             </svg>
           </span>
           <span className="text-[15px] font-semibold tracking-tight text-[var(--ink-1)]">
-            DataLens AI
+            FrameVitals
           </span>
           <span className="hidden font-mono text-[10px] uppercase tracking-[0.32em] text-[var(--ink-4)] sm:inline">
-            v3
+            0.1 dev
           </span>
         </button>
 
@@ -119,12 +119,12 @@ function Footer() {
       <div className="hr-rule mb-6">FIN</div>
       <div className="flex flex-col gap-4 text-[12px] text-[var(--ink-3)] sm:flex-row sm:items-center sm:justify-between">
         <span className="font-mono uppercase tracking-[0.32em]">
-          DataLens AI · v3 · LLM analytics
+          FrameVitals · 0.1 dev · tabular diagnostics
         </span>
         <div className="flex flex-wrap gap-x-6 gap-y-1">
           <span>Flask · 5055</span>
           <span>Vite · 5173</span>
-          <span>Ollama · 11434</span>
+          <span>Ollama · 11434 optional</span>
         </div>
       </div>
     </footer>
@@ -209,11 +209,6 @@ export function Hr({ label }: { label?: string }) {
 }
 
 /* --------------------------- ErrorBoundary ------------------------------- */
-/**
- * Catches render-time errors anywhere in the page tree so the user never
- * sees a white screen. Useful when a payload field comes back in an
- * unexpected shape.
- */
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) {
@@ -221,7 +216,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
   componentDidCatch(error: Error, info: { componentStack?: string }) {
     // eslint-disable-next-line no-console
-    console.error("DataLens render error:", error, info);
+    console.error("FrameVitals render error:", error, info);
   }
   render() {
     if (this.state.error) {
