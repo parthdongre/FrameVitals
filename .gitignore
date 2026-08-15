@@ -1,17 +1,35 @@
-# Python
+# Python bytecode and caches
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
 
-# venv
+# Python environments and packaging
+.venv/
 venv/
+env/
+build/
+dist/
+*.egg-info/
 
-# Frontend
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Frontend dependencies/build output
 frontend/node_modules/
 frontend/dist/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
 
-# Runtime artifacts (regenerated on every analysis)
+# Runtime artifacts
 uploads/*
 !uploads/.gitkeep
 cleaned/*
@@ -19,8 +37,10 @@ cleaned/*
 static/charts/*
 !static/charts/.gitkeep
 logs/
+reports/*
+!reports/.gitkeep
 
-# LaTeX intermediates (the builder cleans these up but in case of crash)
+# LaTeX/build intermediates
 *.aux
 *.log
 *.out
@@ -29,17 +49,9 @@ logs/
 *.lot
 *.synctex.gz
 
-# OS
+# OS/editor files
 .DS_Store
-
-# Reports — keep the whitepaper, ignore the auto-generated dataset PDFs
-reports/*_report.pdf
-reports/whitepaper/*.aux
-reports/whitepaper/*.log
-reports/whitepaper/*.out
-reports/whitepaper/*.toc
-
-# IDE
+Thumbs.db
 .vscode/
 .idea/
 .kiro/

@@ -1,12 +1,14 @@
-from __future__ import annotations
+"""Backward-compatible report generator imports.
 
-from pathlib import Path
+Deprecated: use framevitals.report_generator instead.
+"""
 
-from modules.pdf_report_builder import generate_pdf_report as _generate_pdf_report
+from framevitals.report_generator import (
+    REPORT_DIR,
+    generate_pdf_report,
+)
 
-REPORT_DIR = Path("reports")
-REPORT_DIR.mkdir(exist_ok=True)
-
-
-def generate_pdf_report(result):
-    return _generate_pdf_report(result, output_dir=REPORT_DIR)
+__all__ = [
+    "REPORT_DIR",
+    "generate_pdf_report",
+]

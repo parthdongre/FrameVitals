@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose an improvement to FrameVitals
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What problem would this feature solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the API, output, workflow, or behavior you would like.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe workarounds or alternative designs you have considered.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Public API / CLI
+        - Data quality / profiling
+        - Statistics
+        - Anomaly detection
+        - ML / explainability
+        - Drift / time series
+        - Reporting / visualization
+        - AI / agent layer
+        - Web application
+        - Packaging / developer experience
+        - Other

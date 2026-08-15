@@ -1,0 +1,48 @@
+name: Bug report
+description: Report reproducible incorrect behavior in FrameVitals
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve FrameVitals. Please provide a minimal reproducible example when possible.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include a small code sample, command, or dataset shape/schema that reproduces the problem. Do not upload sensitive data.
+      render: python
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: FrameVitals version
+      placeholder: 0.1.0.dev0 or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: 3.11.9
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 15, Ubuntu 24.04, Windows 11
+  - type: textarea
+    id: traceback
+    attributes:
+      label: Traceback or logs
+      description: Remove secrets and private dataset content before posting.
+      render: shell
