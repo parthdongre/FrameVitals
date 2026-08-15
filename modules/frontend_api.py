@@ -9,7 +9,9 @@ import pandas as pd
 from framevitals.column_roles import (
     get_meaningful_numeric_columns,
 )
-from modules.deep_statistics import run_deep_statistics
+from framevitals.deep_statistics import (
+    run_deep_statistics,
+)
 from framevitals.target_analyzer import (
     analyze_target,
 )
