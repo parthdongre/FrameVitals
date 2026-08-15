@@ -58,3 +58,20 @@ def test_streamlit_app_uses_framevitals():
     assert_no_migrated_module_imports(
         "streamlit_app.py"
     )
+    
+def test_ai_agent_uses_framevitals_agent_layer():
+    source = (
+        ROOT / "modules" / "ai_agent.py"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "from modules.agent_tools import"
+        not in source
+    )
+
+    assert (
+        "from modules.agent_brief import"
+        not in source
+    )
