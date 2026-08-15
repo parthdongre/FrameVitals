@@ -15,7 +15,9 @@ from framevitals.deep_statistics import (
 from framevitals.target_analyzer import (
     analyze_target,
 )
-from modules.feature_importance import run_feature_importance
+from framevitals.feature_importance import (
+    run_feature_importance,
+)
 from framevitals.baseline_model import (
     run_baseline_model,
 )
