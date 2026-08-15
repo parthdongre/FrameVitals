@@ -33,9 +33,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
-from modules.advanced_indicators import calculate_advanced_indicators
-from modules.ai_insights import generate_ai_report
-from modules.analysis_selector import select_analyses
+from framevitals.advanced_indicators import calculate_advanced_indicators
+from framevitals.column_roles import infer_column_roles, summarize_roles
+from framevitals.dataset_signals import detect_dataset_signals
 from modules.anomaly_ensemble import detect_anomalies_ensemble
 from modules.cleaner import create_cleaned_dataset
 from modules.column_roles import infer_column_roles, summarize_roles
