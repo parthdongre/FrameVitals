@@ -1,9 +1,4 @@
-"""FrameVitals data contracts.
-
-A contract captures conservative expectations learned from a known-good
-reference dataset. Validation returns evidence-rich pass/warn/fail checks that
-can be consumed in notebooks, applications, or CI pipelines.
-"""
+"""Inference and validation for FrameVitals data-health contracts."""
 
 from __future__ import annotations
 
@@ -16,27 +11,33 @@ import pandas as pd
 
 from framevitals.column_roles import infer_column_roles
 
-
 CONTRACT_VERSION = 1
 
 
 def _json_value(value: Any) -> Any:
-    """Convert common numpy/pandas scalar values into JSON-safe primitives."""
+    """Recursively convert pandas/numpy values into JSON-safe primitives."""
     if value is None:
         return None
-    if isinstance(value, (np.integer,)):
+    if isinstance(value, dict):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_value(item) for item in value]
+    if isinstance(value, np.integer):
         return int(value)
-    if isinstance(value, (np.floating,)):
-        value = float(value)
-        return value if np.isfinite(value) else None
-    if isinstance(value, (np.bool_,)):
+    if isinstance(value, np.floating):
+        number = float(value)
+        return number if np.isfinite(number) else None
+    if isinstance(value, np.bool_):
         return bool(value)
-    if isinstance(value, (pd.Timestamp,)):
+    if isinstance(value, pd.Timestamp):
         return value.isoformat()
-    if pd.isna(value):
-        return None
     if isinstance(value, (str, int, float, bool)):
         return value
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
     return str(value)
 
 
@@ -46,7 +47,7 @@ def _dtype_family(series: pd.Series, roles: set[str] | None = None) -> str:
         return "boolean"
     if pd.api.types.is_numeric_dtype(series):
         return "numeric"
-    if pd.api.types.is_datetime64_any_dtype(series):
+    if pd.api.types.is_datetime64_any_dtype(series.dtype):
         return "datetime"
     if "time_like" in roles:
         return "datetime_like"
@@ -65,7 +66,7 @@ def _matches_dtype_family(series: pd.Series, expected: str) -> tuple[bool, str]:
     if expected == "numeric":
         return bool(pd.api.types.is_numeric_dtype(series)), str(series.dtype)
     if expected == "datetime":
-        return bool(pd.api.types.is_datetime64_any_dtype(series)), str(series.dtype)
+        return bool(pd.api.types.is_datetime64_any_dtype(series.dtype)), str(series.dtype)
     if expected == "categorical":
         matched = (
             pd.api.types.is_object_dtype(series)
@@ -77,7 +78,7 @@ def _matches_dtype_family(series: pd.Series, expected: str) -> tuple[bool, str]:
         clean = series.dropna()
         if clean.empty:
             return True, "empty/non-null sample"
-        if pd.api.types.is_datetime64_any_dtype(clean):
+        if pd.api.types.is_datetime64_any_dtype(clean.dtype):
             return True, str(series.dtype)
         sample = clean.astype(str).head(200)
         parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
@@ -113,12 +114,7 @@ def infer_contract(
     duplicate_tolerance: float = 0.02,
     max_allowed_values: int = 20,
 ) -> dict[str, Any]:
-    """Infer a conservative data-health contract from a reference DataFrame.
-
-    The inferred rules intentionally avoid hard numeric min/max ranges. They
-    focus on schema shape, dtype families, missingness budgets, duplicate
-    budgets, ID-like uniqueness, and low-cardinality category drift.
-    """
+    """Infer conservative expectations from a known-good reference DataFrame."""
     if not isinstance(df, pd.DataFrame):
         raise TypeError("df must be a pandas DataFrame")
     if df.empty:
@@ -130,51 +126,48 @@ def infer_contract(
     if max_allowed_values < 0:
         raise ValueError("max_allowed_values must be non-negative.")
 
-    roles = infer_column_roles(df)
-    columns: dict[str, dict[str, Any]] = {}
+    role_map = infer_column_roles(df)
+    column_rules: dict[str, dict[str, Any]] = {}
 
     for name in df.columns:
         series = df[name]
-        info = roles[name]
-        role_set = set(info.get("roles", []))
+        info = role_map[name]
+        roles = set(info.get("roles", []))
         missing_fraction = float(series.isna().mean())
-        non_missing = series.dropna()
 
         allowed_values = None
         if (
             max_allowed_values > 0
-            and "low_cardinality" in role_set
-            and "id_like" not in role_set
-            and "time_like" not in role_set
+            and "low_cardinality" in roles
+            and "id_like" not in roles
+            and "time_like" not in roles
             and int(info.get("unique_count", 0)) <= max_allowed_values
         ):
             allowed_values = sorted(
-                {str(_json_value(value)) for value in non_missing.unique()}
+                {str(_json_value(value)) for value in series.dropna().unique()}
             )
 
         unique_required = bool(
-            "id_like" in role_set
+            "id_like" in roles
             and float(info.get("unique_ratio", 0.0)) >= 0.95
             and int(info.get("non_missing_count", 0)) >= 10
         )
 
-        columns[name] = {
-            "dtype_family": _dtype_family(series, role_set),
-            "baseline_dtype": str(series.dtype),
+        column_rules[name] = {
             "required": True,
-            "max_missing_fraction": round(
-                min(1.0, missing_fraction + missing_tolerance),
-                4,
-            ),
+            "dtype_family": _dtype_family(series, roles),
+            "baseline_dtype": str(series.dtype),
             "baseline_missing_fraction": round(missing_fraction, 4),
+            "max_missing_fraction": round(
+                min(1.0, missing_fraction + missing_tolerance), 4
+            ),
             "unique": unique_required,
             "allowed_values": allowed_values,
             "allowed_values_policy": "warn" if allowed_values is not None else "ignore",
-            "roles": sorted(role_set),
+            "roles": sorted(roles),
         }
 
     duplicate_fraction = float(df.duplicated().mean())
-
     return {
         "contract_version": CONTRACT_VERSION,
         "generated_by": "framevitals",
@@ -187,11 +180,10 @@ def infer_contract(
         "policies": {
             "extra_columns": "warn",
             "max_duplicate_fraction": round(
-                min(1.0, duplicate_fraction + duplicate_tolerance),
-                4,
+                min(1.0, duplicate_fraction + duplicate_tolerance), 4
             ),
         },
-        "columns": columns,
+        "columns": column_rules,
     }
 
 
@@ -222,13 +214,11 @@ def validate_contract(
     checks: list[dict[str, Any]] = []
     expected_columns = set(column_rules)
     actual_columns = set(df.columns)
-
     missing_columns = sorted(expected_columns - actual_columns)
     extra_columns = sorted(actual_columns - expected_columns)
 
     for column in missing_columns:
-        rule = column_rules[column]
-        if rule.get("required", True):
+        if column_rules[column].get("required", True):
             checks.append(
                 _check(
                     "required_column",
@@ -249,15 +239,15 @@ def validate_contract(
                 status,
                 f"Found {len(extra_columns)} unexpected column(s): {', '.join(extra_columns[:10])}.",
                 observed=extra_columns,
-                expected="no unexpected columns" if extra_policy == "fail" else "review",
+                expected=extra_policy,
             )
         )
 
     for column, rule in column_rules.items():
         if column not in df.columns:
             continue
-
         series = df[column]
+
         expected_family = str(rule.get("dtype_family", "other"))
         matched, dtype_evidence = _matches_dtype_family(series, expected_family)
         checks.append(
@@ -294,8 +284,7 @@ def validate_contract(
         )
 
         if rule.get("unique"):
-            non_missing = series.dropna()
-            duplicate_values = int(non_missing.duplicated().sum())
+            duplicate_values = int(series.dropna().duplicated().sum())
             unique_ok = duplicate_values == 0
             checks.append(
                 _check(
@@ -316,7 +305,9 @@ def validate_contract(
         allowed_policy = rule.get("allowed_values_policy", "ignore")
         if allowed_values is not None and allowed_policy != "ignore":
             allowed = {str(value) for value in allowed_values}
-            observed_values = {str(_json_value(value)) for value in series.dropna().unique()}
+            observed_values = {
+                str(_json_value(value)) for value in series.dropna().unique()
+            }
             unseen = sorted(observed_values - allowed)
             if unseen:
                 status = "fail" if allowed_policy == "fail" else "warn"
@@ -337,8 +328,8 @@ def validate_contract(
                         "pass",
                         f"Column '{column}' contains no unseen categorical values.",
                         column=column,
-                        observed="no unseen values",
-                        expected="baseline categories",
+                        observed=[],
+                        expected=sorted(allowed)[:20],
                     )
                 )
 
@@ -365,12 +356,9 @@ def validate_contract(
         status: sum(1 for item in checks if item["status"] == status)
         for status in ("pass", "warn", "fail")
     }
-    if counts["fail"]:
-        overall_status = "fail"
-    elif counts["warn"]:
-        overall_status = "warn"
-    else:
-        overall_status = "pass"
+    overall_status = (
+        "fail" if counts["fail"] else "warn" if counts["warn"] else "pass"
+    )
 
     return {
         "available": True,
