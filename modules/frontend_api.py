@@ -27,7 +27,9 @@ from framevitals.target_leakage import (
 from framevitals.multicollinearity import (
     run_multicollinearity_analysis,
 )
-from modules.model_diagnostics import run_model_diagnostics
+from framevitals.model_diagnostics import (
+    run_model_diagnostics,
+)
 from framevitals.segment_analysis import (
     run_segment_analysis,
 )
