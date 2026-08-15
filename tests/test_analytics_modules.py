@@ -39,3 +39,49 @@ def test_deep_statistics():
     assert "city" in result["categorical_columns"]
 
     assert result["summary"]["numeric_count"] == 2
+
+def test_text_profile():
+    df = pd.DataFrame({
+        "review": [
+            "This product works very well and feels great.",
+            "The application is simple and very useful.",
+            "I really like this dataset analysis tool.",
+            "The interface works well for data analysis.",
+            "This tool provides helpful dataset information.",
+            "The report contains useful statistical insights.",
+            "The analysis explains the dataset very clearly.",
+            "This product has good features for analysts.",
+            "The software provides detailed data diagnostics.",
+            "This dataset contains several useful observations.",
+        ],
+    })
+
+    result = profile_text_columns(df)
+
+    assert result["available"] is True
+    assert "review" in result["detected_columns"]
+    assert "review" in result["profiles"]
+
+
+def test_time_series_detection():
+    df = pd.DataFrame({
+        "date": pd.date_range(
+            "2026-01-01",
+            periods=40,
+            freq="D",
+        ),
+        "sales": [
+            100 + i
+            for i in range(40)
+        ],
+    })
+
+    result = detect_and_analyze_time_series(
+        df,
+        target_column="sales",
+    )
+
+    assert result["available"] is True
+    assert result["detected_date_column"] == "date"
+    assert result["numeric_column"] == "sales"
+    assert result["n_observations"] == 40
