@@ -1,5 +1,8 @@
+import json
+
 import pandas as pd
 
+import framevitals
 from framevitals.cli import main
 from framevitals.drift_analysis import compare_datasets, severity_at_least
 
@@ -124,6 +127,31 @@ def test_severity_threshold_helper_is_ordered():
     assert severity_at_least("moderate", "moderate") is True
     assert severity_at_least("minor", "moderate") is False
     assert severity_at_least("stable", "minor") is False
+
+
+def test_public_quality_results_are_dict_compatible_and_exportable(tmp_path):
+    reference = pd.DataFrame({
+        "value": list(range(30)),
+        "group": ["A", "B", "C"] * 10,
+    })
+
+    drift = framevitals.compare(reference, reference.copy())
+    assert isinstance(drift, framevitals.DriftResult)
+    assert isinstance(drift, dict)
+    assert drift.status == "pass"
+    assert "FrameVitals drift" in drift.summary_text()
+
+    drift_path = tmp_path / "drift.json"
+    drift.to_json(drift_path)
+    assert json.loads(drift_path.read_text(encoding="utf-8"))["gate"]["status"] == "pass"
+
+    contract = framevitals.infer_contract(reference)
+    validation = framevitals.validate(reference.copy(), contract)
+    assert isinstance(validation, framevitals.ValidationResult)
+    assert isinstance(validation, dict)
+    assert validation.valid is True
+    assert validation.status == "pass"
+    assert "FrameVitals validation" in validation.summary_text()
 
 
 def test_compare_cli_fail_on_is_opt_in(tmp_path, monkeypatch, capsys):
