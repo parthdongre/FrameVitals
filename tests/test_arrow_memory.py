@@ -68,6 +68,37 @@ def test_public_profile_streams_arrow_table_without_pandas_materialization(monke
     assert result["missing_counts"]["value"] == int(np.isnan(table["value"].to_numpy()).sum())
 
 
+def test_numpy_streaming_profile_uses_full_stream_quantile_sketch_when_affordable(monkeypatch):
+    table = _table(12_000)
+    monkeypatch.setattr("framevitals.streaming_profile.resolve_numeric_backend", lambda: "numpy")
+
+    result = framevitals.profile(table)
+    numeric = result["numeric_summary_metadata"]
+    streaming = result["streaming_metadata"]
+
+    assert numeric["backend"] == "numpy"
+    assert numeric["quantile_source"] == "full_stream_sketch"
+    assert numeric["quantile_relative_accuracy"] == 0.01
+    assert streaming["numpy_full_stream_quantile_sketches"] is True
+    assert result["numeric_summary"]["other"]["50%"] == pytest.approx(11_999, rel=0.03)
+
+
+def test_numpy_streaming_profile_can_fall_back_to_bounded_sample_quantiles(monkeypatch):
+    table = _table(12_000)
+    monkeypatch.setattr("framevitals.streaming_profile.resolve_numeric_backend", lambda: "numpy")
+    monkeypatch.setattr(
+        "framevitals.streaming_profile.should_use_full_stream_numpy_sketch",
+        lambda rows, columns: False,
+    )
+
+    result = framevitals.profile(table)
+    numeric = result["numeric_summary_metadata"]
+
+    assert numeric["quantile_source"] == "bounded_row_sample"
+    assert numeric["quantile_sketch_skipped_for_cost"] is True
+    assert result["streaming_metadata"]["numpy_full_stream_quantile_sketches"] is False
+
+
 def test_public_analyze_dispatches_arrow_table_through_streaming_pipeline(monkeypatch):
     table = _table(6_000)
 
