@@ -81,11 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
         "analyze",
         help="Analyze a tabular dataset.",
     )
-    analyze_parser.add_argument(
-        "file",
-        type=Path,
-        help="Path to the dataset.",
-    )
+    analyze_parser.add_argument("file", type=Path, help="Path to the dataset.")
     _add_runtime_arguments(analyze_parser)
     analyze_parser.add_argument(
         "--artifacts",
@@ -111,11 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
         "plan",
         help="Preview applicable analyses without running heavy stages.",
     )
-    plan_parser.add_argument(
-        "file",
-        type=Path,
-        help="Path to the dataset.",
-    )
+    plan_parser.add_argument("file", type=Path, help="Path to the dataset.")
     _add_runtime_arguments(plan_parser)
     plan_parser.add_argument(
         "--format",
@@ -125,20 +117,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_output_argument(plan_parser)
 
+    clean_parser = subparsers.add_parser(
+        "clean",
+        help="Inspect a conservative cleaning plan and optionally write cleaned CSV.",
+    )
+    clean_parser.add_argument("file", type=Path, help="Path to the dataset.")
+    clean_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Write the cleaned dataset to this CSV path. Omit for plan-only mode.",
+    )
+    clean_parser.add_argument(
+        "--plan-output",
+        type=Path,
+        default=None,
+        help="Optional path to write the inferred cleaning plan as JSON.",
+    )
+
     compare_parser = subparsers.add_parser(
         "compare",
         help="Compare reference and current datasets for drift.",
     )
     compare_parser.add_argument(
-        "reference",
-        type=Path,
-        help="Reference/baseline dataset path.",
+        "reference", type=Path, help="Reference/baseline dataset path."
     )
-    compare_parser.add_argument(
-        "current",
-        type=Path,
-        help="Current dataset path.",
-    )
+    compare_parser.add_argument("current", type=Path, help="Current dataset path.")
     compare_parser.add_argument(
         "--columns",
         default=None,
@@ -157,9 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Infer a reusable data contract from a reference dataset.",
     )
     infer_contract_parser.add_argument(
-        "file",
-        type=Path,
-        help="Path to the reference dataset.",
+        "file", type=Path, help="Path to the reference dataset."
     )
     _add_output_argument(infer_contract_parser)
 
@@ -168,9 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Validate a dataset against a JSON data contract.",
     )
     validate_parser.add_argument(
-        "file",
-        type=Path,
-        help="Path to the dataset to validate.",
+        "file", type=Path, help="Path to the dataset to validate."
     )
     validate_parser.add_argument(
         "--contract",
@@ -271,6 +271,30 @@ def main() -> int:
             print(result.explain_text())
             if args.output is not None:
                 print(f"Plan JSON     {args.output}")
+        return 0
+
+    if args.command == "clean":
+        from framevitals.api import clean, plan_cleaning
+        from framevitals.security import sanitize_csv_value
+
+        cleaning_plan = plan_cleaning(args.file)
+        if args.plan_output is not None:
+            cleaning_plan.to_json(args.plan_output)
+
+        payload = {
+            "plan": dict(cleaning_plan),
+            "summary": cleaning_plan.summary(),
+            "cleaned_output": str(args.output) if args.output is not None else None,
+        }
+
+        if args.output is not None:
+            if args.output.suffix.lower() != ".csv":
+                raise ValueError("The clean command currently writes CSV output only.")
+            cleaned = clean(args.file, plan=cleaning_plan)
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            cleaned.map(sanitize_csv_value).to_csv(args.output, index=False)
+
+        print(json.dumps(payload, indent=2, default=str))
         return 0
 
     if args.command == "compare":
