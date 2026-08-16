@@ -72,6 +72,7 @@ all = [
     "flask>=3.0",
     "gunicorn>=22.0",
     "werkzeug>=3.0",
+    "pyarrow>=25.0,<26",
 ]
 dev = [
     "pytest>=8.2",
