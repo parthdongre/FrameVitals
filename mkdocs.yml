@@ -18,7 +18,11 @@ nav:
   - Home: index.md
   - Source-aware execution: source-execution.md
   - Execution provenance: execution-provenance.md
+  - Result objects: result-objects.md
   - Quality gates and custom checks: quality-gates.md
+  - Monitoring snapshots: monitoring.md
+  - Extending FrameVitals: extending-framevitals.md
+  - Stability and compatibility: stability.md
 
 markdown_extensions:
   - admonition
