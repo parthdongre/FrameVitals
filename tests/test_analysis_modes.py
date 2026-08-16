@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 import framevitals.analysis_api as analysis_api
+from framevitals.analysis_selector import select_analyses
 
 
 @pytest.mark.parametrize(
@@ -101,3 +102,49 @@ def test_deep_public_analysis_keeps_deep_modules_enabled(monkeypatch):
     )
 
     assert tuple(captured["disabled_modules"]) == ()
+
+
+def test_selector_matches_standard_and_deep_mode_contracts():
+    signals = {
+        "row_count": 8_000,
+        "has_numeric_columns": True,
+        "has_multiple_numeric_columns": True,
+        "has_categorical_columns": True,
+        "has_long_text_columns": True,
+        "has_datetime_columns": True,
+        "has_time_series_structure": True,
+        "has_id_like_columns": True,
+        "has_high_missingness": True,
+        "has_sensitive_column_candidates": True,
+        "has_email_like_columns": True,
+    }
+
+    standard = select_analyses(
+        signals,
+        analysis_mode="standard",
+        target_column="target",
+    )
+    deep = select_analyses(
+        signals,
+        analysis_mode="deep",
+        target_column="target",
+    )
+
+    standard_ids = {item["id"] for item in standard["selected_analyses"]}
+    deep_ids = {item["id"] for item in deep["selected_analyses"]}
+
+    assert {"target_analysis", "time_series_signal"} <= standard_ids
+    assert {
+        "normality_tests",
+        "chi_square_analysis",
+        "text_analysis",
+        "feature_importance",
+        "baseline_model",
+    } <= deep_ids
+    assert {
+        "normality_tests",
+        "chi_square_analysis",
+        "text_analysis",
+        "feature_importance",
+        "baseline_model",
+    }.isdisjoint(standard_ids)
