@@ -36,6 +36,8 @@ def test_public_statistics_streams_bounded_parquet_sample(tmp_path, monkeypatch)
 
     assert result["dataset_name"] == "statistics.parquet"
     execution = result["execution"]
+    assert execution["execution_schema_version"] == "1"
+    assert execution["method"] == "bounded_deep_statistics"
     assert execution["scope"] == "bounded_deep_statistics"
     assert execution["full_materialization"] is False
     assert execution["source_rows"] == len(frame)
@@ -44,4 +46,5 @@ def test_public_statistics_streams_bounded_parquet_sample(tmp_path, monkeypatch)
     assert execution["sampled"] is True
     assert execution["strategy"] == "streaming_evenly_spaced_global_rows"
     assert execution["pair_budget"] == 2
+    assert execution["source"]["format"] == "parquet"
     assert result["source"]["supports_streaming"] is True
