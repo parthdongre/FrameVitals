@@ -23,6 +23,45 @@ from framevitals.sources import StreamingDatasetSource, resolve_source
 DataInput = Any
 
 
+_MODE_DISABLED_MODULES: dict[str, frozenset[str]] = {
+    # Quick is intentionally an overview: profile/roles/health/readiness and
+    # lightweight quality signals only. Expensive row-dependent modules are
+    # omitted even if a target is supplied.
+    "quick": frozenset({
+        "deep_statistics",
+        "anomaly_detection",
+        "time_series",
+        "text_profile",
+        "target_intelligence",
+        "modeling",
+        "explainability",
+        "cleaning",
+    }),
+    # Standard is the operational default. It keeps practical anomaly,
+    # time-series and target diagnostics, but leaves research-grade statistics,
+    # free-text profiling and model training/explainability to deep mode.
+    "standard": frozenset({
+        "deep_statistics",
+        "text_profile",
+        "modeling",
+        "explainability",
+    }),
+    "deep": frozenset(),
+    "research": frozenset(),
+}
+
+
+def _effective_disabled_modules(
+    mode: str,
+    user_disabled: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Merge explicit disables with the stable module policy for a mode."""
+    implicit = _MODE_DISABLED_MODULES.get(mode)
+    if implicit is None:
+        raise ValueError(f"Unknown analysis mode: {mode}")
+    return tuple(sorted(set(user_disabled) | set(implicit)))
+
+
 def analyze(
     data: DataInput,
     *,
@@ -44,6 +83,11 @@ def analyze(
         workers=workers,
         disabled_modules=disabled_modules,
     )
+    mode_disabled = tuple(sorted(_MODE_DISABLED_MODULES[resolved.mode]))
+    effective_disabled = _effective_disabled_modules(
+        resolved.mode,
+        resolved.disabled_modules,
+    )
     dataset_id = f"fv_{uuid4().hex[:12]}"
 
     # Preserve the direct DataFrame path so callers do not pay for a defensive
@@ -60,7 +104,7 @@ def analyze(
             skip_ai=True,
             dataframe=data,
             write_artifacts=resolved.artifacts,
-            disabled_modules=resolved.disabled_modules,
+            disabled_modules=effective_disabled,
         )
     else:
         source = resolve_source(data)
@@ -83,7 +127,7 @@ def analyze(
                 target_column=resolved.target,
                 parallel_workers=resolved.workers,
                 skip_ai=True,
-                disabled_modules=resolved.disabled_modules,
+                disabled_modules=effective_disabled,
             )
         elif isinstance(data, (str, Path)):
             path = Path(data)
@@ -100,7 +144,7 @@ def analyze(
                 parallel_workers=resolved.workers,
                 skip_ai=True,
                 write_artifacts=resolved.artifacts,
-                disabled_modules=resolved.disabled_modules,
+                disabled_modules=effective_disabled,
             )
         else:
             dataframe = source.load()
@@ -113,8 +157,12 @@ def analyze(
                 skip_ai=True,
                 dataframe=dataframe,
                 write_artifacts=resolved.artifacts,
-                disabled_modules=resolved.disabled_modules,
+                disabled_modules=effective_disabled,
             )
 
-    payload["config"] = resolved.to_dict()
+    payload["config"] = {
+        **resolved.to_dict(),
+        "mode_disabled_modules": list(mode_disabled),
+        "effective_disabled_modules": list(effective_disabled),
+    }
     return AnalysisResult(payload)
