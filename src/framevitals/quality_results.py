@@ -1,4 +1,4 @@
-"""Dict-compatible public results for validation and drift workflows."""
+"""Dict-compatible public results for validation, drift, and quality gates."""
 
 from __future__ import annotations
 
@@ -128,4 +128,50 @@ class DriftResult(_QualityResult):
                 lines.append(
                     f"- [{str(entry.get('drift_severity')).upper()}] {entry.get('column')}"
                 )
+        return "\n".join(lines)
+
+
+class GateResult(_QualityResult):
+    """Combined contract/drift quality-gate result."""
+
+    @property
+    def status(self) -> str:
+        return str(self.get("status", "unknown"))
+
+    @property
+    def passed(self) -> bool:
+        return bool(self.get("passed", False))
+
+    @property
+    def reasons(self) -> list[str]:
+        value = self.get("reasons", [])
+        return value if isinstance(value, list) else []
+
+    def summary_text(self) -> str:
+        checks = self.get("checks", {})
+        if not isinstance(checks, dict):
+            checks = {}
+        validation = checks.get("validation")
+        drift = checks.get("drift")
+
+        lines = [
+            "FrameVitals quality gate",
+            f"Status          {self.status.upper()}",
+            f"Passed          {'YES' if self.passed else 'NO'}",
+        ]
+        if isinstance(validation, dict):
+            lines.append(
+                f"Validation      {str(validation.get('status', 'unknown')).upper()}"
+            )
+        if isinstance(drift, dict):
+            drift_gate = drift.get("gate", {})
+            if isinstance(drift_gate, dict):
+                lines.append(
+                    "Drift           "
+                    f"{str(drift_gate.get('severity', 'unknown')).upper()}"
+                )
+        if self.reasons:
+            lines.extend(["", "Reasons"])
+            for reason in self.reasons[:10]:
+                lines.append(f"- {reason}")
         return "\n".join(lines)
