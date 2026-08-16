@@ -350,7 +350,7 @@ def _validate_file_path(path: Path) -> None:
 
 
 def _arrow_memory_source(data: Any) -> ArrowTableSource | None:
-    """Recognize native Arrow containers without importing Arrow at package import."""
+    """Recognize Arrow containers/producers without importing Arrow at package import."""
     try:
         import pyarrow as pa
     except ImportError:
@@ -362,6 +362,19 @@ def _arrow_memory_source(data: Any) -> ArrowTableSource | None:
         return ArrowTableSource(
             pa.Table.from_batches([data]),
             name="<arrow_record_batch>",
+        )
+    if isinstance(data, pa.RecordBatchReader):
+        raise TypeError(
+            "Arrow RecordBatchReader inputs do not expose a cheap exact row count. "
+            "Pass a PyArrow Table/RecordBatch or another materialized Arrow-compatible "
+            "table object instead."
+        )
+
+    arrow_stream = getattr(data, "__arrow_c_stream__", None)
+    if callable(arrow_stream):
+        return ArrowTableSource(
+            pa.table(data),
+            name="<arrow_capsule_table>",
         )
     return None
 
@@ -387,6 +400,6 @@ def resolve_source(data: Any) -> DatasetSource:
     if isinstance(data, DatasetSource):
         return data
     raise TypeError(
-        "data must be a pandas DataFrame, PyArrow Table/RecordBatch, dataset path, "
+        "data must be a pandas DataFrame, Arrow-compatible table, dataset path, "
         "or DatasetSource."
     )
