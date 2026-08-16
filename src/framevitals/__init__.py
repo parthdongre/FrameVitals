@@ -41,6 +41,13 @@ def __getattr__(name: str):
     raise AttributeError(name)
 
 
+def inspect_source(data: Any) -> dict[str, Any]:
+    """Inspect source metadata and execution capabilities without analysis."""
+    from framevitals.sources import inspect_source as _inspect_source
+
+    return _inspect_source(data)
+
+
 def profile(data: Any) -> dict[str, Any]:
     """Profile shape, dtypes, missingness, cardinality, and basic summaries."""
     from framevitals.focused import profile as _profile
@@ -341,6 +348,7 @@ __all__ = [
     "DriftResult",
     "GateResult",
     "ValidationResult",
+    "inspect_source",
     "profile",
     "roles",
     "health",
