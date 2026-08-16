@@ -29,6 +29,13 @@ if TYPE_CHECKING:
 DataInput = Any
 
 
+def inspect_source(data: DataInput) -> dict[str, Any]:
+    """Inspect source metadata/capabilities without running analysis."""
+    from framevitals.sources import inspect_source as _inspect_source
+
+    return _inspect_source(data)
+
+
 def profile(data: DataInput) -> dict[str, Any]:
     """Profile a dataset through the canonical focused execution path."""
     from framevitals.focused import profile as _profile
@@ -310,6 +317,7 @@ def gate(
 
 
 __all__ = [
+    "inspect_source",
     "profile",
     "roles",
     "health",
