@@ -18,7 +18,7 @@ import pandas as pd
 
 @dataclass(slots=True)
 class PageHinkleyMeanShift:
-    """Scale-adaptive Page-Hinkley-style detector for sequential batch means."""
+    """Scale-adaptive Page-Hinkley/CUSUM detector for sequential batch means."""
 
     threshold: float = 8.0
     delta: float = 0.05
@@ -29,8 +29,6 @@ class PageHinkleyMeanShift:
     m2: float = 0.0
     cumulative_up: float = 0.0
     cumulative_down: float = 0.0
-    min_up: float = 0.0
-    min_down: float = 0.0
     max_score: float = 0.0
     detected: bool = False
     direction: str | None = None
@@ -86,23 +84,26 @@ class PageHinkleyMeanShift:
         if scale is None:
             scale = max(abs(previous_mean) * 1e-6, 1e-9)
 
-        residual = (x - previous_mean) / scale
-        up_increment = residual - self.delta
-        down_increment = -residual - self.delta
+        # A resettable one-sided statistic is materially less prone to random-walk
+        # false positives than an unbounded cumulative residual. Clipping also
+        # prevents one pathological early scale estimate from permanently
+        # tripping the detector, while sustained shifts still accumulate rapidly.
+        residual = float(np.clip((x - previous_mean) / scale, -8.0, 8.0))
+        self.cumulative_up = max(
+            0.0,
+            self.alpha * self.cumulative_up + residual - self.delta,
+        )
+        self.cumulative_down = max(
+            0.0,
+            self.alpha * self.cumulative_down - residual - self.delta,
+        )
 
-        self.cumulative_up = self.alpha * self.cumulative_up + up_increment
-        self.cumulative_down = self.alpha * self.cumulative_down + down_increment
-        self.min_up = min(self.min_up, self.cumulative_up)
-        self.min_down = min(self.min_down, self.cumulative_down)
-
-        up_score = self.cumulative_up - self.min_up
-        down_score = self.cumulative_down - self.min_down
-        score = max(up_score, down_score)
+        score = max(self.cumulative_up, self.cumulative_down)
         self.max_score = max(self.max_score, float(score))
 
         if not self.detected and score >= self.threshold:
             self.detected = True
-            self.direction = "up" if up_score >= down_score else "down"
+            self.direction = "up" if self.cumulative_up >= self.cumulative_down else "down"
             self.detected_at = self.count
         return self.detected
 
