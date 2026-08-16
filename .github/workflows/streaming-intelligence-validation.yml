@@ -32,9 +32,12 @@ jobs:
             tests/test_fast_anomaly.py \
             tests/test_neural_anomaly.py \
             tests/test_streaming_sketches.py \
+            tests/test_stream_change.py \
             tests/test_arrow_memory.py \
             tests/test_adaptive_execution.py \
             tests/test_analysis_modes.py
+      - name: Full Python suite
+        run: pytest -q
       - name: Benchmark deep mode on complex 8k x 180 data
         run: |
           python - <<'PY'
