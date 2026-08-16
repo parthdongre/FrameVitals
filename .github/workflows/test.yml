@@ -120,7 +120,7 @@ jobs:
       - name: Install native build tooling
         run: |
           python -m pip install --upgrade pip
-          pip install "maturin>=1.14,<2" "numpy>=1.26"
+          pip install "maturin>=1.14,<2" "numpy>=1.26" "pandas>=2.2"
 
       - name: Build native Python wheel
         run: |
@@ -130,12 +130,14 @@ jobs:
             --interpreter python \
             --out dist-native
 
-      - name: Verify native Python bridge
+      - name: Verify native Python bridge and profiler routing
         run: |
           pip install --force-reinstall --no-deps dist-native/*.whl
-          python - <<'PY'
+          FRAMEVITALS_BACKEND=rust python - <<'PY'
           import numpy as np
+          import pandas as pd
           from framevitals import _native
+          from framevitals.profiler import build_profile
 
           values = np.ascontiguousarray(
               np.array([1.0, 2.0, np.nan, np.inf, 4.0, 4.0], dtype=np.float64)
@@ -147,10 +149,19 @@ jobs:
           assert state["infinite"] == 1
           assert abs(state["mean"] - 2.75) < 1e-12
 
-          profile = _native.numeric_profile_f64(values, stream_id=17)
-          assert profile["cardinality_estimate"] >= 3
-          assert profile["quantiles"]["p50"] is not None
-          assert profile["reservoir"]
+          native_profile = _native.numeric_profile_f64(values, stream_id=17)
+          assert native_profile["cardinality_estimate"] >= 3
+          assert native_profile["quantiles"]["p50"] is not None
+          assert native_profile["reservoir"]
+
+          public_profile = build_profile(pd.DataFrame({
+              "value": [1.0, 2.0, None, 4.0, 4.0],
+              "other": [10.0, 20.0, 30.0, 40.0, 50.0],
+          }))
+          assert public_profile["numeric_summary_metadata"]["backend"] == "rust"
+          assert public_profile["numeric_summary_metadata"]["approximate_quantiles"] is True
+          assert public_profile["missing_counts"]["value"] == 1
+          assert public_profile["numeric_summary"]["value"]["count"] == 4
           print(_native.backend_info())
           PY
 
