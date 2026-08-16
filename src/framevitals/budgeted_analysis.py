@@ -1,9 +1,8 @@
-"""Resource-bounded adapters around legacy analysis modules.
+"""Resource-bounded adapters around expensive analysis modules.
 
-These adapters are a migration bridge. They make existing analyses safe on
-large inputs today while FrameVitals evolves toward streaming Rust/Arrow kernels
-and per-operation exact/approximate execution. Sampling is deterministic and
-always included in returned metadata.
+These adapters make legacy analyses safe on large inputs while FrameVitals moves
+more work into streaming/native kernels. Sampling and adaptive column selection
+are deterministic and are always disclosed in returned execution metadata.
 """
 
 from __future__ import annotations
@@ -14,6 +13,7 @@ import pandas as pd
 
 from framevitals.anomaly_ensemble import detect_anomalies_ensemble
 from framevitals.deep_statistics_v2 import run_deep_statistics_v2
+from framevitals.deep_triage import triage_deep_columns
 from framevitals.execution import ExecutionBudget, deterministic_sample_frame
 from framevitals.provenance import normalize_execution
 from framevitals.time_series import detect_and_analyze_time_series
@@ -45,11 +45,12 @@ def run_budgeted_deep_statistics(
     budget: ExecutionBudget,
     max_pairs: int | None = None,
 ) -> dict[str, Any]:
-    """Run legacy deep statistics without exposing it to unbounded row counts.
+    """Run deep statistics on a bounded, adaptively selected diagnostic view.
 
-    The current v2 implementation performs several operations over one shared
-    frame, including SciPy BCa bootstrap. Until those operations are separated,
-    the strictest relevant row budget is used for the shared frame.
+    Every candidate column is first ranked with cheap vectorized signals. Only a
+    mode-dependent subset is sent through bootstrap, distribution fitting and
+    bivariate statistical tests. The ordinary profile still describes every
+    source column, while deep analysis spends compute where it is most useful.
     """
     sample_limit = max(
         20,
@@ -61,6 +62,15 @@ def run_budgeted_deep_statistics(
     sample_limit = min(sample_limit, max(len(dataframe), 1))
     work, sampling = deterministic_sample_frame(dataframe, sample_limit)
 
+    triage = triage_deep_columns(work, mode=budget.mode)
+    selected_columns = list(triage.selected_columns)
+    if selected_columns:
+        diagnostic_view = work.loc[:, selected_columns]
+    else:
+        # Preserve a stable empty-result path without passing unrelated datetime
+        # or unsupported extension columns into the legacy statistical battery.
+        diagnostic_view = pd.DataFrame(index=work.index)
+
     pair_budget = (
         budget.relationship_pair_budget
         if max_pairs is None
@@ -69,22 +79,26 @@ def run_budgeted_deep_statistics(
     if pair_budget < 1:
         raise ValueError("max_pairs must be at least 1.")
 
-    payload = run_deep_statistics_v2(work, max_pairs=pair_budget)
+    payload = run_deep_statistics_v2(diagnostic_view, max_pairs=pair_budget)
+    triage_payload = triage.to_dict()
+    payload["column_triage"] = triage_payload
+
     sampling = {
         **sampling,
         "reason": (
-            "Legacy deep-statistics operations share one bounded frame; "
-            "the strict bootstrap budget is applied to prevent quadratic BCa memory growth."
-            if sampling["sampled"]
-            else "Full input fits within the deep-statistics execution budget."
+            "Deep statistics use a bounded row view plus adaptive column triage; "
+            "bootstrap/distribution work is reserved for the highest-interest columns."
         ),
         "pair_budget": int(pair_budget),
+        "column_triage": triage_payload,
+        "source_columns": int(dataframe.shape[1]),
+        "diagnostic_columns": int(len(selected_columns)),
     }
     return _attach_execution(
         payload,
         budget=budget,
         sampling=sampling,
-        scope="bounded_deep_statistics",
+        scope="adaptive_deep_statistics",
     )
 
 
