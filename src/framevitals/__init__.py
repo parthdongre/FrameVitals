@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from framevitals.config import AnalysisConfig
+from framevitals.planning import AnalysisPlan
 from framevitals.result import AnalysisResult, ColumnResult
 
 __version__ = "0.1.0"
@@ -20,12 +21,7 @@ def analyze(
     preset: str | None = None,
     config: Any = None,
 ) -> AnalysisResult:
-    """Analyze a tabular dataset from a DataFrame or supported file path.
-
-    Explicit keyword arguments override values from ``config`` and ``preset``.
-    The analytics implementation is imported lazily so importing FrameVitals
-    does not initialize the complete analysis stack.
-    """
+    """Analyze a tabular dataset from a DataFrame or supported file path."""
     from framevitals.api import analyze as _analyze
 
     return _analyze(
@@ -33,6 +29,28 @@ def analyze(
         target=target,
         mode=mode,
         artifacts=artifacts,
+        workers=workers,
+        preset=preset,
+        config=config,
+    )
+
+
+def plan(
+    data: Any,
+    *,
+    target: str | None = None,
+    mode: str | None = None,
+    workers: int | None = None,
+    preset: str | None = None,
+    config: Any = None,
+) -> AnalysisPlan:
+    """Preview applicable analyses without running heavy analysis stages."""
+    from framevitals.api import plan as _plan
+
+    return _plan(
+        data,
+        target=target,
+        mode=mode,
         workers=workers,
         preset=preset,
         config=config,
@@ -73,9 +91,11 @@ def validate(data: Any, contract: dict[str, Any]) -> dict[str, Any]:
 
 __all__ = [
     "AnalysisConfig",
+    "AnalysisPlan",
     "AnalysisResult",
     "ColumnResult",
     "analyze",
+    "plan",
     "compare",
     "infer_contract",
     "validate",
