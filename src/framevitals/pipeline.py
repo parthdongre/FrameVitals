@@ -30,6 +30,7 @@ from framevitals.ml_readiness import calculate_ml_readiness
 from framevitals.model_leaderboard import run_model_leaderboard
 from framevitals.profiler import build_profile
 from framevitals.signal_engine import build_signals
+from framevitals.target_intelligence import run_target_intelligence
 from framevitals.text_profile import profile_text_columns
 from framevitals.time_series import detect_and_analyze_time_series
 from framevitals.visualizer import generate_charts
@@ -63,31 +64,7 @@ def run_full_analysis(
     dataframe: pd.DataFrame | None = None,
     write_artifacts: bool = True,
 ) -> dict:
-    """Run the complete FrameVitals analysis pipeline.
-
-    Parameters
-    ----------
-    dataset_id:
-        Unique identifier used for optional artifact filenames.
-    file_path:
-        Path-like dataset source. Omit when ``dataframe`` is supplied.
-    original_filename:
-        Source label included in the result.
-    analysis_mode:
-        One of ``quick``, ``standard``, ``deep``, or ``research``.
-    skip_ai:
-        Skip the optional LLM report.
-    target_column:
-        Optional supervised-learning target column.
-    parallel_workers:
-        Worker count for independent diagnostic tasks.
-    dataframe:
-        Optional in-memory DataFrame. When supplied it takes precedence over
-        ``file_path`` and is copied before analysis.
-    write_artifacts:
-        Persist cleaned CSV/chart artifacts. Web application callers keep this
-        enabled; reusable library calls can disable filesystem side effects.
-    """
+    """Run the complete FrameVitals analysis pipeline."""
     overall_start = time.perf_counter()
     timings_ms: dict[str, Any] = {}
 
@@ -190,9 +167,23 @@ def run_full_analysis(
         ) * 1000
         timings_ms["phase3_tasks"] = per_task_ms
 
-    # Phase 4: target-aware ML chain.
+    # Phase 4: target-aware diagnostics and ML chain.
+    target_intelligence = None
     model_leaderboard = None
     explainability = None
+
+    if target_column:
+        t0 = time.perf_counter()
+        _, target_intelligence, _ = _safe_call(
+            "target_intelligence",
+            lambda: run_target_intelligence(
+                df,
+                target_column=target_column,
+                column_roles=column_roles,
+            ),
+        )
+        timings_ms["target_intelligence"] = (time.perf_counter() - t0) * 1000
+
     if target_column and analysis_mode in {"standard", "deep", "research"}:
         t0 = time.perf_counter()
         _, model_leaderboard, _ = _safe_call(
@@ -307,6 +298,7 @@ def run_full_analysis(
         "advanced": advanced,
         "deep_statistics_v2": deep_statistics_v2,
         "anomalies_v2": anomalies_v2,
+        "target_intelligence": target_intelligence,
         "model_leaderboard": model_leaderboard,
         "explainability": explainability,
         "time_series": time_series_analysis,
