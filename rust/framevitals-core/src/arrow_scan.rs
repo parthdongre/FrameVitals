@@ -7,8 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use arrow_array::{
-    Array, Float32Array, Float64Array, Int32Array, Int64Array, RecordBatch,
-    UInt32Array, UInt64Array,
+    Array, Float32Array, Float64Array, Int32Array, Int64Array, RecordBatch, UInt32Array,
+    UInt64Array,
 };
 use arrow_schema::DataType;
 
@@ -120,14 +120,8 @@ mod tests {
 
     fn batch(values: Vec<Option<f64>>, integers: Vec<Option<i64>>) -> RecordBatch {
         RecordBatch::try_from_iter(vec![
-            (
-                "value",
-                Arc::new(Float64Array::from(values)) as ArrayRef,
-            ),
-            (
-                "count",
-                Arc::new(Int64Array::from(integers)) as ArrayRef,
-            ),
+            ("value", Arc::new(Float64Array::from(values)) as ArrayRef),
+            ("count", Arc::new(Int64Array::from(integers)) as ArrayRef),
             (
                 "label",
                 Arc::new(StringArray::from(vec![Some("a"), None, Some("c")])) as ArrayRef,
