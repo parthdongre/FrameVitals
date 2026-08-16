@@ -12,6 +12,7 @@ from framevitals.contracts import validate_contract
 from framevitals.drift_analysis import compare_datasets
 from framevitals.loader import load_dataset
 from framevitals.pipeline import run_full_analysis
+from framevitals.result import AnalysisResult
 
 VALID_MODES = {
     "quick",
@@ -56,7 +57,7 @@ def analyze(
     target: str | None = None,
     mode: str = "standard",
     artifacts: bool = False,
-) -> dict:
+) -> AnalysisResult:
     """Analyze a tabular dataset with FrameVitals.
 
     Parameters
@@ -73,16 +74,18 @@ def analyze(
 
     Returns
     -------
-    dict
-        Structured FrameVitals analysis results.
+    AnalysisResult
+        A dict-compatible structured result with summary, column, JSON, HTML,
+        and notebook helpers.
 
     Examples
     --------
     >>> import pandas as pd
     >>> import framevitals as fv
     >>> df = pd.DataFrame({"age": [20, 30], "income": [30000, 50000]})
-    >>> report = fv.analyze(df, mode="quick")
-    >>> print(report["health"]["overall_score"])
+    >>> result = fv.analyze(df, mode="quick")
+    >>> print(result["health"]["overall_score"])
+    >>> print(result.summary())
     """
     if mode not in VALID_MODES:
         raise ValueError(
@@ -95,7 +98,7 @@ def analyze(
     if isinstance(data, pd.DataFrame):
         if data.empty:
             raise ValueError("Dataset DataFrame is empty.")
-        return run_full_analysis(
+        payload = run_full_analysis(
             dataset_id=dataset_id,
             dataframe=data,
             original_filename="<dataframe>",
@@ -104,10 +107,11 @@ def analyze(
             skip_ai=True,
             write_artifacts=artifacts,
         )
+        return AnalysisResult(payload)
 
     if isinstance(data, (str, Path)):
         path = _validated_path(data)
-        return run_full_analysis(
+        payload = run_full_analysis(
             dataset_id=dataset_id,
             file_path=path,
             original_filename=path.name,
@@ -116,6 +120,7 @@ def analyze(
             skip_ai=True,
             write_artifacts=artifacts,
         )
+        return AnalysisResult(payload)
 
     raise TypeError(
         "data must be a pandas DataFrame or a path to a supported dataset."
