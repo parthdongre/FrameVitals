@@ -82,12 +82,48 @@ class PandasSource:
         return self.dataframe.copy()
 
 
+def _normalize_arrow_table_types(table: Any) -> Any:
+    """Cast Arrow view types to compute-compatible equivalents without pandas."""
+    try:
+        import pyarrow as pa
+    except ImportError:
+        return table
+
+    fields = []
+    changed = False
+    for field in table.schema:
+        target_type = field.type
+        if pa.types.is_string_view(target_type):
+            target_type = pa.string()
+        elif pa.types.is_binary_view(target_type):
+            target_type = pa.binary()
+
+        changed = changed or target_type != field.type
+        fields.append(
+            pa.field(
+                field.name,
+                target_type,
+                nullable=field.nullable,
+                metadata=field.metadata,
+            )
+        )
+
+    if not changed:
+        return table
+
+    target_schema = pa.schema(fields, metadata=table.schema.metadata)
+    return table.cast(target_schema)
+
+
 @dataclass(slots=True)
 class ArrowTableSource:
     """Projection-aware in-memory Arrow source without eager pandas conversion."""
 
     table: Any
     name: str = "<arrow_table>"
+
+    def __post_init__(self) -> None:
+        self.table = _normalize_arrow_table_types(self.table)
 
     def inspect(self) -> DatasetMetadata:
         return DatasetMetadata(
