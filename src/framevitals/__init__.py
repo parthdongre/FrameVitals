@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from framevitals.cleaning_plan import CleaningPlan
-from framevitals.config import AnalysisConfig
+from framevitals.config import AnalysisConfig, available_modules
 from framevitals.planning import AnalysisPlan
 from framevitals.quality_results import DriftResult, ValidationResult
 from framevitals.result import AnalysisResult, ColumnResult
@@ -28,6 +28,7 @@ def analyze(
     workers: int | None = None,
     preset: str | None = None,
     config: Any = None,
+    disabled_modules: list[str] | tuple[str, ...] | None = None,
 ) -> AnalysisResult:
     """Analyze a tabular dataset from a DataFrame or supported file path."""
     from framevitals.api import analyze as _analyze
@@ -40,6 +41,7 @@ def analyze(
         workers=workers,
         preset=preset,
         config=config,
+        disabled_modules=disabled_modules,
     )
 
 
@@ -51,6 +53,7 @@ def plan(
     workers: int | None = None,
     preset: str | None = None,
     config: Any = None,
+    disabled_modules: list[str] | tuple[str, ...] | None = None,
 ) -> AnalysisPlan:
     """Preview applicable analyses without running heavy analysis stages."""
     from framevitals.api import plan as _plan
@@ -62,6 +65,7 @@ def plan(
         workers=workers,
         preset=preset,
         config=config,
+        disabled_modules=disabled_modules,
     )
 
 
@@ -144,6 +148,7 @@ __all__ = [
     "compare",
     "infer_contract",
     "validate",
+    "available_modules",
     "create_snapshot",
     "load_snapshot",
     "compare_snapshots",
