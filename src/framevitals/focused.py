@@ -248,7 +248,74 @@ def anomalies(
     from framevitals.budgeted_analysis import run_budgeted_anomalies
     from framevitals.execution import derive_execution_budget
 
-    dataframe, source_name = _load(data)
+    source = resolve_source(data)
+    metadata = source.inspect()
+    if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
+        from framevitals.streaming_profile import (
+            numeric_columns_for_streaming_source,
+            sample_streaming_source,
+        )
+
+        if metadata.rows is None or metadata.columns is None:
+            raise ValueError("Streaming anomaly analysis requires source shape metadata.")
+        source_rows = int(metadata.rows)
+        source_columns = int(metadata.columns)
+        budget = derive_execution_budget(source_rows, source_columns, mode=mode)
+        numeric_columns = numeric_columns_for_streaming_source(source)
+        if not numeric_columns:
+            return _named({
+                "available": False,
+                "reason": "No numeric columns available for anomaly analysis.",
+                "execution": {
+                    "sampled": False,
+                    "source_rows": source_rows,
+                    "source_columns": source_columns,
+                    "sample_rows": 0,
+                    "full_materialization": False,
+                    "strategy": "streaming_schema_only",
+                },
+                "source": metadata.to_dict(),
+            }, metadata.name)
+
+        sample_limit = max(100, int(budget.anomaly_sample_rows))
+        sample = sample_streaming_source(
+            source,
+            sample_rows=sample_limit,
+            columns=numeric_columns,
+        )
+        payload = run_budgeted_anomalies(
+            sample,
+            budget=budget,
+            contamination=contamination,
+            threshold=threshold,
+            max_columns=max_columns,
+            top_k=top_k,
+        )
+        execution = payload.setdefault("execution", {})
+        sampled = len(sample) < source_rows
+        execution.update({
+            "sampled": sampled,
+            "source_rows": source_rows,
+            "source_columns": source_columns,
+            "projected_columns": int(len(numeric_columns)),
+            "sample_rows": int(len(sample)),
+            "strategy": (
+                "streaming_evenly_spaced_numeric_projection"
+                if sampled
+                else "full_stream_numeric_projection"
+            ),
+            "full_materialization": False,
+            "reason": (
+                "Anomaly diagnostics ran on a bounded numeric projection selected "
+                "directly from the streaming source."
+                if sampled
+                else "The streaming source fits within the anomaly execution budget."
+            ),
+        })
+        payload["source"] = metadata.to_dict()
+        return _named(payload, metadata.name)
+
+    dataframe = source.load()
     budget = derive_execution_budget(
         len(dataframe),
         len(dataframe.columns),
@@ -262,7 +329,7 @@ def anomalies(
         max_columns=max_columns,
         top_k=top_k,
     )
-    return _named(payload, source_name)
+    return _named(payload, metadata.name)
 
 
 def relationships(
