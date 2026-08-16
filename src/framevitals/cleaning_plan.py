@@ -24,8 +24,6 @@ CLEANING_PLAN_SCHEMA_VERSION = "1"
 def _python_scalar(value: Any) -> Any:
     if isinstance(value, np.generic):
         return value.item()
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
     return value
 
 
