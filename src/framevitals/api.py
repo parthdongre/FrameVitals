@@ -7,12 +7,17 @@ from uuid import uuid4
 
 import pandas as pd
 
+from framevitals.analysis_selector import select_analyses
+from framevitals.column_roles import infer_column_roles
 from framevitals.config import ConfigInput, resolve_config
 from framevitals.contracts import infer_contract as _infer_contract
 from framevitals.contracts import validate_contract
+from framevitals.dataset_signals import detect_dataset_signals
 from framevitals.drift_analysis import compare_datasets
 from framevitals.loader import load_dataset
 from framevitals.pipeline import run_full_analysis
+from framevitals.planning import AnalysisPlan
+from framevitals.profiler import build_profile
 from framevitals.result import AnalysisResult
 
 DataInput = str | Path | pd.DataFrame
@@ -55,35 +60,7 @@ def analyze(
     preset: str | None = None,
     config: ConfigInput = None,
 ) -> AnalysisResult:
-    """Analyze a tabular dataset with FrameVitals.
-
-    Parameters
-    ----------
-    data:
-        A pandas DataFrame or a path to a CSV, TSV, Excel, or JSON dataset.
-    target:
-        Optional supervised-learning target column. Explicit values override
-        configuration-file values.
-    mode:
-        Analysis depth: ``quick``, ``standard``, ``deep``, or ``research``.
-        ``None`` resolves to configuration/preset/default behaviour.
-    artifacts:
-        Persist cleaned CSV/chart artifacts. ``None`` resolves from config and
-        otherwise defaults to ``False`` for reusable library calls.
-    workers:
-        Worker count for independent diagnostic tasks.
-    preset:
-        Optional built-in runtime preset such as ``quick``, ``standard``,
-        ``deep``, ``research``, or ``ci``.
-    config:
-        ``AnalysisConfig``, mapping, or path to a TOML configuration file.
-
-    Returns
-    -------
-    AnalysisResult
-        A dict-compatible structured result with summary, column, JSON, HTML,
-        and notebook helpers.
-    """
+    """Analyze a tabular dataset with FrameVitals."""
     resolved = resolve_config(
         config,
         preset=preset,
@@ -128,6 +105,59 @@ def analyze(
     return AnalysisResult(payload)
 
 
+def plan(
+    data: DataInput,
+    *,
+    target: str | None = None,
+    mode: str | None = None,
+    workers: int | None = None,
+    preset: str | None = None,
+    config: ConfigInput = None,
+) -> AnalysisPlan:
+    """Preview which analyses FrameVitals considers applicable.
+
+    Planning performs loading, profiling, role inference, signal detection, and
+    selector evaluation only. It does not run the heavier model/statistics,
+    cleaning, chart, or AI stages of :func:`analyze`.
+    """
+    resolved = resolve_config(
+        config,
+        preset=preset,
+        mode=mode,
+        target=target,
+        workers=workers,
+        artifacts=False,
+    )
+    dataframe, source_name = _load_input(data, label="Dataset")
+    profile = build_profile(dataframe)
+    column_roles = infer_column_roles(dataframe)
+    dataset_signals = detect_dataset_signals(
+        dataframe,
+        profile,
+        column_roles=column_roles,
+    )
+    selection = select_analyses(
+        signals=dataset_signals,
+        analysis_mode=resolved.mode,
+        target_column=resolved.target,
+    )
+
+    public_signals = {
+        key: value
+        for key, value in dataset_signals.items()
+        if key != "column_roles"
+    }
+    return AnalysisPlan({
+        "dataset_name": source_name,
+        "analysis_mode": resolved.mode,
+        "target": resolved.target,
+        "shape": dict(profile.get("shape", {})),
+        "config": resolved.to_dict(),
+        "signals": public_signals,
+        "selection": selection,
+    })
+
+
 def compare(
     reference: DataInput,
     current: DataInput,
@@ -135,12 +165,7 @@ def compare(
     columns: list[str] | None = None,
     max_columns: int = 30,
 ) -> dict:
-    """Compare reference and current datasets for distribution drift.
-
-    Both inputs may independently be pandas DataFrames or supported dataset
-    paths. Numeric features use PSI, KS statistics, and standardized mean
-    shift; categorical features use PSI and chi-square diagnostics.
-    """
+    """Compare reference and current datasets for distribution drift."""
     if max_columns < 1:
         raise ValueError("max_columns must be at least 1.")
 
@@ -159,11 +184,7 @@ def compare(
 
 
 def infer_contract(data: DataInput) -> dict[str, Any]:
-    """Infer a JSON-serializable data contract from a reference dataset.
-
-    The result can be saved with :mod:`json` and passed to :func:`validate`
-    when checking later datasets in a pipeline or CI job.
-    """
+    """Infer a JSON-serializable data contract from a reference dataset."""
     dataframe, source_name = _load_input(data, label="Reference")
     contract = _infer_contract(dataframe)
     contract["reference_name"] = source_name
@@ -174,13 +195,7 @@ def validate(
     data: DataInput,
     contract: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Validate a dataset against an inferred or explicit data contract.
-
-    Contract failures are returned as structured findings rather than raised,
-    allowing callers to decide whether warnings or errors should block a job.
-    Invalid contract definitions and unreadable datasets still raise clear
-    exceptions.
-    """
+    """Validate a dataset against an inferred or explicit data contract."""
     dataframe, source_name = _load_input(data, label="Dataset")
     result = validate_contract(dataframe, contract)
     result["dataset_name"] = source_name
