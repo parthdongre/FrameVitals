@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING, Any
 
 from framevitals.config import AnalysisConfig, available_modules
 from framevitals.planning import AnalysisPlan
-from framevitals.quality_results import DriftResult, GateResult, ValidationResult
+from framevitals.quality_results import (
+    CheckResult,
+    DriftResult,
+    GateResult,
+    ValidationResult,
+)
 from framevitals.result import AnalysisResult, ColumnResult
 from framevitals.snapshots import (
     AnalysisSnapshot,
@@ -163,7 +168,7 @@ def analyze(
     config: Any = None,
     disabled_modules: list[str] | tuple[str, ...] | None = None,
 ) -> AnalysisResult:
-    """Analyze a tabular dataset from a DataFrame or supported file path."""
+    """Analyze a supported tabular source through the canonical dispatcher."""
     from framevitals.analysis_api import analyze as _analyze
 
     return _analyze(
@@ -281,11 +286,18 @@ def check(
     )
 
 
-def run_checks(data: Any, checks: Any) -> dict[str, Any]:
+def run_checks(data: Any, checks: Any) -> CheckResult:
     """Run custom data checks exactly against a dataset."""
     from framevitals.checks import run_checks as _run_checks
 
     return _run_checks(data, checks)
+
+
+def discover_checks(*, group: str = "framevitals.checks"):
+    """Explicitly load installed third-party check plugins."""
+    from framevitals.plugins import discover_checks as _discover_checks
+
+    return _discover_checks(group=group)
 
 
 def gate(
@@ -325,6 +337,7 @@ __all__ = [
     "CleaningPlan",
     "ColumnResult",
     "DataCheck",
+    "CheckResult",
     "DriftResult",
     "GateResult",
     "ValidationResult",
@@ -347,6 +360,7 @@ __all__ = [
     "validate",
     "check",
     "run_checks",
+    "discover_checks",
     "gate",
     "available_modules",
     "create_snapshot",
