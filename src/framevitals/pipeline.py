@@ -32,6 +32,7 @@ from framevitals.loader import load_dataset
 from framevitals.ml_readiness import calculate_ml_readiness
 from framevitals.model_leaderboard import run_model_leaderboard
 from framevitals.profiler import build_profile
+from framevitals.quality_diagnostics import run_quality_diagnostics
 from framevitals.signal_engine import build_signals
 from framevitals.target_intelligence import run_target_intelligence
 from framevitals.text_profile import profile_text_columns
@@ -147,7 +148,7 @@ def run_full_analysis(
     }
     timings_ms["analysis_selection"] = (time.perf_counter() - t0) * 1000
 
-    # Phase 2: quality scoring remains core and always available.
+    # Phase 2: core quality/readiness plus bounded practical diagnostics.
     t0 = time.perf_counter()
     health = calculate_health_score(df, profile)
     timings_ms["health"] = (time.perf_counter() - t0) * 1000
@@ -159,6 +160,24 @@ def run_full_analysis(
     t0 = time.perf_counter()
     advanced = calculate_advanced_indicators(df)
     timings_ms["advanced"] = (time.perf_counter() - t0) * 1000
+
+    if module_enabled("quality_diagnostics"):
+        max_sample_rows = 1_000 if analysis_mode == "quick" else 5_000
+        _, quality_diagnostics, quality_elapsed = _safe_call(
+            "quality_diagnostics",
+            lambda: run_quality_diagnostics(
+                df,
+                profile=profile,
+                column_roles=column_roles,
+                max_sample_rows=max_sample_rows,
+            ),
+        )
+        timings_ms["quality_diagnostics"] = quality_elapsed
+        module_status["quality_diagnostics"] = _result_status(quality_diagnostics)
+    else:
+        quality_diagnostics = _skipped_module("quality_diagnostics")
+        timings_ms["quality_diagnostics"] = 0.0
+        module_status["quality_diagnostics"] = "disabled"
 
     # Phase 3: independent heavier analyses.
     deep_statistics_v2 = None
@@ -424,6 +443,7 @@ def run_full_analysis(
         "signals": signals,
         "ml_readiness": ml_readiness,
         "advanced": advanced,
+        "quality_diagnostics": quality_diagnostics,
         "deep_statistics_v2": deep_statistics_v2,
         "anomalies_v2": anomalies_v2,
         "target_intelligence": target_intelligence,
