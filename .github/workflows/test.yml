@@ -269,10 +269,15 @@ jobs:
           python - <<'PY'
           import flask
           import lightgbm
+          import matplotlib
           import ollama
+          import openpyxl
+          import pydantic
           import pyarrow
           import pyod
+          import seaborn
           import shap
+          import xlrd
           import xgboost
           print("Optional dependency smoke test passed")
           PY
@@ -282,7 +287,9 @@ jobs:
           pytest -v \
             tests/test_ai_agent.py \
             tests/test_ml_engine.py \
-            tests/test_model_diagnostics.py
+            tests/test_model_diagnostics.py \
+            tests/test_visualization_engine.py \
+            tests/test_web_dependency_boundaries.py
 
   frontend:
     name: frontend build
