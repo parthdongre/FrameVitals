@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from framevitals import __version__
-from framevitals.config import available_presets
+from framevitals.config import available_modules, available_presets
 
 
 def _add_output_argument(parser: argparse.ArgumentParser) -> None:
@@ -44,6 +44,17 @@ def _add_runtime_arguments(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=None,
         help="Parallel worker count. Overrides config values.",
+    )
+    parser.add_argument(
+        "--disable-module",
+        dest="disabled_modules",
+        action="append",
+        choices=list(available_modules()),
+        default=None,
+        help=(
+            "Disable an optional execution module. Repeat the flag to disable "
+            "multiple modules. Explicit flags override the config/preset list."
+        ),
     )
 
 
@@ -337,6 +348,7 @@ def main() -> int:
             workers=args.workers,
             preset=args.preset,
             config=args.config,
+            disabled_modules=args.disabled_modules,
         )
 
         if args.output is not None:
@@ -356,6 +368,9 @@ def main() -> int:
                     f"workers={resolved.get('workers')} "
                     f"artifacts={resolved.get('artifacts')}"
                 )
+                disabled = resolved.get("disabled_modules") or ()
+                if disabled:
+                    print(f"Disabled      {', '.join(disabled)}")
             if args.output is not None:
                 print(f"Full JSON     {args.output}")
             if args.html_report is not None:
@@ -372,6 +387,7 @@ def main() -> int:
             workers=args.workers,
             preset=args.preset,
             config=args.config,
+            disabled_modules=args.disabled_modules,
         )
         if args.output is not None:
             _write_json(dict(result), args.output)
@@ -379,6 +395,9 @@ def main() -> int:
             print(json.dumps(dict(result), indent=2, default=str))
         else:
             print(result.explain_text())
+            disabled = result.get("config", {}).get("disabled_modules") or ()
+            if disabled:
+                print(f"Disabled modules: {', '.join(disabled)}")
             if args.output is not None:
                 print(f"Plan JSON     {args.output}")
         return 0
