@@ -24,6 +24,11 @@ from framevitals.backends import (
 )
 from framevitals.profiler import _bounded_correlations, series_to_dict
 from framevitals.sources import StreamingDatasetSource
+from framevitals.streaming_sketches import (
+    NumpyLogQuantileSketch,
+    PYTHON_NUMERIC_SKETCH_CELL_BUDGET,
+    should_use_full_stream_numpy_sketch,
+)
 
 
 STREAM_BATCH_SIZE = 65_536
@@ -204,19 +209,32 @@ def _summary_from_native_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
 def _summary_from_python_state(
     state: NumericColumnState,
     sample: pd.Series,
+    quantile_sketch: NumpyLogQuantileSketch | None = None,
 ) -> dict[str, Any]:
-    finite_sample = pd.to_numeric(sample, errors="coerce")
-    finite_values = finite_sample.to_numpy(dtype="float64", na_value=np.nan)
-    finite_sample = finite_sample[np.isfinite(finite_values)]
-    quantiles = finite_sample.quantile([0.25, 0.5, 0.75]) if len(finite_sample) else pd.Series()
+    if quantile_sketch is not None:
+        q25 = quantile_sketch.quantile(0.25)
+        q50 = quantile_sketch.quantile(0.50)
+        q75 = quantile_sketch.quantile(0.75)
+    else:
+        finite_sample = pd.to_numeric(sample, errors="coerce")
+        finite_values = finite_sample.to_numpy(dtype="float64", na_value=np.nan)
+        finite_sample = finite_sample[np.isfinite(finite_values)]
+        quantiles = (
+            finite_sample.quantile([0.25, 0.5, 0.75])
+            if len(finite_sample)
+            else pd.Series()
+        )
+        q25 = quantiles.get(0.25)
+        q50 = quantiles.get(0.5)
+        q75 = quantiles.get(0.75)
     return {
         "count": state.count,
         "mean": _round_optional(state.mean if state.count else None),
         "std": _round_optional(state.std),
         "min": _round_optional(state.minimum),
-        "25%": _round_optional(quantiles.get(0.25)),
-        "50%": _round_optional(quantiles.get(0.5)),
-        "75%": _round_optional(quantiles.get(0.75)),
+        "25%": _round_optional(q25),
+        "50%": _round_optional(q50),
+        "75%": _round_optional(q75),
         "max": _round_optional(state.maximum),
     }
 
@@ -381,10 +399,19 @@ def build_streaming_profile(
     preview_frame: pd.DataFrame | None = None
     missing_counts = {column: 0 for column in columns}
     selected_backend = resolve_numeric_backend()
+    use_numpy_quantile_sketches = (
+        selected_backend == "numpy"
+        and should_use_full_stream_numpy_sketch(int(rows), len(numeric_cols))
+    )
 
     native_accumulators: dict[str, Any] = {}
     native_string_accumulators: dict[str, Any] = {}
     python_states = {column: NumericColumnState() for column in numeric_cols}
+    numpy_quantile_sketches = (
+        {column: NumpyLogQuantileSketch() for column in numeric_cols}
+        if use_numpy_quantile_sketches
+        else {}
+    )
     if selected_backend == "rust":
         native_accumulators = {
             column: create_numeric_accumulator(stream_id=index)
@@ -425,6 +452,9 @@ def build_streaming_profile(
                 python_states[column] = python_states[column].merge(
                     _state_from_payload(numeric_payload)
                 )
+                quantile_sketch = numpy_quantile_sketches.get(column)
+                if quantile_sketch is not None:
+                    quantile_sketch.update(values)
 
         offset += int(batch.num_rows)
 
@@ -457,6 +487,7 @@ def build_streaming_profile(
             "method": "native_streaming_accumulator",
             "approximate_quantiles": True,
             "quantile_relative_accuracy": quantile_accuracy,
+            "quantile_source": "full_stream_sketch",
             "finite_only_moments": True,
             "columns_profiled": len(numeric_cols),
             "raw_observations_retained": False,
@@ -467,17 +498,34 @@ def build_streaming_profile(
             numeric_summary[column] = _summary_from_python_state(
                 state,
                 sample[column] if column in sample else pd.Series(dtype="float64"),
+                numpy_quantile_sketches.get(column),
             )
             missing_counts[column] = state.missing
-        numeric_metadata = {
-            "backend": "numpy",
-            "method": "mergeable_streaming_moments_with_row_sample_quantiles",
-            "approximate_quantiles": len(sample) < rows,
-            "quantile_sample_rows": int(len(sample)),
-            "finite_only_moments": True,
-            "columns_profiled": len(numeric_cols),
-            "raw_observations_retained": False,
-        }
+        if use_numpy_quantile_sketches:
+            numeric_metadata = {
+                "backend": "numpy",
+                "method": "mergeable_streaming_moments_with_full_stream_log_quantiles",
+                "approximate_quantiles": True,
+                "quantile_relative_accuracy": 0.01,
+                "quantile_source": "full_stream_sketch",
+                "quantile_cell_budget": int(PYTHON_NUMERIC_SKETCH_CELL_BUDGET),
+                "finite_only_moments": True,
+                "columns_profiled": len(numeric_cols),
+                "raw_observations_retained": False,
+            }
+        else:
+            numeric_metadata = {
+                "backend": "numpy",
+                "method": "mergeable_streaming_moments_with_row_sample_quantiles",
+                "approximate_quantiles": len(sample) < rows,
+                "quantile_sample_rows": int(len(sample)),
+                "quantile_source": "bounded_row_sample",
+                "quantile_cell_budget": int(PYTHON_NUMERIC_SKETCH_CELL_BUDGET),
+                "quantile_sketch_skipped_for_cost": bool(numeric_cols),
+                "finite_only_moments": True,
+                "columns_profiled": len(numeric_cols),
+                "raw_observations_retained": False,
+            }
 
     categorical_summary: dict[str, dict[str, Any]] = {}
     native_categorical_columns: list[str] = []
@@ -594,6 +642,8 @@ def build_streaming_profile(
             ),
             "sample_strategy": "evenly_spaced_global_rows",
             "numeric_backend": selected_backend,
+            "numpy_full_stream_quantile_sketches": bool(use_numpy_quantile_sketches),
+            "numpy_numeric_sketch_cell_budget": int(PYTHON_NUMERIC_SKETCH_CELL_BUDGET),
             "native_string_sketch_columns": native_categorical_columns,
         },
     }
