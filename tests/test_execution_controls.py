@@ -21,6 +21,7 @@ def test_analyze_can_disable_expensive_modules_without_losing_result_keys(tmp_pa
         mode="standard",
         artifacts=True,
         disabled_modules=[
+            "quality_diagnostics",
             "deep_statistics",
             "anomaly_detection",
             "time_series",
@@ -42,6 +43,7 @@ def test_analyze_can_disable_expensive_modules_without_losing_result_keys(tmp_pa
         for status in result["execution"]["module_status"].values()
     )
 
+    assert result["quality_diagnostics"]["skipped"] is True
     assert result["deep_statistics_v2"]["skipped"] is True
     assert result["anomalies_v2"]["skipped"] is True
     assert result["time_series"]["skipped"] is True
@@ -57,7 +59,7 @@ def test_analyze_can_disable_expensive_modules_without_losing_result_keys(tmp_pa
     assert not (tmp_path / "static" / "charts").exists()
 
 
-def test_ci_preset_skips_modeling_but_keeps_target_intelligence():
+def test_ci_preset_skips_modeling_but_keeps_target_intelligence_and_quality():
     result = framevitals.analyze(
         _frame(),
         target="target",
@@ -70,9 +72,11 @@ def test_ci_preset_skips_modeling_but_keeps_target_intelligence():
     assert execution["charts"] == "disabled"
     assert execution["ai"] == "disabled"
     assert execution["target_intelligence"] == "ran"
+    assert execution["quality_diagnostics"] == "ran"
 
     assert result["model_leaderboard"]["skipped"] is True
     assert result["target_intelligence"]["available"] is True
+    assert result["quality_diagnostics"]["available"] is True
 
 
 def test_plan_surfaces_execution_module_selection():
@@ -86,6 +90,7 @@ def test_plan_surfaces_execution_module_selection():
     modules = plan["selection"]["execution_modules"]
     assert modules["disabled"] == ["charts", "modeling"]
     assert "anomaly_detection" in modules["enabled"]
+    assert "quality_diagnostics" in modules["enabled"]
     assert plan["config"]["disabled_modules"] == ("modeling", "charts")
 
 
