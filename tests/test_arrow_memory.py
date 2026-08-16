@@ -94,3 +94,32 @@ def test_arrow_record_batch_normalizes_to_streaming_source():
     result = framevitals.profile(batch)
     assert result["dataset_name"] == "<arrow_record_batch>"
     assert result["shape"] == {"rows": 3, "columns": 2}
+
+
+def test_arrow_capsule_table_normalizes_without_library_specific_adapter():
+    table = _table(1_200)
+
+    class CapsuleTable:
+        def __arrow_c_stream__(self, requested_schema=None):
+            return table.__arrow_c_stream__(requested_schema)
+
+    source = resolve_source(CapsuleTable())
+    metadata = source.inspect()
+
+    assert isinstance(source, ArrowTableSource)
+    assert metadata.name == "<arrow_capsule_table>"
+    assert metadata.rows == table.num_rows
+    assert metadata.columns == table.num_columns
+    assert metadata.supports_streaming is True
+
+    result = framevitals.profile(CapsuleTable())
+    assert result["shape"] == {"rows": table.num_rows, "columns": table.num_columns}
+    assert result["source_metadata"]["format"] == "arrow"
+
+
+def test_arrow_record_batch_reader_is_not_silently_materialized():
+    table = _table(20)
+    reader = pa.RecordBatchReader.from_batches(table.schema, table.to_batches())
+
+    with pytest.raises(TypeError, match="cheap exact row count"):
+        resolve_source(reader)
