@@ -31,6 +31,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Information Analysis",
+    "Typing :: Typed",
 ]
 dependencies = [
     "pandas>=2.2",
@@ -71,6 +72,10 @@ duckdb = [
     "duckdb>=1.4",
     "pyarrow>=25.0,<26",
 ]
+docs = [
+    "mkdocs",
+    "mkdocs-material",
+]
 all = [
     "openpyxl>=3.1",
     "xlrd>=2.0",
@@ -106,7 +111,7 @@ dev = [
 framevitals = "framevitals.cli:main"
 
 [project.urls]
-Documentation = "https://github.com/parthdongre/FrameVitals#readme"
+Documentation = "https://github.com/parthdongre/FrameVitals/tree/main/docs"
 Repository = "https://github.com/parthdongre/FrameVitals"
 Issues = "https://github.com/parthdongre/FrameVitals/issues"
 Changelog = "https://github.com/parthdongre/FrameVitals/blob/main/CHANGELOG.md"
