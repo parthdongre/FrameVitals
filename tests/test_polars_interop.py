@@ -1,6 +1,6 @@
 import pytest
 
-pytest.importorskip("pyarrow")
+pa = pytest.importorskip("pyarrow")
 pl = pytest.importorskip("polars")
 
 import framevitals as fv
@@ -29,6 +29,10 @@ def test_polars_dataframe_uses_generic_arrow_capsule_source():
     assert metadata.columns == frame.width
     assert metadata.supports_projection is True
     assert metadata.supports_streaming is True
+    assert not any(
+        pa.types.is_string_view(field.type) or pa.types.is_binary_view(field.type)
+        for field in source.schema()
+    )
 
     info = fv.inspect_source(frame)
     assert info == metadata.to_dict()
