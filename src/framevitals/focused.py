@@ -1,9 +1,9 @@
 """Focused FrameVitals analysis entry points.
 
 This module intentionally does not import the full analysis pipeline. Public
-calls such as ``fv.profile`` and ``fv.statistics`` should execute only the work
-the caller requested and should not load modeling/reporting orchestration as a
-side effect.
+calls such as ``fv.profile`` and ``fv.statistics`` execute only the work the
+caller requested. Individual analysis implementations are imported lazily too,
+so a profile-only call does not load sklearn/statsmodels/deep-stat modules.
 """
 
 from __future__ import annotations
@@ -13,19 +13,7 @@ from typing import Any
 
 import pandas as pd
 
-from framevitals.budgeted_analysis import (
-    run_budgeted_anomalies,
-    run_budgeted_deep_statistics,
-)
-from framevitals.column_roles import infer_column_roles, summarize_roles
-from framevitals.execution import derive_execution_budget
-from framevitals.health_score import calculate_health_score
-from framevitals.ml_readiness import calculate_ml_readiness
-from framevitals.profiler import build_profile
-from framevitals.quality_diagnostics import run_quality_diagnostics
-from framevitals.relationship_graph import build_numeric_relationship_graph
 from framevitals.sources import resolve_source
-from framevitals.target_intelligence import run_target_intelligence
 
 
 DataInput = str | Path | pd.DataFrame
@@ -49,11 +37,15 @@ def _named(payload: dict[str, Any], source_name: str) -> dict[str, Any]:
 
 
 def profile(data: DataInput) -> dict[str, Any]:
+    from framevitals.profiler import build_profile
+
     dataframe, source_name = _load(data)
     return _named(build_profile(dataframe), source_name)
 
 
 def roles(data: DataInput) -> dict[str, Any]:
+    from framevitals.column_roles import infer_column_roles, summarize_roles
+
     dataframe, source_name = _load(data)
     column_roles = infer_column_roles(dataframe)
     return {
@@ -64,12 +56,18 @@ def roles(data: DataInput) -> dict[str, Any]:
 
 
 def health(data: DataInput) -> dict[str, Any]:
+    from framevitals.health_score import calculate_health_score
+    from framevitals.profiler import build_profile
+
     dataframe, source_name = _load(data)
     dataset_profile = build_profile(dataframe)
     return _named(calculate_health_score(dataframe, dataset_profile), source_name)
 
 
 def ml_readiness(data: DataInput) -> dict[str, Any]:
+    from framevitals.ml_readiness import calculate_ml_readiness
+    from framevitals.profiler import build_profile
+
     dataframe, source_name = _load(data)
     dataset_profile = build_profile(dataframe)
     return _named(
@@ -85,6 +83,10 @@ def quality(
     max_columns: int = 100,
     max_missingness_columns: int = 25,
 ) -> dict[str, Any]:
+    from framevitals.column_roles import infer_column_roles
+    from framevitals.profiler import build_profile
+    from framevitals.quality_diagnostics import run_quality_diagnostics
+
     dataframe, source_name = _load(data)
     dataset_profile = build_profile(dataframe)
     column_roles = infer_column_roles(dataframe)
@@ -106,6 +108,9 @@ def statistics(
     mode: str = "standard",
 ) -> dict[str, Any]:
     """Run deep statistics through the same large-data budget as full analysis."""
+    from framevitals.budgeted_analysis import run_budgeted_deep_statistics
+    from framevitals.execution import derive_execution_budget
+
     dataframe, source_name = _load(data)
     budget = derive_execution_budget(
         len(dataframe),
@@ -130,6 +135,9 @@ def anomalies(
     mode: str = "standard",
 ) -> dict[str, Any]:
     """Run anomaly diagnostics with bounded covariance/neighbor work."""
+    from framevitals.budgeted_analysis import run_budgeted_anomalies
+    from framevitals.execution import derive_execution_budget
+
     dataframe, source_name = _load(data)
     budget = derive_execution_budget(
         len(dataframe),
@@ -156,6 +164,8 @@ def relationships(
     max_candidate_pairs: int = 250_000,
     max_edges_returned: int = 5_000,
 ) -> dict[str, Any]:
+    from framevitals.relationship_graph import build_numeric_relationship_graph
+
     dataframe, source_name = _load(data)
     payload = build_numeric_relationship_graph(
         dataframe,
@@ -173,6 +183,9 @@ def target_analysis(
     *,
     target: str,
 ) -> dict[str, Any]:
+    from framevitals.column_roles import infer_column_roles
+    from framevitals.target_intelligence import run_target_intelligence
+
     dataframe, source_name = _load(data)
     if target not in dataframe.columns:
         raise ValueError(f"Target column not found: {target}")
