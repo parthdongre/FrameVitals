@@ -7,6 +7,7 @@ from typing import Any
 from framevitals.cleaning_plan import CleaningPlan
 from framevitals.config import AnalysisConfig
 from framevitals.planning import AnalysisPlan
+from framevitals.quality_results import DriftResult, ValidationResult
 from framevitals.result import AnalysisResult, ColumnResult
 from framevitals.snapshots import (
     AnalysisSnapshot,
@@ -84,7 +85,7 @@ def compare(
     *,
     columns: list[str] | None = None,
     max_columns: int = 30,
-) -> dict[str, Any]:
+) -> DriftResult:
     """Compare two datasets and return a structured drift report."""
     from framevitals.api import compare as _compare
 
@@ -120,7 +121,7 @@ def infer_contract(
     )
 
 
-def validate(data: Any, contract: dict[str, Any]) -> dict[str, Any]:
+def validate(data: Any, contract: dict[str, Any]) -> ValidationResult:
     """Validate a dataset against an inferred or explicit data contract."""
     from framevitals.api import validate as _validate
 
@@ -134,6 +135,8 @@ __all__ = [
     "AnalysisSnapshot",
     "CleaningPlan",
     "ColumnResult",
+    "DriftResult",
+    "ValidationResult",
     "analyze",
     "plan",
     "plan_cleaning",
