@@ -64,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="framevitals",
         description=(
-            "Automated diagnostics, ML-readiness analysis, and drift "
+            "Automated diagnostics, ML-readiness analysis, validation, and drift "
             "comparison for tabular datasets."
         ),
     )
@@ -137,7 +137,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     compare_parser = subparsers.add_parser(
         "compare",
-        help="Compare reference and current datasets for drift.",
+        help="Compare reference and current datasets for schema/distribution drift.",
     )
     compare_parser.add_argument(
         "reference", type=Path, help="Reference/baseline dataset path."
@@ -154,6 +154,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=30,
         help="Maximum number of shared columns to compare.",
     )
+    compare_parser.add_argument(
+        "--format",
+        choices=["json", "terminal"],
+        default="json",
+        help="Stdout format. JSON remains the default for backward compatibility.",
+    )
+    compare_parser.add_argument(
+        "--fail-on",
+        choices=["minor", "moderate", "severe"],
+        default=None,
+        help="Return exit code 1 when drift reaches this severity. Disabled by default.",
+    )
     _add_output_argument(compare_parser)
 
     infer_contract_parser = subparsers.add_parser(
@@ -162,6 +174,41 @@ def build_parser() -> argparse.ArgumentParser:
     )
     infer_contract_parser.add_argument(
         "file", type=Path, help="Path to the reference dataset."
+    )
+    infer_contract_parser.add_argument(
+        "--numeric-tolerance",
+        type=float,
+        default=0.05,
+        help="Expand inferred numeric bounds by this fraction of the observed span.",
+    )
+    infer_contract_parser.add_argument(
+        "--max-categories",
+        type=int,
+        default=20,
+        help="Infer allowed-value expectations up to this cardinality.",
+    )
+    infer_contract_parser.add_argument(
+        "--null-fraction-tolerance",
+        type=float,
+        default=0.05,
+        help="Additional tolerated null fraction above the reference rate.",
+    )
+    infer_contract_parser.add_argument(
+        "--infer-unique",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Infer uniqueness constraints for sufficiently large fully unique columns.",
+    )
+    infer_contract_parser.add_argument(
+        "--min-unique-rows",
+        type=int,
+        default=20,
+        help="Minimum non-null rows required before inferring uniqueness.",
+    )
+    infer_contract_parser.add_argument(
+        "--allow-extra-columns",
+        action="store_true",
+        help="Allow columns not present in the reference contract.",
     )
     _add_output_argument(infer_contract_parser)
 
@@ -177,6 +224,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         required=True,
         help="Path to a JSON contract created by infer-contract.",
+    )
+    validate_parser.add_argument(
+        "--format",
+        choices=["json", "terminal"],
+        default="json",
+        help="Stdout format. JSON remains the default for backward compatibility.",
+    )
+    validate_parser.add_argument(
+        "--fail-on-warn",
+        action="store_true",
+        help="Return exit code 1 for warning-only validation results.",
     )
     _add_output_argument(validate_parser)
 
@@ -200,12 +258,68 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _write_json(payload: dict, output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
+
+
 def _emit(payload: dict, output: Path | None) -> None:
-    rendered = json.dumps(payload, indent=2, default=str)
     if output is not None:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(rendered + "\n", encoding="utf-8")
-    print(rendered)
+        _write_json(payload, output)
+    print(json.dumps(payload, indent=2, default=str))
+
+
+def _render_validation(report: dict) -> str:
+    summary = report.get("summary", {})
+    lines = [
+        "FrameVitals validation",
+        f"Status          {str(report.get('status', 'unknown')).upper()}",
+        f"Columns checked {summary.get('columns_checked', 0)}",
+        f"Errors          {summary.get('errors', 0)}",
+        f"Warnings        {summary.get('warnings', 0)}",
+    ]
+    findings = report.get("findings", [])
+    if findings:
+        lines.append("")
+        lines.append("Top findings")
+        for finding in findings[:8]:
+            lines.append(
+                f"- [{str(finding.get('severity', 'error')).upper()}] "
+                f"{finding.get('column')}: {finding.get('message')}"
+            )
+    return "\n".join(lines)
+
+
+def _render_compare(report: dict) -> str:
+    if not report.get("available"):
+        return f"FrameVitals drift\nStatus          UNAVAILABLE\nReason          {report.get('reason')}"
+
+    summary = report.get("summary", {})
+    gate = report.get("gate", {})
+    schema = report.get("schema", {})
+    lines = [
+        "FrameVitals drift",
+        f"Gate            {str(gate.get('status', 'unknown')).upper()}",
+        f"Severity        {str(summary.get('overall_verdict', 'unknown')).upper()}",
+        f"Columns checked {summary.get('n_columns_compared', 0)}",
+        f"Added columns   {len(schema.get('added_columns', []))}",
+        f"Removed columns {len(schema.get('removed_columns', []))}",
+        f"Type changes    {len(schema.get('dtype_changes', []))}",
+    ]
+    columns = report.get("columns", [])
+    notable = [
+        entry
+        for entry in columns
+        if entry.get("drift_severity") in {"minor", "moderate", "severe"}
+    ]
+    if notable:
+        lines.append("")
+        lines.append("Top drift")
+        for entry in notable[:8]:
+            lines.append(
+                f"- [{str(entry.get('drift_severity')).upper()}] {entry.get('column')}"
+            )
+    return "\n".join(lines)
 
 
 def main() -> int:
@@ -260,11 +374,7 @@ def main() -> int:
             config=args.config,
         )
         if args.output is not None:
-            args.output.parent.mkdir(parents=True, exist_ok=True)
-            args.output.write_text(
-                json.dumps(dict(result), indent=2, default=str) + "\n",
-                encoding="utf-8",
-            )
+            _write_json(dict(result), args.output)
         if args.format == "json":
             print(json.dumps(dict(result), indent=2, default=str))
         else:
@@ -299,6 +409,7 @@ def main() -> int:
 
     if args.command == "compare":
         from framevitals.api import compare
+        from framevitals.drift_analysis import severity_at_least
 
         columns = None
         if args.columns:
@@ -314,13 +425,32 @@ def main() -> int:
             columns=columns,
             max_columns=args.max_columns,
         )
-        _emit(report, args.output)
+        if args.output is not None:
+            _write_json(report, args.output)
+        if args.format == "terminal":
+            print(_render_compare(report))
+        else:
+            print(json.dumps(report, indent=2, default=str))
+
+        if args.fail_on and severity_at_least(
+            report.get("gate", {}).get("severity", "unknown"),
+            args.fail_on,
+        ):
+            return 1
         return 0
 
     if args.command == "infer-contract":
         from framevitals.api import infer_contract
 
-        report = infer_contract(args.file)
+        report = infer_contract(
+            args.file,
+            numeric_tolerance=args.numeric_tolerance,
+            max_categories=args.max_categories,
+            null_fraction_tolerance=args.null_fraction_tolerance,
+            infer_unique=args.infer_unique,
+            min_unique_rows=args.min_unique_rows,
+            allow_extra_columns=args.allow_extra_columns,
+        )
         _emit(report, args.output)
         return 0
 
@@ -331,8 +461,18 @@ def main() -> int:
             args.file,
             _load_contract(args.contract),
         )
-        _emit(report, args.output)
-        return 0 if report["valid"] else 1
+        if args.output is not None:
+            _write_json(report, args.output)
+        if args.format == "terminal":
+            print(_render_validation(report))
+        else:
+            print(json.dumps(report, indent=2, default=str))
+
+        if report.get("status") == "fail":
+            return 2
+        if report.get("status") == "warn" and args.fail_on_warn:
+            return 1
+        return 0
 
     if args.command == "config":
         from framevitals.config import resolve_config
