@@ -191,8 +191,8 @@ def compare(
     *,
     columns: list[str] | None = None,
     max_columns: int = 30,
-) -> dict:
-    """Compare reference and current datasets for distribution drift."""
+) -> dict[str, Any]:
+    """Compare reference and current datasets for distribution and schema drift."""
     if max_columns < 1:
         raise ValueError("max_columns must be at least 1.")
 
@@ -210,10 +210,27 @@ def compare(
     return result
 
 
-def infer_contract(data: DataInput) -> dict[str, Any]:
+def infer_contract(
+    data: DataInput,
+    *,
+    numeric_tolerance: float = 0.05,
+    max_categories: int = 20,
+    null_fraction_tolerance: float = 0.05,
+    infer_unique: bool = True,
+    min_unique_rows: int = 20,
+    allow_extra_columns: bool = False,
+) -> dict[str, Any]:
     """Infer a JSON-serializable data contract from a reference dataset."""
     dataframe, source_name = _load_input(data, label="Reference")
-    contract = _infer_contract(dataframe)
+    contract = _infer_contract(
+        dataframe,
+        numeric_tolerance=numeric_tolerance,
+        max_categories=max_categories,
+        null_fraction_tolerance=null_fraction_tolerance,
+        infer_unique=infer_unique,
+        min_unique_rows=min_unique_rows,
+        allow_extra_columns=allow_extra_columns,
+    )
     contract["reference_name"] = source_name
     return contract
 
