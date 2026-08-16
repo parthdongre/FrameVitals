@@ -21,7 +21,7 @@ class PageHinkleyMeanShift:
     """Scale-adaptive Page-Hinkley/CUSUM detector for sequential batch means."""
 
     threshold: float = 8.0
-    delta: float = 0.05
+    delta: float = 0.5
     min_updates: int = 8
     alpha: float = 0.995
     count: int = 0
@@ -84,10 +84,9 @@ class PageHinkleyMeanShift:
         if scale is None:
             scale = max(abs(previous_mean) * 1e-6, 1e-9)
 
-        # A resettable one-sided statistic is materially less prone to random-walk
-        # false positives than an unbounded cumulative residual. Clipping also
-        # prevents one pathological early scale estimate from permanently
-        # tripping the detector, while sustained shifts still accumulate rapidly.
+        # With standardized residuals, a 0.5-sigma allowance gives a much more
+        # useful false-positive tradeoff than a tiny raw-unit delta. The one-sided
+        # reset also prevents stationary random walks from accumulating forever.
         residual = float(np.clip((x - previous_mean) / scale, -8.0, 8.0))
         self.cumulative_up = max(
             0.0,
