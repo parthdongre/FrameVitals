@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from framevitals.config import AnalysisConfig
 from framevitals.result import AnalysisResult, ColumnResult
 
 __version__ = "0.1.0"
@@ -13,14 +14,17 @@ def analyze(
     data: Any,
     *,
     target: str | None = None,
-    mode: str = "standard",
-    artifacts: bool = False,
+    mode: str | None = None,
+    artifacts: bool | None = None,
+    workers: int | None = None,
+    preset: str | None = None,
+    config: Any = None,
 ) -> AnalysisResult:
     """Analyze a tabular dataset from a DataFrame or supported file path.
 
-    The analytics implementation is imported lazily so ``import framevitals``
-    and ``framevitals --version`` do not initialize the complete analytics
-    stack. The lightweight result types remain available at package level.
+    Explicit keyword arguments override values from ``config`` and ``preset``.
+    The analytics implementation is imported lazily so importing FrameVitals
+    does not initialize the complete analysis stack.
     """
     from framevitals.api import analyze as _analyze
 
@@ -29,6 +33,9 @@ def analyze(
         target=target,
         mode=mode,
         artifacts=artifacts,
+        workers=workers,
+        preset=preset,
+        config=config,
     )
 
 
@@ -65,6 +72,7 @@ def validate(data: Any, contract: dict[str, Any]) -> dict[str, Any]:
 
 
 __all__ = [
+    "AnalysisConfig",
     "AnalysisResult",
     "ColumnResult",
     "analyze",
