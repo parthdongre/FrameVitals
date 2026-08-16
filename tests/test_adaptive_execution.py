@@ -106,7 +106,7 @@ def test_anomaly_adapter_discloses_sample_coverage(monkeypatch):
         return {"available": True, "n_rows_scored": len(frame)}
 
     monkeypatch.setattr(
-        "framevitals.budgeted_analysis.detect_anomalies_ensemble",
+        "framevitals.budgeted_analysis.fast_anomaly_scan",
         fake_anomalies,
     )
     frame = pd.DataFrame({"x": np.arange(20_000)})
@@ -117,6 +117,36 @@ def test_anomaly_adapter_discloses_sample_coverage(monkeypatch):
     assert seen["rows"] == budget.anomaly_sample_rows
     assert result["execution"]["coverage"] == "sample"
     assert result["execution"]["sample_rows"] == budget.anomaly_sample_rows
+    assert result["execution"]["anomaly_strategy"] == "fast_robust_random_projection"
+
+
+def test_research_anomaly_adapter_keeps_heavy_confirmation(monkeypatch):
+    seen = {"classical": 0, "neural": 0}
+
+    def fake_classical(frame, **kwargs):
+        seen["classical"] += 1
+        return {"available": True}
+
+    def fake_neural(frame, **kwargs):
+        seen["neural"] += 1
+        return {"available": True}
+
+    monkeypatch.setattr(
+        "framevitals.budgeted_analysis.detect_anomalies_ensemble",
+        fake_classical,
+    )
+    monkeypatch.setattr(
+        "framevitals.budgeted_analysis.neural_reconstruction_anomalies",
+        fake_neural,
+    )
+    frame = pd.DataFrame({"x": np.arange(200), "y": np.arange(200) * 2})
+    budget = derive_execution_budget(len(frame), 2, mode="research")
+
+    result = run_budgeted_anomalies(frame, budget=budget)
+
+    assert seen == {"classical": 1, "neural": 1}
+    assert result["execution"]["anomaly_strategy"] == "classical_ensemble_plus_neural_reconstruction"
+    assert result["execution"]["neural_reconstruction_enabled"] is True
 
 
 def test_time_series_adapter_preserves_order(monkeypatch):
