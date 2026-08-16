@@ -379,6 +379,19 @@ def _arrow_memory_source(data: Any) -> ArrowTableSource | None:
     return None
 
 
+def _duckdb_relation_source(data: Any):
+    """Recognize lazy DuckDB relations before generic Arrow conversion."""
+    data_type = type(data)
+    if data_type.__name__ != "DuckDBPyRelation":
+        return None
+    if not data_type.__module__.startswith(("duckdb", "_duckdb")):
+        return None
+
+    from framevitals.duckdb_source import resolve_duckdb_source
+
+    return resolve_duckdb_source(data)
+
+
 def resolve_source(data: Any) -> DatasetSource:
     """Normalize supported user inputs into a DatasetSource implementation."""
     if isinstance(data, pd.DataFrame):
@@ -394,12 +407,16 @@ def resolve_source(data: Any) -> DatasetSource:
             return DelimitedTextSource(path, delimiter="\t")
         return FileSource(path)
 
+    duckdb_source = _duckdb_relation_source(data)
+    if duckdb_source is not None:
+        return duckdb_source
+
     arrow_source = _arrow_memory_source(data)
     if arrow_source is not None:
         return arrow_source
     if isinstance(data, DatasetSource):
         return data
     raise TypeError(
-        "data must be a pandas DataFrame, Arrow-compatible table, dataset path, "
-        "or DatasetSource."
+        "data must be a pandas DataFrame, Arrow-compatible table, DuckDB relation, "
+        "dataset path, or DatasetSource."
     )
