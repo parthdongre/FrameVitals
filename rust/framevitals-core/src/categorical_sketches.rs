@@ -161,23 +161,12 @@ impl Default for StringHeavyHittersSketch {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CategoricalSketchState {
     pub count: u64,
     pub missing: u64,
     pub cardinality: HyperLogLog,
     pub heavy_hitters: StringHeavyHittersSketch,
-}
-
-impl Default for CategoricalSketchState {
-    fn default() -> Self {
-        Self {
-            count: 0,
-            missing: 0,
-            cardinality: HyperLogLog::default(),
-            heavy_hitters: StringHeavyHittersSketch::default(),
-        }
-    }
 }
 
 impl CategoricalSketchState {
