@@ -83,14 +83,23 @@ def health(data: DataInput) -> dict[str, Any]:
 
 
 def ml_readiness(data: DataInput) -> dict[str, Any]:
+    source = resolve_source(data)
+    metadata = source.inspect()
+    if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
+        from framevitals.ml_readiness import calculate_ml_readiness_from_profile
+        from framevitals.streaming_profile import build_streaming_profile
+
+        dataset_profile = build_streaming_profile(source)
+        return _named(calculate_ml_readiness_from_profile(dataset_profile), metadata.name)
+
     from framevitals.ml_readiness import calculate_ml_readiness
     from framevitals.profiler import build_profile
 
-    dataframe, source_name = _load(data)
+    dataframe = source.load()
     dataset_profile = build_profile(dataframe)
     return _named(
         calculate_ml_readiness(dataframe, profile=dataset_profile),
-        source_name,
+        metadata.name,
     )
 
 
