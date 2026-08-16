@@ -7,6 +7,7 @@
 
 #[cfg(feature = "arrow")]
 pub mod arrow_scan;
+pub mod sketches;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NumericState {
