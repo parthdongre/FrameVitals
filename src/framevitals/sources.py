@@ -420,3 +420,8 @@ def resolve_source(data: Any) -> DatasetSource:
         "data must be a pandas DataFrame, Arrow-compatible table, DuckDB relation, "
         "dataset path, or DatasetSource."
     )
+
+
+def inspect_source(data: Any) -> dict[str, Any]:
+    """Return source metadata/capabilities without running analysis diagnostics."""
+    return resolve_source(data).inspect().to_dict()
