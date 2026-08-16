@@ -110,7 +110,7 @@ class AnalysisResult(dict):
         }
 
     def column(self, name: str) -> ColumnResult:
-        """Return the combined profile/role view for a single column."""
+        """Return the combined profile, role, and semantic view for one column."""
         profile = self.get("profile", {})
         roles = self.get("column_roles", {})
         if not isinstance(profile, dict):
@@ -140,6 +140,9 @@ class AnalysisResult(dict):
             "name": name,
             "dtype": profile.get("dtypes", {}).get(name),
             "roles": list(role_info.get("roles", [])),
+            "semantic_type": role_info.get("semantic_type"),
+            "semantic_candidates": list(role_info.get("semantic_candidates", [])),
+            "semantic_sample_size": role_info.get("semantic_sample_size", 0),
             "missing_count": profile.get("missing_counts", {}).get(name),
             "missing_percent": profile.get("missing_percent", {}).get(name),
             "unique_count": role_info.get("unique_count"),
