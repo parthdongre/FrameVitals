@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pandas as pd
+
+from framevitals.backends import numeric_profile, resolve_numeric_backend
 
 MAX_CORRELATION_COLUMNS = 100
 MAX_EXACT_DUPLICATE_CELLS = 50_000_000
 DUPLICATE_SAMPLE_ROWS = 50_000
+NATIVE_NUMERIC_PROFILE_MIN_ROWS = 50_000
+NATIVE_NUMERIC_PROFILE_MIN_CELLS = 1_000_000
 
 
 def clean_value(value):
@@ -42,10 +48,18 @@ def detect_column_types(df):
     return numeric_cols, categorical_cols, date_cols
 
 
-def _missing_counts(df: pd.DataFrame) -> pd.Series:
+def _missing_counts(
+    df: pd.DataFrame,
+    *,
+    precomputed: dict[str, int] | None = None,
+) -> pd.Series:
     """Count missing values without materializing a frame-sized boolean table."""
+    known = precomputed or {}
     return pd.Series(
-        {column: int(df[column].isna().sum()) for column in df.columns},
+        {
+            column: int(known[column]) if column in known else int(df[column].isna().sum())
+            for column in df.columns
+        },
         dtype="int64",
     )
 
@@ -92,9 +106,6 @@ def _bounded_correlations(
     selected = numeric_cols
     truncated = len(selected) > MAX_CORRELATION_COLUMNS
     if truncated:
-        # Prefer columns with the most usable observations. This is a safe
-        # compatibility fallback; the sparse relationship graph will replace
-        # dense truncation for ultra-wide datasets.
         non_missing = {
             column: int(df[column].notna().sum())
             for column in numeric_cols
@@ -120,24 +131,122 @@ def _bounded_correlations(
     }
 
 
+def _round_optional(value, digits: int = 3):
+    if value is None:
+        return None
+    return round(float(value), digits)
+
+
+def _pandas_numeric_summary(
+    df: pd.DataFrame,
+    numeric_cols: list[str],
+) -> tuple[dict, dict, dict[str, int]]:
+    if not numeric_cols:
+        return {}, {
+            "backend": "not_applicable",
+            "method": "not_applicable",
+            "approximate_quantiles": False,
+        }, {}
+
+    summary = (
+        df[numeric_cols]
+        .describe()
+        .T
+        .replace({np.nan: None})
+        .round(3)
+        .to_dict(orient="index")
+    )
+    return summary, {
+        "backend": "pandas",
+        "method": "pandas_describe",
+        "approximate_quantiles": False,
+        "columns_profiled": len(numeric_cols),
+    }, {}
+
+
+def _native_numeric_summary(
+    df: pd.DataFrame,
+    numeric_cols: list[str],
+) -> tuple[dict, dict, dict[str, int]]:
+    summary: dict[str, dict] = {}
+    missing: dict[str, int] = {}
+    relative_accuracy = None
+
+    for stream_id, column in enumerate(numeric_cols):
+        payload = numeric_profile(df[column], backend="rust", stream_id=stream_id)
+        quantiles = payload.get("quantiles", {})
+        relative_accuracy = quantiles.get("relative_accuracy", relative_accuracy)
+        missing[column] = int(payload["missing"])
+        summary[column] = {
+            "count": int(payload["count"]),
+            "mean": _round_optional(payload.get("mean")),
+            "std": _round_optional(payload.get("std")),
+            "min": _round_optional(payload.get("minimum")),
+            "25%": _round_optional(quantiles.get("p25")),
+            "50%": _round_optional(quantiles.get("p50")),
+            "75%": _round_optional(quantiles.get("p75")),
+            "max": _round_optional(payload.get("maximum")),
+        }
+
+    return summary, {
+        "backend": "rust",
+        "method": "native_fused_numeric_column_scan",
+        "approximate_quantiles": True,
+        "quantile_relative_accuracy": relative_accuracy,
+        "finite_only_moments": True,
+        "columns_profiled": len(numeric_cols),
+        "raw_observations_retained": False,
+    }, missing
+
+
+def _numeric_summary(
+    df: pd.DataFrame,
+    numeric_cols: list[str],
+) -> tuple[dict, dict, dict[str, int]]:
+    if not numeric_cols:
+        return _pandas_numeric_summary(df, numeric_cols)
+
+    requested = os.getenv("FRAMEVITALS_BACKEND", "auto").strip().lower()
+    selected = resolve_numeric_backend()
+    numeric_cells = int(len(df)) * len(numeric_cols)
+    native_worthwhile = (
+        len(df) >= NATIVE_NUMERIC_PROFILE_MIN_ROWS
+        or numeric_cells >= NATIVE_NUMERIC_PROFILE_MIN_CELLS
+    )
+    use_native = selected == "rust" and (requested == "rust" or native_worthwhile)
+
+    if not use_native:
+        summary, metadata, missing = _pandas_numeric_summary(df, numeric_cols)
+        metadata["native_eligible"] = selected == "rust"
+        metadata["native_threshold_reached"] = native_worthwhile
+        return summary, metadata, missing
+
+    try:
+        return _native_numeric_summary(df, numeric_cols)
+    except Exception as exc:
+        if requested == "rust":
+            raise
+        summary, metadata, missing = _pandas_numeric_summary(df, numeric_cols)
+        metadata.update({
+            "native_eligible": True,
+            "native_threshold_reached": True,
+            "fallback_from": "rust",
+            "fallback_reason": f"{type(exc).__name__}: {exc}",
+        })
+        return summary, metadata, missing
+
+
 def build_profile(df):
     rows, columns = df.shape
     numeric_cols, categorical_cols, date_cols = detect_column_types(df)
 
-    missing_counts = _missing_counts(df)
+    numeric_summary, numeric_summary_metadata, numeric_missing = _numeric_summary(
+        df,
+        numeric_cols,
+    )
+    missing_counts = _missing_counts(df, precomputed=numeric_missing)
     missing_percent = (missing_counts / max(rows, 1) * 100).round(2)
     duplicate_rows, duplicate_metadata = _duplicate_profile(df)
-
-    numeric_summary = {}
-    if numeric_cols:
-        numeric_summary = (
-            df[numeric_cols]
-            .describe()
-            .T
-            .replace({np.nan: None})
-            .round(3)
-            .to_dict(orient="index")
-        )
 
     categorical_summary = {}
     for col in categorical_cols:
@@ -149,7 +258,8 @@ def build_profile(df):
 
     correlations, correlation_metadata = _bounded_correlations(df, numeric_cols)
 
-    preview = df.head(15).where(df.head(15).notna(), None).to_dict(orient="records")
+    preview_frame = df.head(15)
+    preview = preview_frame.where(preview_frame.notna(), None).to_dict(orient="records")
 
     return {
         "shape": {"rows": rows, "columns": columns},
@@ -165,6 +275,7 @@ def build_profile(df):
         "duplicate_metadata": duplicate_metadata,
         "memory_usage_mb": round(df.memory_usage(deep=True).sum() / (1024 * 1024), 3),
         "numeric_summary": numeric_summary,
+        "numeric_summary_metadata": numeric_summary_metadata,
         "categorical_summary": categorical_summary,
         "correlations": correlations,
         "correlation_metadata": correlation_metadata,
