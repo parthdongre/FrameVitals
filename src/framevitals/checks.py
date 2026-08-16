@@ -5,18 +5,18 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
 import pandas as pd
 
+from framevitals.quality_results import CheckResult
 from framevitals.sources import resolve_source
 
 
 CheckSeverity = Literal["warning", "error"]
 CheckFunction = Callable[[pd.DataFrame], bool | np.bool_ | Mapping[str, Any]]
-DataInput = str | Path | pd.DataFrame
+DataInput = Any
 
 
 def _slug(value: str) -> str:
@@ -28,6 +28,11 @@ def _validate_severity(value: str) -> CheckSeverity:
     if value not in {"warning", "error"}:
         raise ValueError("check severity must be 'warning' or 'error'.")
     return cast(CheckSeverity, value)
+
+
+def _load_fully_materializes_source(metadata) -> bool:
+    """Whether exact custom checks create a complete pandas representation."""
+    return not (metadata.kind == "memory" and metadata.format == "pandas")
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,11 +135,11 @@ def _normalize_outcome(
 def run_checks(
     data: DataInput,
     checks: Sequence[DataCheck | CheckFunction],
-) -> dict[str, Any]:
+) -> CheckResult:
     """Run user-defined checks exactly against a materialized DataFrame.
 
     Custom Python callables can inspect arbitrary row-level relationships, so
-    FrameVitals does not silently sample their input. File-backed inputs are
+    FrameVitals does not silently sample their input. Non-pandas sources are
     materialized intentionally and that decision is disclosed in ``execution``.
     """
     definitions = [_normalize_check(value) for value in checks]
@@ -184,7 +189,7 @@ def run_checks(
         for result in failures
     ]
 
-    return {
+    return CheckResult({
         "status": status,
         "passed": status != "fail",
         "results": results,
@@ -197,11 +202,11 @@ def run_checks(
         },
         "execution": {
             "method": "exact_custom_checks",
-            "full_materialization": bool(metadata.kind == "file"),
+            "full_materialization": _load_fully_materializes_source(metadata),
             "source": metadata.to_dict(),
             "reason": (
                 "Arbitrary custom Python checks run on the complete DataFrame; "
                 "FrameVitals does not silently sample user-defined invariants."
             ),
         },
-    }
+    })
