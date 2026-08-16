@@ -72,7 +72,7 @@ def calculate_ml_readiness_from_profile(profile: dict[str, Any]) -> dict[str, An
     categorical_cols = list(profile.get("categorical_columns", []))
     numeric_cols = list(profile.get("numeric_columns", []))
 
-    return _score_ml_readiness(
+    result = _score_ml_readiness(
         rows=rows,
         columns=columns,
         missing_total=missing_total,
@@ -80,6 +80,27 @@ def calculate_ml_readiness_from_profile(profile: dict[str, Any]) -> dict[str, An
         categorical_cols=categorical_cols,
         numeric_cols=numeric_cols,
     )
+
+    streaming = profile.get("streaming_metadata", {})
+    if streaming.get("enabled"):
+        duplicate_metadata = profile.get("duplicate_metadata", {})
+        duplicate_sampled = bool(duplicate_metadata.get("sampled"))
+        result["execution"] = {
+            "method": "streaming_profile",
+            "full_materialization": bool(streaming.get("full_materialization", False)),
+            "source_rows": rows,
+            "source_columns": columns,
+            "sample_rows": int(streaming.get("sample_rows", 0) or 0),
+            "components": {
+                "missingness": "full_stream_exact",
+                "column_groups": "schema_exact",
+                "duplicate_rate": (
+                    "bounded_row_sample_estimate" if duplicate_sampled else "exact"
+                ),
+            },
+        }
+
+    return result
 
 
 def calculate_ml_readiness(df, profile=None):
