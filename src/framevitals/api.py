@@ -65,6 +65,7 @@ def analyze(
     workers: int | None = None,
     preset: str | None = None,
     config: ConfigInput = None,
+    disabled_modules: list[str] | tuple[str, ...] | None = None,
 ) -> AnalysisResult:
     """Analyze a tabular dataset with FrameVitals."""
     resolved = resolve_config(
@@ -74,33 +75,34 @@ def analyze(
         target=target,
         artifacts=artifacts,
         workers=workers,
+        disabled_modules=disabled_modules,
     )
     dataset_id = f"fv_{uuid4().hex[:12]}"
+
+    pipeline_kwargs = {
+        "dataset_id": dataset_id,
+        "original_filename": "<dataframe>",
+        "analysis_mode": resolved.mode,
+        "target_column": resolved.target,
+        "parallel_workers": resolved.workers,
+        "skip_ai": True,
+        "write_artifacts": resolved.artifacts,
+        "disabled_modules": resolved.disabled_modules,
+    }
 
     if isinstance(data, pd.DataFrame):
         if data.empty:
             raise ValueError("Dataset DataFrame is empty.")
         payload = run_full_analysis(
-            dataset_id=dataset_id,
             dataframe=data,
-            original_filename="<dataframe>",
-            analysis_mode=resolved.mode,
-            target_column=resolved.target,
-            parallel_workers=resolved.workers,
-            skip_ai=True,
-            write_artifacts=resolved.artifacts,
+            **pipeline_kwargs,
         )
     elif isinstance(data, (str, Path)):
         path = _validated_path(data)
+        pipeline_kwargs["original_filename"] = path.name
         payload = run_full_analysis(
-            dataset_id=dataset_id,
             file_path=path,
-            original_filename=path.name,
-            analysis_mode=resolved.mode,
-            target_column=resolved.target,
-            parallel_workers=resolved.workers,
-            skip_ai=True,
-            write_artifacts=resolved.artifacts,
+            **pipeline_kwargs,
         )
     else:
         raise TypeError(
@@ -119,6 +121,7 @@ def plan(
     workers: int | None = None,
     preset: str | None = None,
     config: ConfigInput = None,
+    disabled_modules: list[str] | tuple[str, ...] | None = None,
 ) -> AnalysisPlan:
     """Preview which analyses FrameVitals considers applicable.
 
@@ -133,6 +136,7 @@ def plan(
         target=target,
         workers=workers,
         artifacts=False,
+        disabled_modules=disabled_modules,
     )
     dataframe, source_name = _load_input(data, label="Dataset")
     profile = build_profile(dataframe)
@@ -147,6 +151,25 @@ def plan(
         analysis_mode=resolved.mode,
         target_column=resolved.target,
     )
+    selection["execution_modules"] = {
+        "disabled": sorted(resolved.disabled_modules),
+        "enabled": sorted(
+            name
+            for name in (
+                "deep_statistics",
+                "anomaly_detection",
+                "time_series",
+                "text_profile",
+                "target_intelligence",
+                "modeling",
+                "explainability",
+                "cleaning",
+                "charts",
+                "ai",
+            )
+            if name not in resolved.disabled_modules
+        ),
+    }
 
     public_signals = {
         key: value
