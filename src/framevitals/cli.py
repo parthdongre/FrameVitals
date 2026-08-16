@@ -15,6 +15,38 @@ def _add_output_argument(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_runtime_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--target",
+        default=None,
+        help="Optional target column. Overrides config values.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["quick", "standard", "deep", "research"],
+        default=None,
+        help="Analysis depth. Overrides preset/config values.",
+    )
+    parser.add_argument(
+        "--preset",
+        choices=list(available_presets()),
+        default=None,
+        help="Built-in runtime preset.",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Optional FrameVitals TOML config path.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Parallel worker count. Overrides config values.",
+    )
+
+
 def _load_contract(path: Path) -> dict:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -54,35 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Path to the dataset.",
     )
-    analyze_parser.add_argument(
-        "--target",
-        default=None,
-        help="Optional target column. Overrides config values.",
-    )
-    analyze_parser.add_argument(
-        "--mode",
-        choices=["quick", "standard", "deep", "research"],
-        default=None,
-        help="Analysis depth. Overrides preset/config values.",
-    )
-    analyze_parser.add_argument(
-        "--preset",
-        choices=list(available_presets()),
-        default=None,
-        help="Built-in runtime preset.",
-    )
-    analyze_parser.add_argument(
-        "--config",
-        type=Path,
-        default=None,
-        help="Optional FrameVitals TOML config path.",
-    )
-    analyze_parser.add_argument(
-        "--workers",
-        type=int,
-        default=None,
-        help="Parallel worker count. Overrides config values.",
-    )
+    _add_runtime_arguments(analyze_parser)
     analyze_parser.add_argument(
         "--artifacts",
         action=argparse.BooleanOptionalAction,
@@ -102,6 +106,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional path to write a self-contained HTML report.",
     )
     _add_output_argument(analyze_parser)
+
+    plan_parser = subparsers.add_parser(
+        "plan",
+        help="Preview applicable analyses without running heavy stages.",
+    )
+    plan_parser.add_argument(
+        "file",
+        type=Path,
+        help="Path to the dataset.",
+    )
+    _add_runtime_arguments(plan_parser)
+    plan_parser.add_argument(
+        "--format",
+        choices=["terminal", "json"],
+        default="terminal",
+        help="Plan output format.",
+    )
+    _add_output_argument(plan_parser)
 
     compare_parser = subparsers.add_parser(
         "compare",
@@ -224,6 +246,31 @@ def main() -> int:
                 print(f"Full JSON     {args.output}")
             if args.html_report is not None:
                 print(f"HTML report   {args.html_report}")
+        return 0
+
+    if args.command == "plan":
+        from framevitals.api import plan
+
+        result = plan(
+            args.file,
+            target=args.target,
+            mode=args.mode,
+            workers=args.workers,
+            preset=args.preset,
+            config=args.config,
+        )
+        if args.output is not None:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(
+                json.dumps(dict(result), indent=2, default=str) + "\n",
+                encoding="utf-8",
+            )
+        if args.format == "json":
+            print(json.dumps(dict(result), indent=2, default=str))
+        else:
+            print(result.explain_text())
+            if args.output is not None:
+                print(f"Plan JSON     {args.output}")
         return 0
 
     if args.command == "compare":
