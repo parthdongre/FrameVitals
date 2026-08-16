@@ -22,6 +22,7 @@ from framevitals.contracts import infer_contract as _infer_contract
 from framevitals.contracts import validate_contract
 from framevitals.drift_analysis import compare_datasets, severity_at_least
 from framevitals.profiler import build_profile
+from framevitals.provenance import execution_provenance, load_fully_materializes
 from framevitals.quality_results import DriftResult, GateResult, ValidationResult
 from framevitals.sources import DatasetMetadata, StreamingDatasetSource, resolve_source
 
@@ -58,11 +59,6 @@ def _load_input(value: DataInput, *, label: str) -> tuple[pd.DataFrame, str]:
     return dataframe, metadata.name
 
 
-def _load_fully_materializes_source(metadata: DatasetMetadata) -> bool:
-    """Whether ``source.load()`` creates a complete pandas representation."""
-    return not (metadata.kind == "memory" and metadata.format == "pandas")
-
-
 def _comparison_frame(
     source,
     metadata: DatasetMetadata,
@@ -78,32 +74,37 @@ def _comparison_frame(
         sample = sample_streaming_source(source, sample_rows=sample_rows)
         source_rows = int(metadata.rows)
         sampled = len(sample) < source_rows
-        return sample, {
-            "source_rows": source_rows,
-            "source_columns": int(metadata.columns or len(sample.columns)),
-            "sample_rows": int(len(sample)),
-            "sampled": sampled,
-            "strategy": (
-                "streaming_evenly_spaced_global_rows"
-                if sampled
-                else "full_stream_via_batches"
-            ),
-            "full_materialization": False,
-            "source": metadata.to_dict(),
-        }
+        strategy = (
+            "streaming_evenly_spaced_global_rows"
+            if sampled
+            else "full_stream_via_batches"
+        )
+        execution = execution_provenance(
+            "streaming_source_compare_input",
+            full_materialization=False,
+            source=metadata.to_dict(),
+            sampled=sampled,
+            source_rows=source_rows,
+            source_columns=int(metadata.columns or len(sample.columns)),
+            sample_rows=int(len(sample)),
+            strategy=strategy,
+        )
+        return sample, execution
 
     dataframe = source.load()
     if dataframe.empty:
         raise ValueError(f"Dataset is empty: {metadata.name}")
-    return dataframe, {
-        "source_rows": int(len(dataframe)),
-        "source_columns": int(len(dataframe.columns)),
-        "sample_rows": int(len(dataframe)),
-        "sampled": False,
-        "strategy": "full_input",
-        "full_materialization": _load_fully_materializes_source(metadata),
-        "source": metadata.to_dict(),
-    }
+    execution = execution_provenance(
+        "full_compare_input",
+        full_materialization=load_fully_materializes(metadata),
+        source=metadata.to_dict(),
+        sampled=False,
+        source_rows=int(len(dataframe)),
+        source_columns=int(len(dataframe.columns)),
+        sample_rows=int(len(dataframe)),
+        strategy="full_input",
+    )
+    return dataframe, execution
 
 
 def _true_shape(execution: Mapping[str, Any]) -> list[int]:
@@ -177,24 +178,26 @@ def compare(
     any_sampled = bool(
         reference_execution["sampled"] or current_execution["sampled"]
     )
-    payload["execution"] = {
-        "method": "bounded_source_compare" if any_sampled else "full_compare",
-        "sample_limit_rows_per_source": _DRIFT_SAMPLE_ROWS,
-        "full_materialization": bool(
+    components = {
+        "source_shape": "exact",
+        "schema_columns": "exact",
+        "value_distributions": "bounded_row_sample" if any_sampled else "full_input",
+        "missingness": "bounded_row_sample" if any_sampled else "full_input",
+    }
+    payload["execution"] = execution_provenance(
+        "bounded_source_compare" if any_sampled else "full_compare",
+        full_materialization=bool(
             reference_execution["full_materialization"]
             or current_execution["full_materialization"]
         ),
-        "reference": reference_execution,
-        "current": current_execution,
-        "components": {
-            "source_shape": "exact",
-            "schema_columns": "exact",
-            "value_distributions": (
-                "bounded_row_sample" if any_sampled else "full_input"
-            ),
-            "missingness": "bounded_row_sample" if any_sampled else "full_input",
+        sampled=any_sampled,
+        components=components,
+        extra={
+            "sample_limit_rows_per_source": _DRIFT_SAMPLE_ROWS,
+            "reference": reference_execution,
+            "current": current_execution,
         },
-    }
+    )
     return DriftResult(payload)
 
 
@@ -234,15 +237,18 @@ def validate(
         raise ValueError(f"Dataset is empty: {metadata.name}")
     payload = validate_contract(dataframe, contract)
     payload["dataset_name"] = metadata.name
-    payload["execution"] = {
-        "method": "exact_contract_validation",
-        "full_materialization": _load_fully_materializes_source(metadata),
-        "source": metadata.to_dict(),
-        "reason": (
+    payload["execution"] = execution_provenance(
+        "exact_contract_validation",
+        full_materialization=load_fully_materializes(metadata),
+        source=metadata.to_dict(),
+        sampled=False,
+        source_rows=metadata.rows,
+        source_columns=metadata.columns,
+        reason=(
             "Contract validation remains exact; uniqueness, allowed-value, and bound "
             "constraints are not silently downgraded to sampled checks."
         ),
-    }
+    )
     return ValidationResult(payload)
 
 
@@ -387,6 +393,37 @@ def gate(
         for block in (validation_execution, drift_execution, custom_execution)
         if isinstance(block, Mapping)
     ]
+    full_materialization = any(
+        bool(block.get("full_materialization")) for block in execution_blocks
+    )
+
+    gate_execution = execution_provenance(
+        "quality_gate",
+        full_materialization=full_materialization,
+        source=current_metadata.to_dict(),
+        components={
+            "validation": (
+                validation_execution.get("method")
+                if isinstance(validation_execution, Mapping)
+                else None
+            ),
+            "drift": (
+                drift_execution.get("method")
+                if isinstance(drift_execution, Mapping)
+                else None
+            ),
+            "custom": (
+                custom_execution.get("method")
+                if isinstance(custom_execution, Mapping)
+                else None
+            ),
+        },
+        extra={
+            "validation": validation_execution,
+            "drift": drift_execution,
+            "custom": custom_execution,
+        },
+    )
 
     return GateResult({
         "status": status,
@@ -400,13 +437,5 @@ def gate(
         },
         "reasons": reasons,
         "checks": checks,
-        "execution": {
-            "full_materialization": any(
-                bool(block.get("full_materialization"))
-                for block in execution_blocks
-            ),
-            "validation": validation_execution,
-            "drift": drift_execution,
-            "custom": custom_execution,
-        },
+        "execution": gate_execution,
     })
