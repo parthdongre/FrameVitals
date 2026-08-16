@@ -1,8 +1,9 @@
 """Runtime configuration for FrameVitals analysis.
 
-Configuration deliberately starts with options the current pipeline can honor
-fully.  Future category/model/backend settings can extend the same schema
-without introducing a second configuration system.
+The configuration layer controls both analysis depth/resources and optional
+pipeline modules. Defaults preserve historical behaviour; users can explicitly
+disable expensive or irrelevant modules without changing the stable result
+shape or maintaining a second configuration system.
 """
 
 from __future__ import annotations
@@ -14,13 +15,30 @@ import tomllib
 
 
 VALID_MODES = {"quick", "standard", "deep", "research"}
+VALID_MODULES = {
+    "deep_statistics",
+    "anomaly_detection",
+    "time_series",
+    "text_profile",
+    "target_intelligence",
+    "modeling",
+    "explainability",
+    "cleaning",
+    "charts",
+    "ai",
+}
 
 PRESETS: dict[str, dict[str, Any]] = {
     "quick": {"mode": "quick", "workers": 2, "artifacts": False},
     "standard": {"mode": "standard", "workers": 4, "artifacts": False},
     "deep": {"mode": "deep", "workers": 4, "artifacts": False},
     "research": {"mode": "research", "workers": 4, "artifacts": False},
-    "ci": {"mode": "standard", "workers": 2, "artifacts": False},
+    "ci": {
+        "mode": "standard",
+        "workers": 2,
+        "artifacts": False,
+        "disabled_modules": ("modeling", "explainability", "charts", "ai"),
+    },
 }
 
 
@@ -32,6 +50,7 @@ class AnalysisConfig:
     target: str | None = None
     artifacts: bool = False
     workers: int = 4
+    disabled_modules: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.mode not in VALID_MODES:
@@ -42,8 +61,22 @@ class AnalysisConfig:
         if self.workers < 1:
             raise ValueError("workers must be at least 1.")
 
+        modules = tuple(dict.fromkeys(self.disabled_modules))
+        unknown = sorted(set(modules) - VALID_MODULES)
+        if unknown:
+            raise ValueError(
+                "Unknown FrameVitals module(s): "
+                f"{', '.join(unknown)}. Choose from: {', '.join(sorted(VALID_MODULES))}"
+            )
+        object.__setattr__(self, "disabled_modules", modules)
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def module_enabled(self, name: str) -> bool:
+        if name not in VALID_MODULES:
+            raise ValueError(f"Unknown FrameVitals module: {name}")
+        return name not in self.disabled_modules
 
 
 ConfigInput = AnalysisConfig | Mapping[str, Any] | str | Path | None
@@ -52,6 +85,11 @@ ConfigInput = AnalysisConfig | Mapping[str, Any] | str | Path | None
 def available_presets() -> tuple[str, ...]:
     """Return built-in preset names in deterministic order."""
     return tuple(PRESETS)
+
+
+def available_modules() -> tuple[str, ...]:
+    """Return configurable execution module names in deterministic order."""
+    return tuple(sorted(VALID_MODULES))
 
 
 def _read_toml(path: str | Path) -> dict[str, Any]:
@@ -72,15 +110,26 @@ def _read_toml(path: str | Path) -> dict[str, Any]:
     return payload
 
 
+def _coerce_disabled_modules(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str) or not isinstance(value, (list, tuple, set)):
+        raise ValueError("disabled_modules must be a list/tuple of module names.")
+    return tuple(str(item) for item in value)
+
+
 def _extract_values(mapping: Mapping[str, Any]) -> tuple[str | None, dict[str, Any]]:
     """Extract supported values from nested or flat configuration mappings."""
     analysis = mapping.get("analysis", {})
     resources = mapping.get("resources", {})
+    modules = mapping.get("modules", {})
 
     if not isinstance(analysis, Mapping):
         raise ValueError("[analysis] must be a TOML table/object.")
     if not isinstance(resources, Mapping):
         raise ValueError("[resources] must be a TOML table/object.")
+    if not isinstance(modules, Mapping):
+        raise ValueError("[modules] must be a TOML table/object.")
 
     preset = analysis.get("preset", mapping.get("preset"))
     values: dict[str, Any] = {}
@@ -95,6 +144,25 @@ def _extract_values(mapping: Mapping[str, Any]) -> tuple[str | None, dict[str, A
         values["workers"] = resources["workers"]
     elif "workers" in mapping:
         values["workers"] = mapping["workers"]
+
+    raw_disabled = analysis.get(
+        "disabled_modules",
+        mapping.get("disabled_modules", ()),
+    )
+    disabled = list(_coerce_disabled_modules(raw_disabled))
+
+    for name, enabled in modules.items():
+        if name not in VALID_MODULES:
+            raise ValueError(f"Unknown FrameVitals module in [modules]: {name}")
+        if not isinstance(enabled, bool):
+            raise ValueError(f"[modules].{name} must be true or false.")
+        if enabled:
+            disabled = [item for item in disabled if item != name]
+        elif name not in disabled:
+            disabled.append(name)
+
+    if disabled:
+        values["disabled_modules"] = tuple(disabled)
 
     return str(preset) if preset is not None else None, values
 
@@ -118,6 +186,7 @@ def resolve_config(
     target: str | None = None,
     artifacts: bool | None = None,
     workers: int | None = None,
+    disabled_modules: list[str] | tuple[str, ...] | None = None,
 ) -> AnalysisConfig:
     """Resolve defaults, preset, config file/object, then explicit overrides.
 
@@ -153,6 +222,9 @@ def resolve_config(
         "target": target,
         "artifacts": artifacts,
         "workers": workers,
+        "disabled_modules": (
+            tuple(disabled_modules) if disabled_modules is not None else None
+        ),
     }
     values.update({key: value for key, value in explicit.items() if value is not None})
 
@@ -166,6 +238,9 @@ def resolve_config(
     if values["target"] is not None and not isinstance(values["target"], str):
         raise ValueError("target must be a column name string or null.")
 
+    values["disabled_modules"] = _coerce_disabled_modules(
+        values.get("disabled_modules", ())
+    )
     return AnalysisConfig(**values)
 
 
