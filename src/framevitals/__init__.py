@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from framevitals.cleaning_plan import CleaningPlan
 from framevitals.config import AnalysisConfig, available_modules
 from framevitals.planning import AnalysisPlan
 from framevitals.quality_results import DriftResult, ValidationResult
@@ -16,7 +15,24 @@ from framevitals.snapshots import (
     load_snapshot,
 )
 
+if TYPE_CHECKING:
+    from framevitals.cleaning_plan import CleaningPlan
+
 __version__ = "0.1.0"
+
+
+def __getattr__(name: str):
+    """Lazily expose optional/heavier public types.
+
+    ``CleaningPlan`` depends on pandas/NumPy. Delaying that import preserves the
+    package's lightweight top-level import boundary and built-wheel smoke test
+    while keeping ``framevitals.CleaningPlan`` available to normal users.
+    """
+    if name == "CleaningPlan":
+        from framevitals.cleaning_plan import CleaningPlan
+
+        return CleaningPlan
+    raise AttributeError(name)
 
 
 def analyze(
