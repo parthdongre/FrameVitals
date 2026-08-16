@@ -12,7 +12,7 @@ from framevitals.quality_results import (
     GateResult,
     ValidationResult,
 )
-from framevitals.result import AnalysisResult, ColumnResult
+from framevitals.result import AnalysisResult, ColumnResult, DiagnosticResult
 from framevitals.snapshots import (
     AnalysisSnapshot,
     SnapshotHistory,
@@ -48,28 +48,28 @@ def inspect_source(data: Any) -> dict[str, Any]:
     return _inspect_source(data)
 
 
-def profile(data: Any) -> dict[str, Any]:
+def profile(data: Any) -> DiagnosticResult:
     """Profile shape, dtypes, missingness, cardinality, and basic summaries."""
     from framevitals.focused import profile as _profile
 
     return _profile(data)
 
 
-def roles(data: Any) -> dict[str, Any]:
+def roles(data: Any) -> DiagnosticResult:
     """Infer semantic and structural roles for dataset columns."""
     from framevitals.focused import roles as _roles
 
     return _roles(data)
 
 
-def health(data: Any) -> dict[str, Any]:
+def health(data: Any) -> DiagnosticResult:
     """Calculate only the FrameVitals data-health score."""
     from framevitals.focused import health as _health
 
     return _health(data)
 
 
-def ml_readiness(data: Any) -> dict[str, Any]:
+def ml_readiness(data: Any) -> DiagnosticResult:
     """Calculate only ML-readiness diagnostics."""
     from framevitals.focused import ml_readiness as _ml_readiness
 
@@ -82,7 +82,7 @@ def quality(
     max_sample_rows: int = 5_000,
     max_columns: int = 100,
     max_missingness_columns: int = 25,
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     """Run practical deterministic data-quality diagnostics only."""
     from framevitals.focused import quality as _quality
 
@@ -99,7 +99,7 @@ def statistics(
     *,
     max_pairs: int = 20,
     mode: str = "standard",
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     """Run the deep statistical diagnostics layer with adaptive row budgets."""
     from framevitals.focused import statistics as _statistics
 
@@ -114,7 +114,7 @@ def anomalies(
     max_columns: int = 30,
     top_k: int = 25,
     mode: str = "standard",
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     """Run only the bounded FrameVitals tabular anomaly ensemble."""
     from framevitals.focused import anomalies as _anomalies
 
@@ -136,7 +136,7 @@ def relationships(
     min_abs_correlation: float = 0.80,
     max_candidate_pairs: int = 250_000,
     max_edges_returned: int = 5_000,
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     """Discover strong numeric relationships without a dense correlation matrix."""
     from framevitals.focused import relationships as _relationships
 
@@ -157,7 +157,7 @@ def system_info(*, probe_gpu: bool = True) -> dict[str, Any]:
     return _system_info(probe_gpu=probe_gpu)
 
 
-def target_analysis(data: Any, *, target: str) -> dict[str, Any]:
+def target_analysis(data: Any, *, target: str) -> DiagnosticResult:
     """Run target quality, leakage, association, and split diagnostics only."""
     from framevitals.focused import target_analysis as _target_analysis
 
@@ -343,6 +343,7 @@ __all__ = [
     "SnapshotHistory",
     "CleaningPlan",
     "ColumnResult",
+    "DiagnosticResult",
     "DataCheck",
     "CheckResult",
     "DriftResult",
