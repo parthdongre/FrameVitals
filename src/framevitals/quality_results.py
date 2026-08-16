@@ -132,7 +132,7 @@ class DriftResult(_QualityResult):
 
 
 class GateResult(_QualityResult):
-    """Combined contract/drift quality-gate result."""
+    """Combined contract, custom-check, and drift quality-gate result."""
 
     @property
     def status(self) -> str:
@@ -147,12 +147,18 @@ class GateResult(_QualityResult):
         value = self.get("reasons", [])
         return value if isinstance(value, list) else []
 
+    @property
+    def checks_run(self) -> list[str]:
+        value = self.get("checks_run", [])
+        return value if isinstance(value, list) else []
+
     def summary_text(self) -> str:
         checks = self.get("checks", {})
         if not isinstance(checks, dict):
             checks = {}
         validation = checks.get("validation")
         drift = checks.get("drift")
+        custom = checks.get("custom")
 
         lines = [
             "FrameVitals quality gate",
@@ -170,6 +176,15 @@ class GateResult(_QualityResult):
                     "Drift           "
                     f"{str(drift_gate.get('severity', 'unknown')).upper()}"
                 )
+        if isinstance(custom, dict):
+            summary = custom.get("summary", {})
+            if not isinstance(summary, dict):
+                summary = {}
+            lines.append(
+                "Custom checks   "
+                f"{str(custom.get('status', 'unknown')).upper()} "
+                f"({summary.get('checks', 0)} run)"
+            )
         if self.reasons:
             lines.extend(["", "Reasons"])
             for reason in self.reasons[:10]:
