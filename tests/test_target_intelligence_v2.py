@@ -92,3 +92,31 @@ def test_public_analyze_includes_target_intelligence_even_in_quick_mode():
     assert intelligence["task_type"] == "classification"
     assert isinstance(intelligence["top_associations"], list)
     assert "target_intelligence" in result["timings_ms"]
+
+
+def test_target_leakage_warning_is_normalized_into_public_findings():
+    target = [0, 1] * 10
+    df = pd.DataFrame({
+        "leaked_target": target,
+        "age": list(range(20, 40)),
+        "churn": target,
+    })
+
+    result = framevitals.analyze(df, target="churn", mode="quick")
+    target_findings = [
+        finding
+        for finding in result.findings
+        if finding["method"] == "target_intelligence"
+    ]
+
+    assert any(
+        finding["code"] == "target.leakage.leaked_target"
+        for finding in target_findings
+    )
+    leakage_finding = next(
+        finding
+        for finding in target_findings
+        if finding["code"] == "target.leakage.leaked_target"
+    )
+    assert leakage_finding["severity"] == "critical"
+    assert "prediction time" in leakage_finding["recommendation"]
