@@ -25,7 +25,13 @@ jobs:
           pip install -e ".[dev,arrow]"
       - name: Focused regression tests
         run: |
-          pytest -q tests/test_deep_triage.py tests/test_adaptive_execution.py tests/test_analysis_modes.py
+          pytest -q \
+            tests/test_deep_triage.py \
+            tests/test_neural_anomaly.py \
+            tests/test_streaming_sketches.py \
+            tests/test_arrow_memory.py \
+            tests/test_adaptive_execution.py \
+            tests/test_analysis_modes.py
       - name: Benchmark deep mode on complex 8k x 180 data
         run: |
           python - <<'PY'
@@ -70,7 +76,6 @@ jobs:
           data["near_constant"] = np.where(np.arange(rows) % 997 == 0, 1, 0)
           logits = np.nan_to_num(data["num_0"], nan=0.0) + 0.65 * np.nan_to_num(data["num_1"], nan=0.0) + rng.normal(scale=0.8, size=rows)
           data["target"] = (logits > np.median(logits)).astype(int)
-          # Pad to exactly 180 columns with modest-cardinality categoricals.
           index = 0
           while len(data) < 180:
               data[f"extra_{index}"] = np.array([f"x{j % 7}" for j in range(rows)], dtype=object)
@@ -90,5 +95,25 @@ jobs:
           }
           print("FRAMEVITALS_DEEP_BENCHMARK=" + json.dumps(payload, sort_keys=True))
           assert result.get("deep_statistics_v2", {}).get("column_triage", {}).get("numeric_limit") == 12
-          assert elapsed < 120
+          assert elapsed < 30
+          PY
+      - name: Verify NumPy Arrow profiling uses full-stream quantile sketches
+        run: |
+          python - <<'PY'
+          import numpy as np
+          import pyarrow as pa
+          import framevitals.streaming_profile as streaming_profile
+          from framevitals.sources import ArrowTableSource
+
+          streaming_profile.resolve_numeric_backend = lambda: "numpy"
+          rows = 100_000
+          table = pa.table({
+              "x": np.arange(rows, dtype=np.float64),
+              "y": np.arange(rows, dtype=np.float64) * 2.0,
+          })
+          result = streaming_profile.build_streaming_profile(ArrowTableSource(table))
+          assert result["streaming_metadata"]["numpy_full_stream_quantile_sketches"] is True
+          assert result["numeric_summary_metadata"]["quantile_source"] == "full_stream_sketch"
+          assert abs(result["numeric_summary"]["x"]["50%"] - 50_000) / 50_000 < 0.03
+          print("NUMPY_STREAM_QUANTILES=PASS")
           PY
