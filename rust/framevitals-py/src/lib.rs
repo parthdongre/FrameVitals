@@ -1,11 +1,14 @@
 //! Python bindings for FrameVitals native kernels.
 
+mod string_accumulator;
+
 use framevitals_core::sketches::NumericSketchState;
 use framevitals_core::NumericState;
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::PyBufferError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use string_accumulator::StringAccumulator;
 
 fn exact_state_dict<'py>(py: Python<'py>, state: &NumericState) -> PyResult<Bound<'py, PyDict>> {
     let payload = PyDict::new(py);
@@ -200,6 +203,7 @@ fn backend_info() -> (&'static str, &'static str) {
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NumericAccumulator>()?;
+    module.add_class::<StringAccumulator>()?;
     module.add_function(wrap_pyfunction!(numeric_state_f64, module)?)?;
     module.add_function(wrap_pyfunction!(numeric_profile_f64, module)?)?;
     module.add_function(wrap_pyfunction!(backend_info, module)?)?;
