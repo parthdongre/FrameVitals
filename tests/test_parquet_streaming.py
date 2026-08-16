@@ -87,7 +87,8 @@ def test_public_analyze_streams_parquet_without_calling_load(tmp_path, monkeypat
     assert result["execution"]["streaming"]["working_sample_rows"] == 5_000
     assert result["execution"]["streaming"]["single_full_source_profile_scan"] is True
     assert result["execution"]["module_scope"]["profile"] == "full_stream"
-    assert result["cleaning"]["streaming_status"] == "deferred_streaming"
+    assert result["cleaning"]["streaming_status"] == "disabled"
+    assert result["execution"]["module_status"]["cleaning"] == "disabled"
     assert result["charts"] == []
     assert result["config"]["artifacts"] is False
 
