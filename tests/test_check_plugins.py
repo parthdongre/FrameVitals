@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+import framevitals as fv
 from framevitals.checks import DataCheck
 from framevitals.plugins import CHECK_ENTRYPOINT_GROUP, discover_checks
 
@@ -46,6 +47,22 @@ def test_discover_checks_loads_callables_and_datachecks(monkeypatch):
     assert [item.name for item in checks] == ["a_plugin", "explicit check"]
     assert checks[0](pd.DataFrame({"value": [1, 2]})) is True
     assert checks[1].severity == "warning"
+
+
+def test_public_discover_checks_delegates_to_opt_in_plugin_loader(monkeypatch):
+    def positive_values(df: pd.DataFrame):
+        return bool((df["value"] > 0).all())
+
+    entries = _FakeEntryPoints([
+        _FakeEntryPoint("positive_values", "pkg:positive_values", loaded=positive_values),
+    ])
+    monkeypatch.setattr("framevitals.plugins.importlib_metadata.entry_points", lambda: entries)
+
+    checks = fv.discover_checks()
+
+    assert len(checks) == 1
+    assert isinstance(checks[0], fv.DataCheck)
+    assert checks[0].name == "positive_values"
 
 
 def test_discover_checks_rejects_duplicate_public_names(monkeypatch):
