@@ -4,38 +4,45 @@ Dataset Signal Detector
 Produces a flat dictionary of boolean + numeric signals describing the
 structural characteristics of the dataset.
 
-Signals reuse the role map when available so semantic/type scans are performed
-once per pipeline run rather than independently by downstream modules.
+Signals reuse the role map and profile when available so semantic/type scans
+and numeric correlation work are performed once per pipeline run.
 """
-
-import pandas as pd
 
 from framevitals.column_roles import (
     get_columns_with_role,
-    get_meaningful_numeric_columns,
     infer_column_roles,
 )
 
 
-def _detect_potential_leakage(df: pd.DataFrame, column_roles: dict) -> bool:
-    """Return whether a very high non-ID numeric correlation suggests leakage."""
-    meaningful = get_meaningful_numeric_columns(df, column_roles)
-    if len(meaningful) < 2:
-        return False
-    try:
-        corr = df[meaningful].corr(numeric_only=True).abs()
-        for i, a in enumerate(meaningful):
-            for b in meaningful[i + 1 :]:
-                val = corr.loc[a, b]
-                if pd.notna(val) and val >= 0.98:
-                    return True
-    except Exception:
-        pass
-    return False
+def _detect_potential_leakage(profile: dict, column_roles: dict) -> tuple[bool, bool]:
+    """Inspect cached profiler correlations for very high non-ID relationships."""
+    correlations = profile.get("correlations", {}) or {}
+    correlation_metadata = profile.get("correlation_metadata", {}) or {}
+    truncated = bool(correlation_metadata.get("truncated", False))
+
+    excluded = {"id_like", "time_like", "sequence_like", "constant"}
+    meaningful = {
+        column
+        for column, info in column_roles.items()
+        if info.get("is_numeric") and not set(info.get("roles", [])).intersection(excluded)
+    }
+
+    for left, values in correlations.items():
+        if left not in meaningful or not isinstance(values, dict):
+            continue
+        for right, value in values.items():
+            if right == left or right not in meaningful or value is None:
+                continue
+            try:
+                if abs(float(value)) >= 0.98:
+                    return True, truncated
+            except (TypeError, ValueError):
+                continue
+    return False, truncated
 
 
 def detect_dataset_signals(
-    df: pd.DataFrame,
+    df,
     profile: dict,
     column_roles: dict | None = None,
 ) -> dict:
@@ -81,7 +88,6 @@ def detect_dataset_signals(
     long_text = get_columns_with_role(column_roles, "long_text")
 
     # Semantic/value-pattern roles are already computed during role inference.
-    # Reusing them here avoids additional text-column samples/scans.
     email_like = get_columns_with_role(column_roles, "email_like")
     url_like = get_columns_with_role(column_roles, "url_like")
     uuid_like = get_columns_with_role(column_roles, "uuid_like")
@@ -92,9 +98,12 @@ def detect_dataset_signals(
     json_like = get_columns_with_role(column_roles, "json_like")
     boolean_token_like = get_columns_with_role(column_roles, "boolean_token_like")
 
-    has_leakage_risk = _detect_potential_leakage(df, column_roles)
+    has_leakage_risk, leakage_scan_truncated = _detect_potential_leakage(
+        profile,
+        column_roles,
+    )
 
-    lower_map = {c.lower(): c for c in df.columns}
+    lower_map = {str(c).lower(): c for c in df.columns}
     has_bid_ask = "bid" in lower_map and "ask" in lower_map
     has_time_series = len(time_like) > 0 and len(numeric_cols) >= 1 and rows >= 20
 
@@ -136,6 +145,7 @@ def detect_dataset_signals(
         "has_json_like_columns": len(json_like) > 0,
         "has_boolean_token_like_columns": len(boolean_token_like) > 0,
         "has_potential_leakage": has_leakage_risk,
+        "leakage_scan_truncated": leakage_scan_truncated,
         "has_target_candidates": len(target_candidates) > 0,
         "is_small_dataset": rows < 200,
         "is_large_dataset": rows >= 100000,
