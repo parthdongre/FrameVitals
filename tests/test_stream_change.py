@@ -91,4 +91,6 @@ def test_budgeted_time_series_attaches_mean_shift_when_series_is_detected(monkey
     assert result["mean_shift"]["available"] is True
     assert result["mean_shift"]["detected"] is True
     assert result["execution"]["mean_shift_detection_enabled"] is True
-    assert result["execution"]["method"] == "adaptive_time_series"
+    assert result["execution"]["method"] == "bounded_time_series"
+    assert result["execution"]["scope"] == "bounded_time_series"
+    assert result["execution"]["adaptive_strategy"] == "ordered_page_hinkley_mean_shift"
