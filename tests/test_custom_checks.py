@@ -43,11 +43,14 @@ def test_check_decorator_and_exact_check_results():
     assert positive_revenue.name == "positive revenue"
     result = fv.run_checks(frame, [positive_revenue])
 
-    assert result["status"] == "pass"
-    assert result["passed"] is True
+    assert isinstance(result, fv.CheckResult)
+    assert result.status == "pass"
+    assert result.passed is True
     assert result["summary"] == {"checks": 1, "passed": 1, "warnings": 0, "errors": 0}
-    assert result["results"][0]["code"] == "custom.positive_revenue"
-    assert result["results"][0]["details"] == {"minimum": 10.0}
+    assert result.results[0]["code"] == "custom.positive_revenue"
+    assert result.results[0]["details"] == {"minimum": 10.0}
+    assert result.findings == []
+    assert "FrameVitals custom checks" in result.summary_text()
     assert result["execution"]["method"] == "exact_custom_checks"
     assert result["execution"]["full_materialization"] is False
 
@@ -141,6 +144,7 @@ def test_gate_can_run_only_custom_warning_checks():
     assert result["passed"] is True
     assert result["checks_run"] == ["custom"]
     assert result["checks"]["custom"]["status"] == "warn"
+    assert result["execution"]["full_materialization"] is False
     assert result["execution"]["custom"]["method"] == "exact_custom_checks"
     assert result["execution"]["drift"] is None
     assert result["execution"]["validation"] is None
