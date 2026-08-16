@@ -21,40 +21,97 @@ from framevitals.cleaning_plan import (
 from framevitals.contracts import infer_contract as _infer_contract
 from framevitals.contracts import validate_contract
 from framevitals.drift_analysis import compare_datasets, severity_at_least
-from framevitals.loader import load_dataset
 from framevitals.profiler import build_profile
 from framevitals.quality_results import DriftResult, GateResult, ValidationResult
+from framevitals.sources import DatasetMetadata, StreamingDatasetSource, resolve_source
 
 
 DataInput = str | Path | pd.DataFrame
 _DRIFT_SEVERITY_RANK = {"stable": 0, "minor": 1, "moderate": 2, "severe": 3}
+_DRIFT_SAMPLE_ROWS = 50_000
 
 
-def _validated_path(value: str | Path, *, label: str) -> Path:
-    path = Path(value)
-    if not path.exists():
-        raise FileNotFoundError(f"{label} not found: {path}")
-    if not path.is_file():
-        raise ValueError(f"Expected a file for {label.lower()}, got: {path}")
-    return path
+def _resolve_input(value: DataInput, *, label: str):
+    try:
+        source = resolve_source(value)
+        metadata = source.inspect()
+    except (TypeError, ValueError, FileNotFoundError) as exc:
+        if label == "Dataset":
+            raise
+        message = str(exc).replace("Dataset", label, 1)
+        raise type(exc)(message) from exc
+
+    if metadata.rows == 0:
+        if metadata.kind == "memory":
+            raise ValueError(f"{label} DataFrame is empty.")
+        raise ValueError(f"{label} dataset is empty: {metadata.name}")
+    return source, metadata
 
 
 def _load_input(value: DataInput, *, label: str) -> tuple[pd.DataFrame, str]:
-    if isinstance(value, pd.DataFrame):
-        if value.empty:
+    source, metadata = _resolve_input(value, label=label)
+    dataframe = source.load()
+    if dataframe.empty:
+        if metadata.kind == "memory":
             raise ValueError(f"{label} DataFrame is empty.")
-        return value.copy(), "<dataframe>"
+        raise ValueError(f"{label} dataset is empty: {metadata.name}")
+    return dataframe, metadata.name
 
-    if isinstance(value, (str, Path)):
-        path = _validated_path(value, label=label)
-        dataframe = load_dataset(path)
-        if dataframe.empty:
-            raise ValueError(f"{label} dataset is empty: {path}")
-        return dataframe, path.name
 
-    raise TypeError(
-        f"{label} must be a pandas DataFrame or a path to a supported dataset."
-    )
+def _comparison_frame(
+    source,
+    metadata: DatasetMetadata,
+    *,
+    sample_rows: int = _DRIFT_SAMPLE_ROWS,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Return drift input plus transparent source/materialization metadata."""
+    if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
+        from framevitals.streaming_profile import sample_streaming_source
+
+        if metadata.rows is None:
+            raise ValueError("Streaming drift comparison requires a source row count.")
+        sample = sample_streaming_source(source, sample_rows=sample_rows)
+        source_rows = int(metadata.rows)
+        sampled = len(sample) < source_rows
+        return sample, {
+            "source_rows": source_rows,
+            "source_columns": int(metadata.columns or len(sample.columns)),
+            "sample_rows": int(len(sample)),
+            "sampled": sampled,
+            "strategy": (
+                "streaming_evenly_spaced_global_rows"
+                if sampled
+                else "full_stream_via_batches"
+            ),
+            "full_materialization": False,
+            "source": metadata.to_dict(),
+        }
+
+    dataframe = source.load()
+    if dataframe.empty:
+        raise ValueError(f"Dataset is empty: {metadata.name}")
+    return dataframe, {
+        "source_rows": int(len(dataframe)),
+        "source_columns": int(len(dataframe.columns)),
+        "sample_rows": int(len(dataframe)),
+        "sampled": False,
+        "strategy": "full_input",
+        "full_materialization": bool(metadata.kind == "file"),
+        "source": metadata.to_dict(),
+    }
+
+
+def _true_shape(execution: Mapping[str, Any]) -> list[int]:
+    return [
+        int(execution.get("source_rows", 0)),
+        int(execution.get("source_columns", 0)),
+    ]
+
+
+def _row_count_change_percent(reference_rows: int, current_rows: int) -> float | None:
+    if reference_rows <= 0:
+        return None
+    return round((current_rows - reference_rows) / reference_rows * 100, 4)
 
 
 def plan_cleaning(data: DataInput) -> CleaningPlan:
@@ -82,20 +139,57 @@ def compare(
     columns: list[str] | None = None,
     max_columns: int = 30,
 ) -> DriftResult:
-    """Compare reference/current datasets without executing the EDA pipeline."""
+    """Compare datasets, bounding value-distribution work for streaming sources."""
     if max_columns < 1:
         raise ValueError("max_columns must be at least 1.")
 
-    reference_df, reference_name = _load_input(reference, label="Reference")
-    current_df, current_name = _load_input(current, label="Current")
+    reference_source, reference_metadata = _resolve_input(reference, label="Reference")
+    current_source, current_metadata = _resolve_input(current, label="Current")
+    reference_df, reference_execution = _comparison_frame(
+        reference_source,
+        reference_metadata,
+    )
+    current_df, current_execution = _comparison_frame(
+        current_source,
+        current_metadata,
+    )
+
     payload = compare_datasets(
         reference_df,
         current_df,
         columns=columns,
         max_columns=max_columns,
     )
-    payload["reference_name"] = reference_name
-    payload["current_name"] = current_name
+    payload["reference_name"] = reference_metadata.name
+    payload["current_name"] = current_metadata.name
+    payload["ref_shape"] = _true_shape(reference_execution)
+    payload["cur_shape"] = _true_shape(current_execution)
+    payload["row_count_change_percent"] = _row_count_change_percent(
+        reference_execution["source_rows"],
+        current_execution["source_rows"],
+    )
+
+    any_sampled = bool(
+        reference_execution["sampled"] or current_execution["sampled"]
+    )
+    payload["execution"] = {
+        "method": "bounded_source_compare" if any_sampled else "full_compare",
+        "sample_limit_rows_per_source": _DRIFT_SAMPLE_ROWS,
+        "full_materialization": bool(
+            reference_execution["full_materialization"]
+            or current_execution["full_materialization"]
+        ),
+        "reference": reference_execution,
+        "current": current_execution,
+        "components": {
+            "source_shape": "exact",
+            "schema_columns": "exact",
+            "value_distributions": (
+                "bounded_row_sample" if any_sampled else "full_input"
+            ),
+            "missingness": "bounded_row_sample" if any_sampled else "full_input",
+        },
+    }
     return DriftResult(payload)
 
 
@@ -129,9 +223,21 @@ def validate(
     contract: Mapping[str, Any],
 ) -> ValidationResult:
     """Validate a dataset against an inferred or explicit contract."""
-    dataframe, source_name = _load_input(data, label="Dataset")
+    source, metadata = _resolve_input(data, label="Dataset")
+    dataframe = source.load()
+    if dataframe.empty:
+        raise ValueError(f"Dataset is empty: {metadata.name}")
     payload = validate_contract(dataframe, contract)
-    payload["dataset_name"] = source_name
+    payload["dataset_name"] = metadata.name
+    payload["execution"] = {
+        "method": "exact_contract_validation",
+        "full_materialization": bool(metadata.kind == "file"),
+        "source": metadata.to_dict(),
+        "reason": (
+            "Contract validation remains exact; uniqueness, allowed-value, and bound "
+            "constraints are not silently downgraded to sampled checks."
+        ),
+    }
     return ValidationResult(payload)
 
 
@@ -146,7 +252,7 @@ def gate(
     drift_fail_on: str = "severe",
     fail_on_validation_warning: bool = False,
 ) -> GateResult:
-    """Combine contract/drift checks into one CI-friendly quality verdict."""
+    """Combine exact contract checks and bounded drift into one CI-friendly verdict."""
     if reference is None and contract is None:
         raise ValueError("gate requires at least one of reference= or contract=.")
     if drift_warn_on not in _DRIFT_SEVERITY_RANK:
@@ -158,7 +264,8 @@ def gate(
     if max_columns < 1:
         raise ValueError("max_columns must be at least 1.")
 
-    current_df, current_name = _load_input(current, label="Current")
+    _, current_metadata = _resolve_input(current, label="Current")
+    current_name = current_metadata.name
     checks: dict[str, Any] = {}
     reasons: list[str] = []
     status = "pass"
@@ -173,8 +280,7 @@ def gate(
         status = "fail"
 
     if contract is not None:
-        validation_payload = validate_contract(current_df, contract)
-        validation_payload["dataset_name"] = current_name
+        validation_payload = validate(current, contract)
         checks["validation"] = validation_payload
 
         validation_status = validation_payload.get("status")
@@ -194,15 +300,12 @@ def gate(
                 reasons.append(f"Contract validation produced {warning_count} warning(s).")
 
     if reference is not None:
-        reference_df, reference_name = _load_input(reference, label="Reference")
-        drift_payload = compare_datasets(
-            reference_df,
-            current_df,
+        drift_payload = compare(
+            reference,
+            current,
             columns=columns,
             max_columns=max_columns,
         )
-        drift_payload["reference_name"] = reference_name
-        drift_payload["current_name"] = current_name
         checks["drift"] = drift_payload
 
         if not drift_payload.get("available"):
@@ -250,4 +353,16 @@ def gate(
         },
         "reasons": reasons,
         "checks": checks,
+        "execution": {
+            "validation": (
+                checks.get("validation", {}).get("execution")
+                if isinstance(checks.get("validation"), Mapping)
+                else None
+            ),
+            "drift": (
+                checks.get("drift", {}).get("execution")
+                if isinstance(checks.get("drift"), Mapping)
+                else None
+            ),
+        },
     })
