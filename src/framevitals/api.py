@@ -8,23 +8,29 @@ from uuid import uuid4
 import pandas as pd
 
 from framevitals.analysis_selector import select_analyses
+from framevitals.anomaly_ensemble import detect_anomalies_ensemble
 from framevitals.cleaning_plan import (
     CleaningPlan,
     apply_cleaning_plan,
     infer_cleaning_plan,
 )
-from framevitals.column_roles import infer_column_roles
+from framevitals.column_roles import infer_column_roles, summarize_roles
 from framevitals.config import ConfigInput, VALID_MODULES, resolve_config
 from framevitals.contracts import infer_contract as _infer_contract
 from framevitals.contracts import validate_contract
 from framevitals.dataset_signals import detect_dataset_signals
+from framevitals.deep_statistics_v2 import run_deep_statistics_v2
 from framevitals.drift_analysis import compare_datasets
+from framevitals.health_score import calculate_health_score
 from framevitals.loader import load_dataset
+from framevitals.ml_readiness import calculate_ml_readiness
 from framevitals.pipeline import run_full_analysis
 from framevitals.planning import AnalysisPlan
 from framevitals.profiler import build_profile
+from framevitals.quality_diagnostics import run_quality_diagnostics
 from framevitals.quality_results import DriftResult, ValidationResult
 from framevitals.result import AnalysisResult
+from framevitals.target_intelligence import run_target_intelligence
 
 DataInput = str | Path | pd.DataFrame
 
@@ -56,6 +62,115 @@ def _load_input(value: DataInput, *, label: str) -> tuple[pd.DataFrame, str]:
     )
 
 
+def _with_dataset_name(payload: dict[str, Any], source_name: str) -> dict[str, Any]:
+    """Attach source identity without mutating an analysis module's own result."""
+    return {"dataset_name": source_name, **payload}
+
+
+def profile(data: DataInput) -> dict[str, Any]:
+    """Profile shape, types, missingness, cardinality, and basic summaries only."""
+    dataframe, source_name = _load_input(data, label="Dataset")
+    return _with_dataset_name(build_profile(dataframe), source_name)
+
+
+def roles(data: DataInput) -> dict[str, Any]:
+    """Infer semantic/structural column roles without running the full pipeline."""
+    dataframe, source_name = _load_input(data, label="Dataset")
+    column_roles = infer_column_roles(dataframe)
+    return {
+        "dataset_name": source_name,
+        "columns": column_roles,
+        "summary": summarize_roles(column_roles),
+    }
+
+
+def health(data: DataInput) -> dict[str, Any]:
+    """Calculate the FrameVitals data-health score only."""
+    dataframe, source_name = _load_input(data, label="Dataset")
+    dataset_profile = build_profile(dataframe)
+    payload = calculate_health_score(dataframe, dataset_profile)
+    return _with_dataset_name(payload, source_name)
+
+
+def ml_readiness(data: DataInput) -> dict[str, Any]:
+    """Calculate ML-readiness diagnostics only."""
+    dataframe, source_name = _load_input(data, label="Dataset")
+    dataset_profile = build_profile(dataframe)
+    payload = calculate_ml_readiness(dataframe, profile=dataset_profile)
+    return _with_dataset_name(payload, source_name)
+
+
+def quality(
+    data: DataInput,
+    *,
+    max_sample_rows: int = 5_000,
+    max_columns: int = 100,
+    max_missingness_columns: int = 25,
+) -> dict[str, Any]:
+    """Run practical deterministic data-quality diagnostics only."""
+    dataframe, source_name = _load_input(data, label="Dataset")
+    dataset_profile = build_profile(dataframe)
+    column_roles = infer_column_roles(dataframe)
+    payload = run_quality_diagnostics(
+        dataframe,
+        profile=dataset_profile,
+        column_roles=column_roles,
+        max_sample_rows=max_sample_rows,
+        max_columns=max_columns,
+        max_missingness_columns=max_missingness_columns,
+    )
+    return _with_dataset_name(payload, source_name)
+
+
+def statistics(
+    data: DataInput,
+    *,
+    max_pairs: int = 20,
+) -> dict[str, Any]:
+    """Run the deep statistical diagnostics layer only."""
+    dataframe, source_name = _load_input(data, label="Dataset")
+    payload = run_deep_statistics_v2(dataframe, max_pairs=max_pairs)
+    return _with_dataset_name(payload, source_name)
+
+
+def anomalies(
+    data: DataInput,
+    *,
+    contamination: float = 0.05,
+    threshold: float = 0.6,
+    max_columns: int = 30,
+    top_k: int = 25,
+) -> dict[str, Any]:
+    """Run the tabular anomaly ensemble only."""
+    dataframe, source_name = _load_input(data, label="Dataset")
+    payload = detect_anomalies_ensemble(
+        dataframe,
+        contamination=contamination,
+        threshold=threshold,
+        max_columns=max_columns,
+        top_k=top_k,
+    )
+    return _with_dataset_name(payload, source_name)
+
+
+def target_analysis(
+    data: DataInput,
+    *,
+    target: str,
+) -> dict[str, Any]:
+    """Run target-quality, leakage, association, and split diagnostics only."""
+    dataframe, source_name = _load_input(data, label="Dataset")
+    if target not in dataframe.columns:
+        raise ValueError(f"Target column not found: {target}")
+    column_roles = infer_column_roles(dataframe)
+    payload = run_target_intelligence(
+        dataframe,
+        target_column=target,
+        column_roles=column_roles,
+    )
+    return _with_dataset_name(payload, source_name)
+
+
 def analyze(
     data: DataInput,
     *,
@@ -67,7 +182,7 @@ def analyze(
     config: ConfigInput = None,
     disabled_modules: list[str] | tuple[str, ...] | None = None,
 ) -> AnalysisResult:
-    """Analyze a tabular dataset with FrameVitals."""
+    """Analyze a tabular dataset with the complete configured FrameVitals pipeline."""
     resolved = resolve_config(
         config,
         preset=preset,
@@ -139,11 +254,11 @@ def plan(
         disabled_modules=disabled_modules,
     )
     dataframe, source_name = _load_input(data, label="Dataset")
-    profile = build_profile(dataframe)
+    dataset_profile = build_profile(dataframe)
     column_roles = infer_column_roles(dataframe)
     dataset_signals = detect_dataset_signals(
         dataframe,
-        profile,
+        dataset_profile,
         column_roles=column_roles,
     )
     selection = select_analyses(
@@ -166,7 +281,7 @@ def plan(
         "dataset_name": source_name,
         "analysis_mode": resolved.mode,
         "target": resolved.target,
-        "shape": dict(profile.get("shape", {})),
+        "shape": dict(dataset_profile.get("shape", {})),
         "config": resolved.to_dict(),
         "signals": public_signals,
         "selection": selection,
@@ -176,8 +291,8 @@ def plan(
 def plan_cleaning(data: DataInput) -> CleaningPlan:
     """Infer a conservative cleaning plan without modifying the input data."""
     dataframe, _ = _load_input(data, label="Dataset")
-    profile = build_profile(dataframe)
-    return infer_cleaning_plan(dataframe, profile=profile)
+    dataset_profile = build_profile(dataframe)
+    return infer_cleaning_plan(dataframe, profile=dataset_profile)
 
 
 def clean(
