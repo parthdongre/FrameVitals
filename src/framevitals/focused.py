@@ -64,12 +64,22 @@ def roles(data: DataInput) -> dict[str, Any]:
 
 
 def health(data: DataInput) -> dict[str, Any]:
+    source = resolve_source(data)
+    metadata = source.inspect()
+    if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
+        from framevitals.health_score import calculate_health_score_from_profile_sample
+        from framevitals.streaming_profile import build_streaming_profile
+
+        dataset_profile, sample = build_streaming_profile(source, return_sample=True)
+        payload = calculate_health_score_from_profile_sample(dataset_profile, sample)
+        return _named(payload, metadata.name)
+
     from framevitals.health_score import calculate_health_score
     from framevitals.profiler import build_profile
 
-    dataframe, source_name = _load(data)
+    dataframe = source.load()
     dataset_profile = build_profile(dataframe)
-    return _named(calculate_health_score(dataframe, dataset_profile), source_name)
+    return _named(calculate_health_score(dataframe, dataset_profile), metadata.name)
 
 
 def ml_readiness(data: DataInput) -> dict[str, Any]:
@@ -183,29 +193,23 @@ def relationships(
         )
 
         numeric_columns = numeric_columns_for_streaming_source(source)
-        dataframe = sample_streaming_source(
+        sample = sample_streaming_source(
             source,
             sample_rows=max_sample_rows,
             columns=numeric_columns,
         )
         payload = build_numeric_relationship_graph(
-            dataframe,
+            sample,
             max_sample_rows=max_sample_rows,
             projections=projections,
             min_abs_correlation=min_abs_correlation,
             max_candidate_pairs=max_candidate_pairs,
             max_edges_returned=max_edges_returned,
         )
-        if payload.get("available"):
-            sample = payload.setdefault("sample", {})
-            sample.update({
-                "source_rows": int(metadata.rows or len(dataframe)),
-                "sample_rows": int(len(dataframe)),
-                "sampled": int(metadata.rows or len(dataframe)) > len(dataframe),
-                "strategy": "streaming_evenly_spaced_global_rows",
-                "full_materialization": False,
-            })
-            payload["source"] = metadata.to_dict()
+        payload["source_rows"] = metadata.rows
+        payload["source_columns"] = metadata.columns
+        payload["streaming_source"] = True
+        payload["full_materialization"] = False
         return _named(payload, metadata.name)
 
     dataframe = source.load()
