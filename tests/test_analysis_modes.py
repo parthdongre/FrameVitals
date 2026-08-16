@@ -25,7 +25,7 @@ from framevitals.analysis_selector import select_analyses
             "standard",
             {"deep_statistics", "text_profile", "modeling", "explainability"},
         ),
-        ("deep", set()),
+        ("deep", {"modeling", "explainability"}),
         ("research", set()),
     ],
 )
@@ -70,7 +70,14 @@ def test_quick_keeps_target_intelligence_and_cleaning_available(monkeypatch):
     disabled = set(captured["disabled_modules"])
     assert "target_intelligence" not in disabled
     assert "cleaning" not in disabled
-    assert {"deep_statistics", "anomaly_detection", "time_series", "text_profile", "modeling", "explainability"} <= disabled
+    assert {
+        "deep_statistics",
+        "anomaly_detection",
+        "time_series",
+        "text_profile",
+        "modeling",
+        "explainability",
+    } <= disabled
     assert result["config"] == {
         "mode": "quick",
         "target": "target",
@@ -108,7 +115,7 @@ def test_standard_public_analysis_does_not_schedule_deep_only_modules(monkeypatc
     assert result["config"]["disabled_modules"] == ()
 
 
-def test_deep_public_analysis_keeps_deep_modules_enabled(monkeypatch):
+def test_deep_keeps_advanced_diagnostics_but_reserves_modeling_for_research(monkeypatch):
     captured: dict[str, object] = {}
 
     def fake_run_full_analysis(**kwargs):
@@ -127,10 +134,35 @@ def test_deep_public_analysis_keeps_deep_modules_enabled(monkeypatch):
         artifacts=False,
     )
 
+    disabled = set(captured["disabled_modules"])
+    assert disabled == {"modeling", "explainability"}
+    assert "deep_statistics" not in disabled
+    assert "text_profile" not in disabled
+
+
+def test_research_keeps_modeling_and_explainability_enabled(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_run_full_analysis(**kwargs):
+        captured.update(kwargs)
+        return {
+            "filename": "<dataframe>",
+            "profile": {"shape": {"rows": 3, "columns": 2}},
+            "execution": {},
+        }
+
+    monkeypatch.setattr(analysis_api, "run_full_analysis", fake_run_full_analysis)
+    analysis_api.analyze(
+        pd.DataFrame({"x": [1, 2, 3], "target": [0, 1, 0]}),
+        mode="research",
+        target="target",
+        artifacts=False,
+    )
+
     assert tuple(captured["disabled_modules"]) == ()
 
 
-def test_selector_matches_standard_and_deep_mode_contracts():
+def test_selector_matches_standard_deep_and_research_contracts():
     signals = {
         "row_count": 8_000,
         "has_numeric_columns": True,
@@ -145,32 +177,17 @@ def test_selector_matches_standard_and_deep_mode_contracts():
         "has_email_like_columns": True,
     }
 
-    standard = select_analyses(
-        signals,
-        analysis_mode="standard",
-        target_column="target",
-    )
-    deep = select_analyses(
-        signals,
-        analysis_mode="deep",
-        target_column="target",
-    )
+    standard = select_analyses(signals, analysis_mode="standard", target_column="target")
+    deep = select_analyses(signals, analysis_mode="deep", target_column="target")
+    research = select_analyses(signals, analysis_mode="research", target_column="target")
 
     standard_ids = {item["id"] for item in standard["selected_analyses"]}
     deep_ids = {item["id"] for item in deep["selected_analyses"]}
+    research_ids = {item["id"] for item in research["selected_analyses"]}
 
     assert {"target_analysis", "time_series_signal"} <= standard_ids
-    assert {
-        "normality_tests",
-        "chi_square_analysis",
-        "text_analysis",
-        "feature_importance",
-        "baseline_model",
-    } <= deep_ids
-    assert {
-        "normality_tests",
-        "chi_square_analysis",
-        "text_analysis",
-        "feature_importance",
-        "baseline_model",
-    }.isdisjoint(standard_ids)
+    assert {"normality_tests", "chi_square_analysis", "text_analysis"} <= deep_ids
+    assert {"feature_importance", "baseline_model"} <= research_ids
+
+    assert {"normality_tests", "chi_square_analysis", "text_analysis"}.isdisjoint(standard_ids)
+    assert {"feature_importance", "baseline_model"}.isdisjoint(deep_ids)
