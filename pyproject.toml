@@ -35,8 +35,6 @@ classifiers = [
 dependencies = [
     "pandas>=2.2",
     "numpy>=1.26",
-    "matplotlib>=3.8",
-    "seaborn>=0.13",
     "scipy>=1.13",
     "statsmodels>=0.14",
     "scikit-learn>=1.5",
@@ -46,6 +44,10 @@ dependencies = [
 excel = [
     "openpyxl>=3.1",
     "xlrd>=2.0",
+]
+plot = [
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
 ]
 ml = [
     "xgboost>=2.0",
@@ -68,6 +70,8 @@ arrow = [
 all = [
     "openpyxl>=3.1",
     "xlrd>=2.0",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
     "xgboost>=2.0",
     "lightgbm>=4.3",
     "pyod>=2.0",
@@ -88,6 +92,8 @@ dev = [
     "ruff>=0.6",
     "openpyxl>=3.1",
     "xlrd>=2.0",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
     "pydantic>=2.7",
 ]
 
