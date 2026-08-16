@@ -7,17 +7,18 @@ use pyo3::exceptions::PyBufferError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-fn exact_state_dict<'py>(
-    py: Python<'py>,
-    state: &NumericState,
-) -> PyResult<Bound<'py, PyDict>> {
+fn exact_state_dict<'py>(py: Python<'py>, state: &NumericState) -> PyResult<Bound<'py, PyDict>> {
     let payload = PyDict::new(py);
     payload.set_item("count", state.count)?;
     payload.set_item("missing", state.missing)?;
     payload.set_item("infinite", state.infinite)?;
     payload.set_item(
         "mean",
-        if state.count > 0 { Some(state.mean) } else { None },
+        if state.count > 0 {
+            Some(state.mean)
+        } else {
+            None
+        },
     )?;
     payload.set_item("variance", state.variance())?;
     payload.set_item("std", state.standard_deviation())?;
@@ -103,10 +104,7 @@ fn numeric_profile_f64(
     ] {
         quantiles.set_item(name, sketches.quantiles.quantile(q))?;
     }
-    quantiles.set_item(
-        "relative_accuracy",
-        sketches.quantiles.relative_accuracy(),
-    )?;
+    quantiles.set_item("relative_accuracy", sketches.quantiles.relative_accuracy())?;
     payload.set_item("quantiles", quantiles)?;
     payload.set_item("heavy_hitters", sketches.heavy_hitters.candidates())?;
     payload.set_item("reservoir", sketches.reservoir.values())?;
