@@ -125,7 +125,32 @@ def test_public_ml_readiness_streams_parquet_without_calling_load(tmp_path, monk
     assert result["issues"]["missing_percent"] == pytest.approx(
         round(expected_missing, 2)
     )
+    execution = result["execution"]
+    assert execution["method"] == "streaming_profile"
+    assert execution["full_materialization"] is False
+    assert execution["source_rows"] == len(frame)
+    assert execution["sample_rows"] == len(frame)
+    assert execution["components"]["missingness"] == "full_stream_exact"
+    assert execution["components"]["column_groups"] == "schema_exact"
+    assert execution["components"]["duplicate_rate"] == "exact"
     assert 0 <= result["score"] <= 100
+
+
+def test_large_public_ml_readiness_discloses_duplicate_estimate(tmp_path, monkeypatch):
+    path = tmp_path / "large-ml-readiness.parquet"
+    frame = _write_parquet(path, rows=60_000)
+
+    def fail_load(self):
+        raise AssertionError("large ML readiness must stay on the streaming path")
+
+    monkeypatch.setattr(ParquetSource, "load", fail_load)
+    result = framevitals.ml_readiness(path)
+
+    execution = result["execution"]
+    assert execution["full_materialization"] is False
+    assert execution["source_rows"] == len(frame)
+    assert execution["sample_rows"] == 50_000
+    assert execution["components"]["duplicate_rate"] == "bounded_row_sample_estimate"
 
 
 def test_large_public_health_discloses_bounded_outlier_estimate(tmp_path, monkeypatch):
