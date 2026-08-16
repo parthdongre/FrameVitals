@@ -37,15 +37,16 @@ dependencies = [
     "numpy>=1.26",
     "matplotlib>=3.8",
     "seaborn>=0.13",
-    "openpyxl>=3.1",
-    "xlrd>=2.0",
     "scipy>=1.13",
     "statsmodels>=0.14",
     "scikit-learn>=1.5",
-    "pydantic>=2.7",
 ]
 
 [project.optional-dependencies]
+excel = [
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
+]
 ml = [
     "xgboost>=2.0",
     "lightgbm>=4.3",
@@ -54,6 +55,7 @@ ml = [
 ]
 ai = [
     "ollama>=0.3",
+    "pydantic>=2.7",
 ]
 web = [
     "flask>=3.0",
@@ -64,11 +66,14 @@ arrow = [
     "pyarrow>=25.0,<26",
 ]
 all = [
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
     "xgboost>=2.0",
     "lightgbm>=4.3",
     "pyod>=2.0",
     "shap>=0.45",
     "ollama>=0.3",
+    "pydantic>=2.7",
     "flask>=3.0",
     "gunicorn>=22.0",
     "werkzeug>=3.0",
@@ -81,6 +86,9 @@ dev = [
     "build>=1.2",
     "twine>=5.1",
     "ruff>=0.6",
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
+    "pydantic>=2.7",
 ]
 
 [project.scripts]
