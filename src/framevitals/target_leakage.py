@@ -32,12 +32,65 @@ def numeric_correlation(a, b):
         return None, overlap
 
 
-def classify_target_leakage_risk(feature, target, same_ratio, corr):
+def categorical_mapping_purity(feature, target, *, max_categories=20):
+    """Measure whether low-cardinality feature values determine target labels.
+
+    A value of 1.0 means that every observed feature category maps to exactly one
+    target class. High-cardinality columns are intentionally skipped because
+    identifiers can trivially memorize a target without representing a useful
+    categorical leakage pattern.
+    """
+    both_present = feature.notna() & target.notna()
+    overlap = int(both_present.sum())
+    if overlap < 10:
+        return None, overlap
+
+    feature_values = feature.loc[both_present]
+    target_values = target.loc[both_present]
+    feature_cardinality = int(feature_values.nunique(dropna=True))
+    target_cardinality = int(target_values.nunique(dropna=True))
+
+    if (
+        feature_cardinality < 2
+        or feature_cardinality > max_categories
+        or target_cardinality < 2
+        or target_cardinality > max_categories
+    ):
+        return None, overlap
+
+    table = pd.crosstab(feature_values, target_values)
+    if table.empty:
+        return None, overlap
+
+    correctly_determined = int(table.max(axis=1).sum())
+    purity = correctly_determined / max(int(table.to_numpy().sum()), 1)
+    return round(float(purity), 4), overlap
+
+
+def classify_target_leakage_risk(
+    feature,
+    target,
+    same_ratio,
+    corr,
+    mapping_purity=None,
+):
     lower_feature = feature.lower()
     lower_target = target.lower()
 
     if same_ratio is not None and same_ratio >= 0.98:
         return "Critical", "Feature values almost exactly match the target on non-missing rows."
+
+    if mapping_purity is not None and mapping_purity >= 0.995:
+        return (
+            "Critical",
+            "Feature categories almost perfectly determine the target labels.",
+        )
+
+    if mapping_purity is not None and mapping_purity >= 0.98:
+        return (
+            "High",
+            "Feature categories very strongly determine the target labels.",
+        )
 
     if corr is not None and abs(corr) >= 0.98:
         return "High", "Feature is almost perfectly correlated with the target."
@@ -73,11 +126,17 @@ def run_target_leakage_analysis(df, target_column):
         if pd.api.types.is_numeric_dtype(feature) and pd.api.types.is_numeric_dtype(target):
             corr, corr_overlap = numeric_correlation(feature, target)
 
+        mapping_purity = None
+        mapping_overlap = 0
+        if not pd.api.types.is_numeric_dtype(feature):
+            mapping_purity, mapping_overlap = categorical_mapping_purity(feature, target)
+
         risk, reason = classify_target_leakage_risk(
             feature=column,
             target=target_column,
             same_ratio=same_ratio,
             corr=corr,
+            mapping_purity=mapping_purity,
         )
 
         if risk in {"Critical", "High", "Medium"}:
@@ -91,6 +150,8 @@ def run_target_leakage_analysis(df, target_column):
                     "same_overlap": same_overlap,
                     "correlation": corr,
                     "correlation_overlap": corr_overlap,
+                    "mapping_purity": mapping_purity,
+                    "mapping_overlap": mapping_overlap,
                 }
             )
 
