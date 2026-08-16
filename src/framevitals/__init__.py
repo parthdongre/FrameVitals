@@ -187,8 +187,8 @@ def plan(
     config: Any = None,
     disabled_modules: list[str] | tuple[str, ...] | None = None,
 ) -> AnalysisPlan:
-    """Preview applicable analyses without running heavy analysis stages."""
-    from framevitals.api import plan as _plan
+    """Preview analyses, scale policy, and execution constraints without running them."""
+    from framevitals.planning_api import plan as _plan
 
     return _plan(
         data,
