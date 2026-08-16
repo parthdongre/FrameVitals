@@ -44,6 +44,9 @@ jobs:
           assert any(name.startswith("framevitals/") for name in names), (
               "framevitals package missing from wheel"
           )
+          assert "framevitals/py.typed" in names, (
+              "PEP 561 marker missing from wheel"
+          )
           assert not any(name.startswith("modules/") for name in names), (
               "legacy modules package leaked into wheel"
           )
