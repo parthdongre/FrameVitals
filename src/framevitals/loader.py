@@ -84,6 +84,17 @@ def _read_csv_tolerant(
     )
 
 
+def _read_excel(file_path: str | Path) -> pd.DataFrame:
+    """Read Excel input and surface a FrameVitals-specific dependency hint."""
+    try:
+        return pd.read_excel(file_path)
+    except ImportError as exc:
+        raise ImportError(
+            "Excel input requires the optional FrameVitals Excel capability. "
+            'Install it with: pip install "framevitals[excel]"'
+        ) from exc
+
+
 def load_dataset(
     file_path: str | Path,
 ) -> pd.DataFrame:
@@ -91,7 +102,7 @@ def load_dataset(
     Load a supported tabular dataset.
 
     Supported formats:
-    CSV, TSV, XLSX, XLS, and JSON.
+    CSV, TSV, XLSX, XLS, and JSON. Excel readers are optional.
     """
 
     path = Path(file_path)
@@ -111,7 +122,7 @@ def load_dataset(
         ".xlsx",
         ".xls",
     }:
-        return pd.read_excel(path)
+        return _read_excel(path)
 
     if suffix == ".json":
         try:
