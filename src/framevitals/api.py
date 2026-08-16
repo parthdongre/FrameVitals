@@ -14,7 +14,7 @@ from framevitals.cleaning_plan import (
     infer_cleaning_plan,
 )
 from framevitals.column_roles import infer_column_roles
-from framevitals.config import ConfigInput, resolve_config
+from framevitals.config import ConfigInput, VALID_MODULES, resolve_config
 from framevitals.contracts import infer_contract as _infer_contract
 from framevitals.contracts import validate_contract
 from framevitals.dataset_signals import detect_dataset_signals
@@ -151,24 +151,10 @@ def plan(
         analysis_mode=resolved.mode,
         target_column=resolved.target,
     )
+    disabled = set(resolved.disabled_modules)
     selection["execution_modules"] = {
-        "disabled": sorted(resolved.disabled_modules),
-        "enabled": sorted(
-            name
-            for name in (
-                "deep_statistics",
-                "anomaly_detection",
-                "time_series",
-                "text_profile",
-                "target_intelligence",
-                "modeling",
-                "explainability",
-                "cleaning",
-                "charts",
-                "ai",
-            )
-            if name not in resolved.disabled_modules
-        ),
+        "disabled": sorted(disabled),
+        "enabled": sorted(VALID_MODULES - disabled),
     }
 
     public_signals = {
