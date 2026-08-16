@@ -7,7 +7,7 @@ another partition without concatenating raw rows.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from math import sqrt
 from typing import Any
 
