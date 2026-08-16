@@ -174,7 +174,54 @@ def statistics(
     from framevitals.budgeted_analysis import run_budgeted_deep_statistics
     from framevitals.execution import derive_execution_budget
 
-    dataframe, source_name = _load(data)
+    source = resolve_source(data)
+    metadata = source.inspect()
+    if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
+        from framevitals.streaming_profile import sample_streaming_source
+
+        if metadata.rows is None or metadata.columns is None:
+            raise ValueError("Streaming statistics require source shape metadata.")
+
+        source_rows = int(metadata.rows)
+        source_columns = int(metadata.columns)
+        budget = derive_execution_budget(source_rows, source_columns, mode=mode)
+        sample_limit = max(
+            20,
+            min(
+                budget.deep_statistics_sample_rows,
+                budget.bootstrap_sample_rows,
+            ),
+        )
+        sample = sample_streaming_source(source, sample_rows=sample_limit)
+        payload = run_budgeted_deep_statistics(
+            sample,
+            budget=budget,
+            max_pairs=max_pairs,
+        )
+        execution = payload.setdefault("execution", {})
+        sampled = len(sample) < source_rows
+        execution.update({
+            "sampled": sampled,
+            "source_rows": source_rows,
+            "source_columns": source_columns,
+            "sample_rows": int(len(sample)),
+            "strategy": (
+                "streaming_evenly_spaced_global_rows"
+                if sampled
+                else "full_stream_via_batches"
+            ),
+            "full_materialization": False,
+            "reason": (
+                "Deep statistics ran on a bounded evenly spaced sample selected "
+                "directly from the streaming source."
+                if sampled
+                else "The streaming source fits within the deep-statistics execution budget."
+            ),
+        })
+        payload["source"] = metadata.to_dict()
+        return _named(payload, metadata.name)
+
+    dataframe = source.load()
     budget = derive_execution_budget(
         len(dataframe),
         len(dataframe.columns),
@@ -185,7 +232,7 @@ def statistics(
         budget=budget,
         max_pairs=max_pairs,
     )
-    return _named(payload, source_name)
+    return _named(payload, metadata.name)
 
 
 def anomalies(
