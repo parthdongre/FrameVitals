@@ -64,5 +64,7 @@ def test_budgeted_deep_statistics_only_passes_triaged_columns(monkeypatch):
     assert seen["rows"] <= budget.bootstrap_sample_rows
     assert result["column_triage"]["numeric_limit"] == 12
     assert result["column_triage"]["categorical_limit"] == 8
-    assert result["execution"]["method"] == "adaptive_deep_statistics"
+    assert result["execution"]["method"] == "bounded_deep_statistics"
+    assert result["execution"]["scope"] == "bounded_deep_statistics"
+    assert result["execution"]["adaptive_strategy"] == "column_interest_triage"
     assert result["execution"]["diagnostic_columns"] == len(seen["columns"])
