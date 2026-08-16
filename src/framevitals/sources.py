@@ -162,7 +162,10 @@ class DelimitedTextSource(FileSource):
 
         if self._pyarrow_csv() is None:
             self._arrow_compatible = False
-            self._metadata_cache = super().inspect()
+            # Avoid zero-argument super() here: @dataclass(slots=True) may
+            # replace the class object, which breaks the implicit __class__
+            # cell on Python versions where this fallback path is exercised.
+            self._metadata_cache = FileSource.inspect(self)
             return self._metadata_cache
 
         try:
@@ -179,7 +182,7 @@ class DelimitedTextSource(FileSource):
             # Preserve existing CSV/TSV compatibility if Arrow cannot parse a
             # file that the pandas loader may still understand.
             self._arrow_compatible = False
-            self._metadata_cache = super().inspect()
+            self._metadata_cache = FileSource.inspect(self)
             return self._metadata_cache
 
         self._arrow_compatible = True
@@ -232,7 +235,7 @@ class DelimitedTextSource(FileSource):
                 yield batch.slice(offset, min(int(batch_size), int(batch.num_rows) - offset))
 
     def load(self) -> pd.DataFrame:
-        return super().load()
+        return FileSource.load(self)
 
 
 @dataclass(slots=True)
