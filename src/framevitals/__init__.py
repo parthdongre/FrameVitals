@@ -96,11 +96,28 @@ def compare(
     )
 
 
-def infer_contract(data: Any) -> dict[str, Any]:
+def infer_contract(
+    data: Any,
+    *,
+    numeric_tolerance: float = 0.05,
+    max_categories: int = 20,
+    null_fraction_tolerance: float = 0.05,
+    infer_unique: bool = True,
+    min_unique_rows: int = 20,
+    allow_extra_columns: bool = False,
+) -> dict[str, Any]:
     """Infer a reusable data contract from a reference dataset."""
     from framevitals.api import infer_contract as _infer_contract
 
-    return _infer_contract(data)
+    return _infer_contract(
+        data,
+        numeric_tolerance=numeric_tolerance,
+        max_categories=max_categories,
+        null_fraction_tolerance=null_fraction_tolerance,
+        infer_unique=infer_unique,
+        min_unique_rows=min_unique_rows,
+        allow_extra_columns=allow_extra_columns,
+    )
 
 
 def validate(data: Any, contract: dict[str, Any]) -> dict[str, Any]:
