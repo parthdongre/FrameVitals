@@ -83,7 +83,7 @@ dev = [
 ]
 
 [project.scripts]
-framevitals = "framevitals.cli:main"
+framevitals = "framevitals.cli_entry:main"
 
 [project.urls]
 Documentation = "https://github.com/parthdongre/FrameVitals#readme"
