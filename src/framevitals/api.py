@@ -8,6 +8,11 @@ from uuid import uuid4
 import pandas as pd
 
 from framevitals.analysis_selector import select_analyses
+from framevitals.cleaning_plan import (
+    CleaningPlan,
+    apply_cleaning_plan,
+    infer_cleaning_plan,
+)
 from framevitals.column_roles import infer_column_roles
 from framevitals.config import ConfigInput, resolve_config
 from framevitals.contracts import infer_contract as _infer_contract
@@ -156,6 +161,28 @@ def plan(
         "signals": public_signals,
         "selection": selection,
     })
+
+
+def plan_cleaning(data: DataInput) -> CleaningPlan:
+    """Infer a conservative cleaning plan without modifying the input data."""
+    dataframe, _ = _load_input(data, label="Dataset")
+    profile = build_profile(dataframe)
+    return infer_cleaning_plan(dataframe, profile=profile)
+
+
+def clean(
+    data: DataInput,
+    *,
+    plan: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Return an explicitly cleaned copy of a dataset.
+
+    If ``plan`` is omitted FrameVitals infers its conservative default plan.
+    The original DataFrame or source file is never modified in place.
+    """
+    dataframe, _ = _load_input(data, label="Dataset")
+    resolved_plan = plan if plan is not None else infer_cleaning_plan(dataframe)
+    return apply_cleaning_plan(dataframe, resolved_plan, copy=True)
 
 
 def compare(
