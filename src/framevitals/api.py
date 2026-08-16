@@ -7,19 +7,13 @@ from uuid import uuid4
 
 import pandas as pd
 
+from framevitals.config import ConfigInput, resolve_config
 from framevitals.contracts import infer_contract as _infer_contract
 from framevitals.contracts import validate_contract
 from framevitals.drift_analysis import compare_datasets
 from framevitals.loader import load_dataset
 from framevitals.pipeline import run_full_analysis
 from framevitals.result import AnalysisResult
-
-VALID_MODES = {
-    "quick",
-    "standard",
-    "deep",
-    "research",
-}
 
 DataInput = str | Path | pd.DataFrame
 
@@ -55,8 +49,11 @@ def analyze(
     data: DataInput,
     *,
     target: str | None = None,
-    mode: str = "standard",
-    artifacts: bool = False,
+    mode: str | None = None,
+    artifacts: bool | None = None,
+    workers: int | None = None,
+    preset: str | None = None,
+    config: ConfigInput = None,
 ) -> AnalysisResult:
     """Analyze a tabular dataset with FrameVitals.
 
@@ -65,34 +62,36 @@ def analyze(
     data:
         A pandas DataFrame or a path to a CSV, TSV, Excel, or JSON dataset.
     target:
-        Optional supervised-learning target column.
+        Optional supervised-learning target column. Explicit values override
+        configuration-file values.
     mode:
         Analysis depth: ``quick``, ``standard``, ``deep``, or ``research``.
+        ``None`` resolves to configuration/preset/default behaviour.
     artifacts:
-        When ``True``, persist cleaned CSV/chart artifacts. The reusable Python
-        API defaults to ``False`` so analysis does not modify the filesystem.
+        Persist cleaned CSV/chart artifacts. ``None`` resolves from config and
+        otherwise defaults to ``False`` for reusable library calls.
+    workers:
+        Worker count for independent diagnostic tasks.
+    preset:
+        Optional built-in runtime preset such as ``quick``, ``standard``,
+        ``deep``, ``research``, or ``ci``.
+    config:
+        ``AnalysisConfig``, mapping, or path to a TOML configuration file.
 
     Returns
     -------
     AnalysisResult
         A dict-compatible structured result with summary, column, JSON, HTML,
         and notebook helpers.
-
-    Examples
-    --------
-    >>> import pandas as pd
-    >>> import framevitals as fv
-    >>> df = pd.DataFrame({"age": [20, 30], "income": [30000, 50000]})
-    >>> result = fv.analyze(df, mode="quick")
-    >>> print(result["health"]["overall_score"])
-    >>> print(result.summary())
     """
-    if mode not in VALID_MODES:
-        raise ValueError(
-            f"Invalid analysis mode '{mode}'. "
-            f"Choose from: {', '.join(sorted(VALID_MODES))}"
-        )
-
+    resolved = resolve_config(
+        config,
+        preset=preset,
+        mode=mode,
+        target=target,
+        artifacts=artifacts,
+        workers=workers,
+    )
     dataset_id = f"fv_{uuid4().hex[:12]}"
 
     if isinstance(data, pd.DataFrame):
@@ -102,29 +101,31 @@ def analyze(
             dataset_id=dataset_id,
             dataframe=data,
             original_filename="<dataframe>",
-            analysis_mode=mode,
-            target_column=target,
+            analysis_mode=resolved.mode,
+            target_column=resolved.target,
+            parallel_workers=resolved.workers,
             skip_ai=True,
-            write_artifacts=artifacts,
+            write_artifacts=resolved.artifacts,
         )
-        return AnalysisResult(payload)
-
-    if isinstance(data, (str, Path)):
+    elif isinstance(data, (str, Path)):
         path = _validated_path(data)
         payload = run_full_analysis(
             dataset_id=dataset_id,
             file_path=path,
             original_filename=path.name,
-            analysis_mode=mode,
-            target_column=target,
+            analysis_mode=resolved.mode,
+            target_column=resolved.target,
+            parallel_workers=resolved.workers,
             skip_ai=True,
-            write_artifacts=artifacts,
+            write_artifacts=resolved.artifacts,
         )
-        return AnalysisResult(payload)
+    else:
+        raise TypeError(
+            "data must be a pandas DataFrame or a path to a supported dataset."
+        )
 
-    raise TypeError(
-        "data must be a pandas DataFrame or a path to a supported dataset."
-    )
+    payload["config"] = resolved.to_dict()
+    return AnalysisResult(payload)
 
 
 def compare(
