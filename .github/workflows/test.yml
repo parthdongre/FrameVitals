@@ -230,7 +230,7 @@ jobs:
       - name: Run streaming Parquet tests without native extension
         env:
           FRAMEVITALS_BACKEND: numpy
-        run: pytest -v tests/test_parquet_streaming.py tests/test_statistics_streaming.py
+        run: pytest -v tests/test_parquet_streaming.py tests/test_statistics_streaming.py tests/test_streaming_drift.py
 
   optional-features:
     name: optional features (Python 3.12)
