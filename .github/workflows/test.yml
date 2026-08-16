@@ -87,7 +87,7 @@ jobs:
         run: pytest -v
 
   native-core:
-    name: native core (Rust)
+    name: native core (Rust + Python bridge)
     runs-on: ubuntu-latest
 
     steps:
@@ -95,6 +95,11 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
       - name: Configure Rust tooling
         run: |
@@ -111,6 +116,43 @@ jobs:
 
       - name: Lint Rust workspace
         run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+
+      - name: Install native build tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install "maturin>=1.14,<2" "numpy>=1.26"
+
+      - name: Build native Python wheel
+        run: |
+          maturin build \
+            --release \
+            --manifest-path rust/framevitals-py/Cargo.toml \
+            --interpreter python \
+            --out dist-native
+
+      - name: Verify native Python bridge
+        run: |
+          pip install --force-reinstall --no-deps dist-native/*.whl
+          python - <<'PY'
+          import numpy as np
+          from framevitals import _native
+
+          values = np.ascontiguousarray(
+              np.array([1.0, 2.0, np.nan, np.inf, 4.0, 4.0], dtype=np.float64)
+          )
+          state = _native.numeric_state_f64(values)
+          assert state["backend"] == "rust"
+          assert state["count"] == 4
+          assert state["missing"] == 1
+          assert state["infinite"] == 1
+          assert abs(state["mean"] - 2.75) < 1e-12
+
+          profile = _native.numeric_profile_f64(values, stream_id=17)
+          assert profile["cardinality_estimate"] >= 3
+          assert profile["quantiles"]["p50"] is not None
+          assert profile["reservoir"]
+          print(_native.backend_info())
+          PY
 
   optional-features:
     name: optional features (Python 3.12)
