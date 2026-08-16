@@ -1,4 +1,4 @@
-"""Dict-compatible public results for validation, drift, and quality gates."""
+"""Dict-compatible public results for checks, validation, drift, and quality gates."""
 
 from __future__ import annotations
 
@@ -33,6 +33,49 @@ class _QualityResult(dict):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(rendered + "\n", encoding="utf-8")
         return path
+
+
+class CheckResult(_QualityResult):
+    """Dict-compatible result returned by :func:`framevitals.run_checks`."""
+
+    @property
+    def status(self) -> str:
+        return str(self.get("status", "unknown"))
+
+    @property
+    def passed(self) -> bool:
+        return bool(self.get("passed", False))
+
+    @property
+    def findings(self) -> list[dict[str, Any]]:
+        value = self.get("findings", [])
+        return value if isinstance(value, list) else []
+
+    @property
+    def results(self) -> list[dict[str, Any]]:
+        value = self.get("results", [])
+        return value if isinstance(value, list) else []
+
+    def summary_text(self) -> str:
+        summary = self.get("summary", {})
+        if not isinstance(summary, dict):
+            summary = {}
+        lines = [
+            "FrameVitals custom checks",
+            f"Status          {self.status.upper()}",
+            f"Checks          {summary.get('checks', 0)}",
+            f"Passed          {summary.get('passed', 0)}",
+            f"Errors          {summary.get('errors', 0)}",
+            f"Warnings        {summary.get('warnings', 0)}",
+        ]
+        if self.findings:
+            lines.extend(["", "Findings"])
+            for finding in self.findings[:10]:
+                lines.append(
+                    f"- [{str(finding.get('severity', 'error')).upper()}] "
+                    f"{finding.get('title')}: {finding.get('message')}"
+                )
+        return "\n".join(lines)
 
 
 class ValidationResult(_QualityResult):
