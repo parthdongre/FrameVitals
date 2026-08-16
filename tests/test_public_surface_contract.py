@@ -45,7 +45,7 @@ def test_core_public_surface_is_exported():
         "__version__",
     }
 
-    assert expected.issubset(set(fv.__all__))
+    assert set(fv.__all__) == expected
     for name in expected:
         assert hasattr(fv, name), name
 
