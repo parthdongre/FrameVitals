@@ -127,5 +127,10 @@ def test_cli_module_flags_reach_pipeline(tmp_path, monkeypatch, capsys):
     assert main() == 0
     payload = __import__("json").loads(capsys.readouterr().out)
     assert payload["execution"]["module_status"]["anomaly_detection"] == "disabled"
-    assert payload["execution"]["module_status"]["modeling"] == "disabled"
     assert payload["anomalies_v2"]["skipped"] is True
+
+    # Modeling requires a target in the first place. The configuration still
+    # records it as disabled, but execution correctly explains that this run
+    # skipped it because it was not applicable.
+    assert "modeling" in payload["execution"]["disabled_modules"]
+    assert payload["execution"]["module_status"]["modeling"] == "not_applicable"
