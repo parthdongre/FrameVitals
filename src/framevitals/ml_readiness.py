@@ -8,6 +8,8 @@ from typing import Any
 
 import numpy as np
 
+from framevitals.provenance import normalize_execution
+
 
 _CATEGORICAL_DTYPES = ["object", "string", "category", "bool"]
 
@@ -85,20 +87,25 @@ def calculate_ml_readiness_from_profile(profile: dict[str, Any]) -> dict[str, An
     if streaming.get("enabled"):
         duplicate_metadata = profile.get("duplicate_metadata", {})
         duplicate_sampled = bool(duplicate_metadata.get("sampled"))
-        result["execution"] = {
-            "method": "streaming_profile",
-            "full_materialization": bool(streaming.get("full_materialization", False)),
-            "source_rows": rows,
-            "source_columns": columns,
-            "sample_rows": int(streaming.get("sample_rows", 0) or 0),
-            "components": {
-                "missingness": "full_stream_exact",
-                "column_groups": "schema_exact",
-                "duplicate_rate": (
-                    "bounded_row_sample_estimate" if duplicate_sampled else "exact"
-                ),
+        result["execution"] = normalize_execution(
+            {
+                "method": "streaming_profile",
+                "full_materialization": bool(streaming.get("full_materialization", False)),
+                "source_rows": rows,
+                "source_columns": columns,
+                "sample_rows": int(streaming.get("sample_rows", 0) or 0),
+                "sampled": int(streaming.get("sample_rows", 0) or 0) < rows,
+                "components": {
+                    "missingness": "full_stream_exact",
+                    "column_groups": "schema_exact",
+                    "duplicate_rate": (
+                        "bounded_row_sample_estimate" if duplicate_sampled else "exact"
+                    ),
+                },
             },
-        }
+            method="streaming_profile",
+            full_materialization=bool(streaming.get("full_materialization", False)),
+        )
 
     return result
 
