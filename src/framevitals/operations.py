@@ -26,7 +26,7 @@ from framevitals.quality_results import DriftResult, GateResult, ValidationResul
 from framevitals.sources import DatasetMetadata, StreamingDatasetSource, resolve_source
 
 
-DataInput = str | Path | pd.DataFrame
+DataInput = Any
 _DRIFT_SEVERITY_RANK = {"stable": 0, "minor": 1, "moderate": 2, "severe": 3}
 _DRIFT_SAMPLE_ROWS = 50_000
 
@@ -56,6 +56,11 @@ def _load_input(value: DataInput, *, label: str) -> tuple[pd.DataFrame, str]:
             raise ValueError(f"{label} DataFrame is empty.")
         raise ValueError(f"{label} dataset is empty: {metadata.name}")
     return dataframe, metadata.name
+
+
+def _load_fully_materializes_source(metadata: DatasetMetadata) -> bool:
+    """Whether ``source.load()`` creates a complete pandas representation."""
+    return not (metadata.kind == "memory" and metadata.format == "pandas")
 
 
 def _comparison_frame(
@@ -96,7 +101,7 @@ def _comparison_frame(
         "sample_rows": int(len(dataframe)),
         "sampled": False,
         "strategy": "full_input",
-        "full_materialization": bool(metadata.kind == "file"),
+        "full_materialization": _load_fully_materializes_source(metadata),
         "source": metadata.to_dict(),
     }
 
@@ -231,7 +236,7 @@ def validate(
     payload["dataset_name"] = metadata.name
     payload["execution"] = {
         "method": "exact_contract_validation",
-        "full_materialization": bool(metadata.kind == "file"),
+        "full_materialization": _load_fully_materializes_source(metadata),
         "source": metadata.to_dict(),
         "reason": (
             "Contract validation remains exact; uniqueness, allowed-value, and bound "
@@ -362,6 +367,27 @@ def gate(
             if message and message not in reasons:
                 reasons.append(message)
 
+    validation_execution = (
+        checks.get("validation", {}).get("execution")
+        if isinstance(checks.get("validation"), Mapping)
+        else None
+    )
+    drift_execution = (
+        checks.get("drift", {}).get("execution")
+        if isinstance(checks.get("drift"), Mapping)
+        else None
+    )
+    custom_execution = (
+        checks.get("custom", {}).get("execution")
+        if isinstance(checks.get("custom"), Mapping)
+        else None
+    )
+    execution_blocks = [
+        block
+        for block in (validation_execution, drift_execution, custom_execution)
+        if isinstance(block, Mapping)
+    ]
+
     return GateResult({
         "status": status,
         "passed": status != "fail",
@@ -375,20 +401,12 @@ def gate(
         "reasons": reasons,
         "checks": checks,
         "execution": {
-            "validation": (
-                checks.get("validation", {}).get("execution")
-                if isinstance(checks.get("validation"), Mapping)
-                else None
+            "full_materialization": any(
+                bool(block.get("full_materialization"))
+                for block in execution_blocks
             ),
-            "drift": (
-                checks.get("drift", {}).get("execution")
-                if isinstance(checks.get("drift"), Mapping)
-                else None
-            ),
-            "custom": (
-                checks.get("custom", {}).get("execution")
-                if isinstance(checks.get("custom"), Mapping)
-                else None
-            ),
+            "validation": validation_execution,
+            "drift": drift_execution,
+            "custom": custom_execution,
         },
     })
