@@ -34,6 +34,9 @@ def test_arrow_table_source_exposes_exact_metadata_projection_and_batches():
     assert metadata.supports_streaming is True
     assert source.schema() == table.schema
 
+    public_info = framevitals.inspect_source(table)
+    assert public_info == metadata.to_dict()
+
     batches = list(source.iter_batches(batch_size=700, columns=["value", "group"]))
     assert sum(batch.num_rows for batch in batches) == table.num_rows
     assert max(batch.num_rows for batch in batches) <= 700
@@ -111,6 +114,11 @@ def test_arrow_capsule_table_normalizes_without_library_specific_adapter():
     assert metadata.rows == table.num_rows
     assert metadata.columns == table.num_columns
     assert metadata.supports_streaming is True
+
+    public_info = framevitals.inspect_source(CapsuleTable())
+    assert public_info["format"] == "arrow"
+    assert public_info["rows"] == table.num_rows
+    assert public_info["supports_streaming"] is True
 
     result = framevitals.profile(CapsuleTable())
     assert result["shape"] == {"rows": table.num_rows, "columns": table.num_columns}
