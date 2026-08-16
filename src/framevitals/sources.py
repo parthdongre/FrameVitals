@@ -83,6 +83,50 @@ class PandasSource:
 
 
 @dataclass(slots=True)
+class ArrowTableSource:
+    """Projection-aware in-memory Arrow source without eager pandas conversion."""
+
+    table: Any
+    name: str = "<arrow_table>"
+
+    def inspect(self) -> DatasetMetadata:
+        return DatasetMetadata(
+            name=self.name,
+            kind="memory",
+            format="arrow",
+            rows=int(self.table.num_rows),
+            columns=int(self.table.num_columns),
+            size_bytes=int(self.table.nbytes),
+            materialized=True,
+            supports_projection=True,
+            supports_streaming=True,
+        )
+
+    def schema(self):
+        """Return the native Arrow schema without converting row data."""
+        return self.table.schema
+
+    def iter_batches(
+        self,
+        *,
+        batch_size: int = 65_536,
+        columns: Sequence[str] | None = None,
+    ) -> Iterator[Any]:
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1.")
+        projected = self.table
+        if columns is not None:
+            projected = projected.select(list(columns))
+        yield from projected.to_batches(max_chunksize=int(batch_size))
+
+    def load(self) -> pd.DataFrame:
+        dataframe = self.table.to_pandas()
+        if dataframe.empty:
+            raise ValueError(f"Dataset is empty: {self.name}")
+        return dataframe
+
+
+@dataclass(slots=True)
 class FileSource:
     path: Path
 
@@ -305,7 +349,24 @@ def _validate_file_path(path: Path) -> None:
         raise ValueError(f"Expected a dataset file, got: {path}")
 
 
-def resolve_source(data: str | Path | pd.DataFrame | DatasetSource) -> DatasetSource:
+def _arrow_memory_source(data: Any) -> ArrowTableSource | None:
+    """Recognize native Arrow containers without importing Arrow at package import."""
+    try:
+        import pyarrow as pa
+    except ImportError:
+        return None
+
+    if isinstance(data, pa.Table):
+        return ArrowTableSource(data)
+    if isinstance(data, pa.RecordBatch):
+        return ArrowTableSource(
+            pa.Table.from_batches([data]),
+            name="<arrow_record_batch>",
+        )
+    return None
+
+
+def resolve_source(data: Any) -> DatasetSource:
     """Normalize supported user inputs into a DatasetSource implementation."""
     if isinstance(data, pd.DataFrame):
         return PandasSource(data)
@@ -319,6 +380,13 @@ def resolve_source(data: str | Path | pd.DataFrame | DatasetSource) -> DatasetSo
         if suffix == ".tsv":
             return DelimitedTextSource(path, delimiter="\t")
         return FileSource(path)
+
+    arrow_source = _arrow_memory_source(data)
+    if arrow_source is not None:
+        return arrow_source
     if isinstance(data, DatasetSource):
         return data
-    raise TypeError("data must be a pandas DataFrame, dataset path, or DatasetSource.")
+    raise TypeError(
+        "data must be a pandas DataFrame, PyArrow Table/RecordBatch, dataset path, "
+        "or DatasetSource."
+    )
