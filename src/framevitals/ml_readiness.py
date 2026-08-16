@@ -1,3 +1,11 @@
+"""ML-readiness scoring and compatibility helpers."""
+
+from __future__ import annotations
+
+import sys
+from types import ModuleType
+from typing import Any
+
 import numpy as np
 
 
@@ -14,7 +22,10 @@ def calculate_ml_readiness(df, profile=None):
     rows, columns = df.shape
 
     if profile is None:
-        missing_percent = float(df.isna().sum().sum() / max(rows * columns, 1) * 100)
+        # Standalone compatibility path. The public focused API builds a profile
+        # first and therefore avoids repeating these scans.
+        missing_total = sum(int(df[column].isna().sum()) for column in df.columns)
+        missing_percent = float(missing_total / max(rows * columns, 1) * 100)
         duplicate_percent = float(df.duplicated().sum() / max(rows, 1) * 100)
         categorical_cols = df.select_dtypes(include=_CATEGORICAL_DTYPES).columns.tolist()
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -62,3 +73,22 @@ def calculate_ml_readiness(df, profile=None):
             "Select a clear target column for supervised learning.",
         ],
     }
+
+
+class _CallableReadinessModule(ModuleType):
+    """Preserve ``fv.ml_readiness(data)`` after importing this compatibility module.
+
+    Python normally places an imported submodule on its parent package under the
+    same attribute name. Since FrameVitals historically also exposes the focused
+    function ``framevitals.ml_readiness(...)``, importing this module would
+    otherwise replace that function with a non-callable module object. Making
+    the compatibility module callable preserves both APIs without eager imports.
+    """
+
+    def __call__(self, data: Any) -> dict[str, Any]:
+        from framevitals.api import ml_readiness as public_ml_readiness
+
+        return public_ml_readiness(data)
+
+
+sys.modules[__name__].__class__ = _CallableReadinessModule
