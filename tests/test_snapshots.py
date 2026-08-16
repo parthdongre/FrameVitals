@@ -1,7 +1,14 @@
 import json
 
+import pytest
+
 from framevitals.result import AnalysisResult
-from framevitals.snapshots import compare_snapshots, load_snapshot
+from framevitals.snapshots import (
+    SnapshotHistory,
+    compare_snapshots,
+    create_snapshot,
+    load_snapshot,
+)
 
 
 def _result(*, columns=None, health=80.0, missing=None, findings=None):
@@ -89,3 +96,52 @@ def test_snapshot_json_roundtrip(tmp_path):
     assert payload["fingerprint"] == snapshot["fingerprint"]
     loaded = load_snapshot(path)
     assert loaded.diff(snapshot)["changed"] is False
+
+
+def test_snapshot_history_persists_orders_and_compares_latest(tmp_path):
+    history = SnapshotHistory(tmp_path / "history")
+    baseline = create_snapshot(_result(health=90.0))
+    baseline["created_at"] = "2026-08-14T08:00:00+00:00"
+    current = create_snapshot(
+        _result(
+            health=72.5,
+            findings=[{"code": "quality.high_missingness.age"}],
+        )
+    )
+    current["created_at"] = "2026-08-15T08:00:00+00:00"
+
+    first_path = history.add(baseline, label="baseline release")
+    second_path = history.add(current, label="production")
+
+    assert len(history) == 2
+    assert "baseline-release" in first_path.name
+    assert "production" in second_path.name
+    assert history.previous()["fingerprint"] == baseline["fingerprint"]
+    assert history.latest()["fingerprint"] == current["fingerprint"]
+
+    diff = history.compare_latest()
+    assert diff["changed"] is True
+    assert diff["health_delta"] == -17.5
+    assert diff["findings"]["new"] == ["quality.high_missingness.age"]
+
+    timeline = history.timeline()
+    assert [row["health_score"] for row in timeline] == [90.0, 72.5]
+    assert [row["finding_count"] for row in timeline] == [0, 1]
+    assert all(row["filename"] == "customers.csv" for row in timeline)
+
+
+def test_snapshot_history_can_add_analysis_result_directly(tmp_path):
+    history = SnapshotHistory(tmp_path / "history")
+    path = history.add(_result(health=88.0), label="nightly")
+
+    assert path.exists()
+    assert len(history) == 1
+    assert history.latest()["state"]["health"]["overall_score"] == 88.0
+
+
+def test_snapshot_history_requires_two_entries_for_latest_diff(tmp_path):
+    history = SnapshotHistory(tmp_path / "history")
+    history.add(_result())
+
+    with pytest.raises(ValueError, match="at least two"):
+        history.compare_latest()
