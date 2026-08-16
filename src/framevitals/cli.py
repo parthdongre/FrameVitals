@@ -134,6 +134,61 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_output_argument(inspect_parser)
 
+    snapshot_parser = subparsers.add_parser(
+        "snapshot",
+        help="Analyze a dataset and emit compact monitoring state.",
+    )
+    snapshot_parser.add_argument("file", type=Path, help="Path to the dataset.")
+    _add_runtime_arguments(snapshot_parser)
+    snapshot_parser.add_argument(
+        "--format",
+        choices=["terminal", "json"],
+        default="terminal",
+        help="Snapshot output format.",
+    )
+    _add_output_argument(snapshot_parser)
+
+    compare_snapshots_parser = subparsers.add_parser(
+        "compare-snapshots",
+        help="Compare two compact FrameVitals monitoring snapshots.",
+    )
+    compare_snapshots_parser.add_argument(
+        "reference", type=Path, help="Reference/baseline snapshot JSON."
+    )
+    compare_snapshots_parser.add_argument(
+        "current", type=Path, help="Current snapshot JSON."
+    )
+    compare_snapshots_parser.add_argument(
+        "--format",
+        choices=["terminal", "json"],
+        default="terminal",
+        help="Snapshot-diff output format.",
+    )
+    compare_snapshots_parser.add_argument(
+        "--fail-on-change",
+        action="store_true",
+        help="Return exit code 1 when the compact snapshot state changed.",
+    )
+    _add_output_argument(compare_snapshots_parser)
+
+    system_info_parser = subparsers.add_parser(
+        "system-info",
+        help="Inspect FrameVitals CPU/native/GPU execution capabilities.",
+    )
+    system_info_parser.add_argument(
+        "--probe-gpu",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Probe GPU/CUDA availability. Use --no-probe-gpu for support-safe output.",
+    )
+    system_info_parser.add_argument(
+        "--format",
+        choices=["terminal", "json"],
+        default="terminal",
+        help="System-information output format.",
+    )
+    _add_output_argument(system_info_parser)
+
     plan_parser = subparsers.add_parser(
         "plan",
         help="Preview applicable analyses without running heavy stages.",
@@ -372,6 +427,49 @@ def _render_source(source: dict) -> str:
     return "\n".join(lines)
 
 
+def _render_snapshot(snapshot: dict) -> str:
+    state = snapshot.get("state", {})
+    source = snapshot.get("source", {})
+    dataset = state.get("dataset", {})
+    shape = dataset.get("shape", {})
+    return "\n".join([
+        "FrameVitals snapshot",
+        f"File            {source.get('filename', 'unknown')}",
+        f"Mode            {state.get('analysis_mode', 'unknown')}",
+        f"Rows            {shape.get('rows', 'unknown')}",
+        f"Columns         {shape.get('columns', 'unknown')}",
+        f"Fingerprint     {snapshot.get('fingerprint', 'unknown')}",
+    ])
+
+
+def _render_snapshot_diff(report: dict) -> str:
+    schema = report.get("schema", {})
+    findings = report.get("findings", {})
+    return "\n".join([
+        "FrameVitals snapshot diff",
+        f"Changed         {'yes' if report.get('changed') else 'no'}",
+        f"Added columns   {len(schema.get('added_columns', []))}",
+        f"Removed columns {len(schema.get('removed_columns', []))}",
+        f"Type changes    {len(schema.get('type_changes', {}))}",
+        f"New findings    {len(findings.get('new', []))}",
+        f"Resolved        {len(findings.get('resolved', []))}",
+    ])
+
+
+def _render_system_info(info: dict) -> str:
+    native = info.get("native", {})
+    gpu = info.get("gpu", {})
+    lines = [
+        "FrameVitals system info",
+        f"Python          {info.get('python', 'unknown')}",
+        f"Backend         {info.get('backend', 'unknown')}",
+        f"Native          available: {native.get('available', False)}",
+    ]
+    if gpu:
+        lines.append(f"GPU             available: {gpu.get('available', False)}")
+    return "\n".join(lines)
+
+
 def _render_validation(report: dict) -> str:
     summary = report.get("summary", {})
     lines = [
@@ -497,6 +595,58 @@ def main() -> int:
             print(_render_source(result))
             if args.output is not None:
                 print(f"Source JSON    {args.output}")
+        return 0
+
+    if args.command == "snapshot":
+        from framevitals.analysis_api import analyze
+
+        report = analyze(
+            args.file,
+            target=args.target,
+            mode=args.mode,
+            artifacts=False,
+            workers=args.workers,
+            preset=args.preset,
+            config=args.config,
+            disabled_modules=args.disabled_modules,
+        )
+        snapshot = report.snapshot(args.output)
+        if args.format == "json":
+            print(snapshot.to_json())
+        else:
+            print(_render_snapshot(snapshot))
+            if args.output is not None:
+                print(f"Snapshot JSON   {args.output}")
+        return 0
+
+    if args.command == "compare-snapshots":
+        from framevitals.snapshots import compare_snapshots, load_snapshot
+
+        reference = load_snapshot(args.reference)
+        current = load_snapshot(args.current)
+        result = compare_snapshots(reference, current)
+        if args.output is not None:
+            _write_json(result, args.output)
+        if args.format == "json":
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            print(_render_snapshot_diff(result))
+        if args.fail_on_change and result.get("changed"):
+            return 1
+        return 0
+
+    if args.command == "system-info":
+        from framevitals.acceleration import system_info
+
+        result = system_info(probe_gpu=args.probe_gpu)
+        if args.output is not None:
+            _write_json(result, args.output)
+        if args.format == "json":
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            print(_render_system_info(result))
+            if args.output is not None:
+                print(f"System JSON     {args.output}")
         return 0
 
     if args.command == "plan":
