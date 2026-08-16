@@ -17,7 +17,12 @@ if TYPE_CHECKING:
 
     from framevitals.cleaning_plan import CleaningPlan
     from framevitals.planning import AnalysisPlan
-    from framevitals.quality_results import DriftResult, GateResult, ValidationResult
+    from framevitals.quality_results import (
+        CheckResult,
+        DriftResult,
+        GateResult,
+        ValidationResult,
+    )
     from framevitals.result import AnalysisResult
 
 
@@ -262,11 +267,18 @@ def check(
     return _check(name, severity=severity, description=description)
 
 
-def run_checks(data: DataInput, checks: Any) -> dict[str, Any]:
+def run_checks(data: DataInput, checks: Any) -> CheckResult:
     """Run exact custom checks through the canonical check engine."""
     from framevitals.checks import run_checks as _run_checks
 
     return _run_checks(data, checks)
+
+
+def discover_checks(*, group: str = "framevitals.checks"):
+    """Explicitly load installed third-party check plugins."""
+    from framevitals.plugins import discover_checks as _discover_checks
+
+    return _discover_checks(group=group)
 
 
 def gate(
@@ -316,5 +328,6 @@ __all__ = [
     "validate",
     "check",
     "run_checks",
+    "discover_checks",
     "gate",
 ]
