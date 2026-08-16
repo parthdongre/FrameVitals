@@ -138,6 +138,13 @@ def relationships(
     }
 
 
+def system_info(*, probe_gpu: bool = True) -> dict[str, Any]:
+    """Inspect FrameVitals CPU/native/CUDA capabilities without installing anything."""
+    from framevitals.acceleration import system_info as _system_info
+
+    return _system_info(probe_gpu=probe_gpu)
+
+
 def target_analysis(data: Any, *, target: str) -> dict[str, Any]:
     """Run target quality, leakage, association, and split diagnostics only."""
     from framevitals.api import target_analysis as _target_analysis
@@ -302,6 +309,7 @@ __all__ = [
     "statistics",
     "anomalies",
     "relationships",
+    "system_info",
     "target_analysis",
     "analyze",
     "plan",
