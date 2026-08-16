@@ -17,6 +17,7 @@ from framevitals.provenance import (
     load_fully_materializes,
     normalize_execution,
 )
+from framevitals.result import DiagnosticResult
 from framevitals.sources import StreamingDatasetSource, resolve_source
 
 
@@ -36,26 +37,42 @@ def _load(data: DataInput, *, label: str = "Dataset") -> tuple[pd.DataFrame, str
     return dataframe, metadata.name
 
 
-def _named(payload: dict[str, Any], source_name: str) -> dict[str, Any]:
-    return {"dataset_name": source_name, **payload}
+def _named(
+    payload: dict[str, Any],
+    source_name: str,
+    *,
+    diagnostic: str,
+) -> DiagnosticResult:
+    return DiagnosticResult(
+        {"dataset_name": source_name, **payload},
+        diagnostic=diagnostic,
+    )
 
 
-def profile(data: DataInput) -> dict[str, Any]:
+def profile(data: DataInput) -> DiagnosticResult:
     """Profile a dataset, streaming Arrow-capable file sources when available."""
     source = resolve_source(data)
     metadata = source.inspect()
     if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
         from framevitals.streaming_profile import build_streaming_profile
 
-        return _named(build_streaming_profile(source), metadata.name)
+        return _named(
+            build_streaming_profile(source),
+            metadata.name,
+            diagnostic="profile",
+        )
 
     from framevitals.profiler import build_profile
 
     dataframe = source.load()
-    return _named(build_profile(dataframe), metadata.name)
+    return _named(
+        build_profile(dataframe),
+        metadata.name,
+        diagnostic="profile",
+    )
 
 
-def roles(data: DataInput) -> dict[str, Any]:
+def roles(data: DataInput) -> DiagnosticResult:
     source = resolve_source(data)
     metadata = source.inspect()
     if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
@@ -68,20 +85,23 @@ def roles(data: DataInput) -> dict[str, Any]:
             return_sample=True,
         )
         payload = infer_streaming_column_roles(sample, profile=dataset_profile)
-        return _named(payload, metadata.name)
+        return _named(payload, metadata.name, diagnostic="roles")
 
     from framevitals.column_roles import infer_column_roles, summarize_roles
 
     dataframe = source.load()
     column_roles = infer_column_roles(dataframe)
-    return {
-        "dataset_name": metadata.name,
-        "columns": column_roles,
-        "summary": summarize_roles(column_roles),
-    }
+    return _named(
+        {
+            "columns": column_roles,
+            "summary": summarize_roles(column_roles),
+        },
+        metadata.name,
+        diagnostic="roles",
+    )
 
 
-def health(data: DataInput) -> dict[str, Any]:
+def health(data: DataInput) -> DiagnosticResult:
     source = resolve_source(data)
     metadata = source.inspect()
     if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
@@ -90,17 +110,21 @@ def health(data: DataInput) -> dict[str, Any]:
 
         dataset_profile, sample = build_streaming_profile(source, return_sample=True)
         payload = calculate_health_score_from_profile_sample(dataset_profile, sample)
-        return _named(payload, metadata.name)
+        return _named(payload, metadata.name, diagnostic="health")
 
     from framevitals.health_score import calculate_health_score
     from framevitals.profiler import build_profile
 
     dataframe = source.load()
     dataset_profile = build_profile(dataframe)
-    return _named(calculate_health_score(dataframe, dataset_profile), metadata.name)
+    return _named(
+        calculate_health_score(dataframe, dataset_profile),
+        metadata.name,
+        diagnostic="health",
+    )
 
 
-def ml_readiness(data: DataInput) -> dict[str, Any]:
+def ml_readiness(data: DataInput) -> DiagnosticResult:
     source = resolve_source(data)
     metadata = source.inspect()
     if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
@@ -108,7 +132,11 @@ def ml_readiness(data: DataInput) -> dict[str, Any]:
         from framevitals.streaming_profile import build_streaming_profile
 
         dataset_profile = build_streaming_profile(source)
-        return _named(calculate_ml_readiness_from_profile(dataset_profile), metadata.name)
+        return _named(
+            calculate_ml_readiness_from_profile(dataset_profile),
+            metadata.name,
+            diagnostic="ml_readiness",
+        )
 
     from framevitals.ml_readiness import calculate_ml_readiness
     from framevitals.profiler import build_profile
@@ -118,6 +146,7 @@ def ml_readiness(data: DataInput) -> dict[str, Any]:
     return _named(
         calculate_ml_readiness(dataframe, profile=dataset_profile),
         metadata.name,
+        diagnostic="ml_readiness",
     )
 
 
@@ -127,7 +156,7 @@ def quality(
     max_sample_rows: int = 5_000,
     max_columns: int = 100,
     max_missingness_columns: int = 25,
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     source = resolve_source(data)
     metadata = source.inspect()
     if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
@@ -148,7 +177,7 @@ def quality(
             max_columns=max_columns,
             max_missingness_columns=max_missingness_columns,
         )
-        return _named(payload, metadata.name)
+        return _named(payload, metadata.name, diagnostic="quality")
 
     from framevitals.column_roles import infer_column_roles
     from framevitals.profiler import build_profile
@@ -165,7 +194,7 @@ def quality(
         max_columns=max_columns,
         max_missingness_columns=max_missingness_columns,
     )
-    return _named(payload, metadata.name)
+    return _named(payload, metadata.name, diagnostic="quality")
 
 
 def statistics(
@@ -173,7 +202,7 @@ def statistics(
     *,
     max_pairs: int = 20,
     mode: str = "standard",
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     """Run deep statistics through the same large-data budget as full analysis."""
     from framevitals.budgeted_analysis import run_budgeted_deep_statistics
     from framevitals.execution import derive_execution_budget
@@ -229,7 +258,7 @@ def statistics(
             source=metadata.to_dict(),
         )
         payload["source"] = metadata.to_dict()
-        return _named(payload, metadata.name)
+        return _named(payload, metadata.name, diagnostic="statistics")
 
     dataframe = source.load()
     budget = derive_execution_budget(
@@ -249,7 +278,7 @@ def statistics(
         source=metadata.to_dict(),
     )
     payload["source"] = metadata.to_dict()
-    return _named(payload, metadata.name)
+    return _named(payload, metadata.name, diagnostic="statistics")
 
 
 def anomalies(
@@ -260,7 +289,7 @@ def anomalies(
     max_columns: int = 30,
     top_k: int = 25,
     mode: str = "standard",
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     """Run anomaly diagnostics with bounded covariance/neighbor work."""
     from framevitals.budgeted_analysis import run_budgeted_anomalies
     from framevitals.execution import derive_execution_budget
@@ -292,12 +321,16 @@ def anomalies(
                 scope="bounded_anomaly_detection",
                 extra={"projected_columns": 0},
             )
-            return _named({
-                "available": False,
-                "reason": "No numeric columns available for anomaly analysis.",
-                "execution": execution,
-                "source": metadata.to_dict(),
-            }, metadata.name)
+            return _named(
+                {
+                    "available": False,
+                    "reason": "No numeric columns available for anomaly analysis.",
+                    "execution": execution,
+                    "source": metadata.to_dict(),
+                },
+                metadata.name,
+                diagnostic="anomalies",
+            )
 
         sample_limit = max(100, int(budget.anomaly_sample_rows))
         sample = sample_streaming_source(
@@ -341,7 +374,7 @@ def anomalies(
             source=metadata.to_dict(),
         )
         payload["source"] = metadata.to_dict()
-        return _named(payload, metadata.name)
+        return _named(payload, metadata.name, diagnostic="anomalies")
 
     dataframe = source.load()
     budget = derive_execution_budget(
@@ -364,7 +397,7 @@ def anomalies(
         source=metadata.to_dict(),
     )
     payload["source"] = metadata.to_dict()
-    return _named(payload, metadata.name)
+    return _named(payload, metadata.name, diagnostic="anomalies")
 
 
 def relationships(
@@ -375,7 +408,7 @@ def relationships(
     min_abs_correlation: float = 0.80,
     max_candidate_pairs: int = 250_000,
     max_edges_returned: int = 5_000,
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     from framevitals.relationship_graph import build_numeric_relationship_graph
 
     source = resolve_source(data)
@@ -431,7 +464,7 @@ def relationships(
             },
             extra={"projected_columns": int(len(numeric_columns))},
         )
-        return _named(payload, metadata.name)
+        return _named(payload, metadata.name, diagnostic="relationships")
 
     dataframe = source.load()
     payload = build_numeric_relationship_graph(
@@ -463,21 +496,21 @@ def relationships(
             "relationship_candidates": "bounded_row_sample" if sampled else "full_input",
         },
     )
-    return _named(payload, metadata.name)
+    return _named(payload, metadata.name, diagnostic="relationships")
 
 
 def target_analysis(
     data: DataInput,
     *,
     target: str,
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     source = resolve_source(data)
     metadata = source.inspect()
     if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
         from framevitals.streaming_target import run_streaming_target_analysis
 
         payload = run_streaming_target_analysis(source, target=target)
-        return _named(payload, metadata.name)
+        return _named(payload, metadata.name, diagnostic="target_analysis")
 
     from framevitals.column_roles import infer_column_roles
     from framevitals.target_intelligence import run_target_intelligence
@@ -491,4 +524,4 @@ def target_analysis(
         target_column=target,
         column_roles=column_roles,
     )
-    return _named(payload, metadata.name)
+    return _named(payload, metadata.name, diagnostic="target_analysis")
