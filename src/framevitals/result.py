@@ -12,7 +12,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from framevitals.findings import recommendations_from_findings
+from framevitals.findings import findings_from_signals, recommendations_from_findings
 
 
 class ColumnResult(dict):
@@ -41,6 +41,15 @@ class AnalysisResult(dict):
     """
 
     schema_version = "1"
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.setdefault("result_schema_version", self.schema_version)
+        if "findings" not in self:
+            signals = self.get("signals", [])
+            if not isinstance(signals, list):
+                signals = []
+            self["findings"] = findings_from_signals(signals)
 
     def __getattr__(self, name: str) -> Any:
         try:
@@ -96,6 +105,7 @@ class AnalysisResult(dict):
             "dataset_id": self.get("dataset_id"),
             "filename": self.get("filename"),
             "analysis_mode": self.get("analysis_mode"),
+            "result_schema_version": self.get("result_schema_version"),
             "shape": dict(self.shape),
             "health": {
                 "overall_score": health.get("overall_score"),
