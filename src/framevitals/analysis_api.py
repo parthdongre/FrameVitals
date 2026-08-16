@@ -1,9 +1,9 @@
 """Public full-analysis dispatcher.
 
 This module keeps input/source routing separate from the legacy analysis API.
-Streaming Arrow-capable sources use the bounded streaming orchestrator when
-artifacts are disabled; DataFrames, non-streaming files, and explicit artifact
-runs retain the existing materialized pipeline behavior.
+Streaming-capable sources use the bounded streaming orchestrator when artifacts
+are disabled; DataFrames and exact/materialized execution retain the existing
+full pipeline behavior.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from framevitals.result import AnalysisResult
 from framevitals.sources import StreamingDatasetSource, resolve_source
 
 
-DataInput = str | Path | pd.DataFrame
+DataInput = Any
 
 
 def analyze(
@@ -46,6 +46,8 @@ def analyze(
     )
     dataset_id = f"fv_{uuid4().hex[:12]}"
 
+    # Preserve the direct DataFrame path so callers do not pay for a defensive
+    # source-layer copy before the established materialized pipeline begins.
     if isinstance(data, pd.DataFrame):
         if data.empty:
             raise ValueError("Dataset DataFrame is empty.")
@@ -60,7 +62,7 @@ def analyze(
             write_artifacts=resolved.artifacts,
             disabled_modules=resolved.disabled_modules,
         )
-    elif isinstance(data, (str, Path)):
+    else:
         source = resolve_source(data)
         metadata = source.inspect()
         if metadata.rows == 0:
@@ -83,7 +85,7 @@ def analyze(
                 skip_ai=True,
                 disabled_modules=resolved.disabled_modules,
             )
-        else:
+        elif isinstance(data, (str, Path)):
             path = Path(data)
             if not path.exists():
                 raise FileNotFoundError(f"Dataset not found: {path}")
@@ -92,7 +94,7 @@ def analyze(
             payload = run_full_analysis(
                 dataset_id=dataset_id,
                 file_path=path,
-                original_filename=path.name,
+                original_filename=metadata.name,
                 analysis_mode=resolved.mode,
                 target_column=resolved.target,
                 parallel_workers=resolved.workers,
@@ -100,10 +102,19 @@ def analyze(
                 write_artifacts=resolved.artifacts,
                 disabled_modules=resolved.disabled_modules,
             )
-    else:
-        raise TypeError(
-            "data must be a pandas DataFrame or a path to a supported dataset."
-        )
+        else:
+            dataframe = source.load()
+            payload = run_full_analysis(
+                dataset_id=dataset_id,
+                original_filename=metadata.name,
+                analysis_mode=resolved.mode,
+                target_column=resolved.target,
+                parallel_workers=resolved.workers,
+                skip_ai=True,
+                dataframe=dataframe,
+                write_artifacts=resolved.artifacts,
+                disabled_modules=resolved.disabled_modules,
+            )
 
     payload["config"] = resolved.to_dict()
     return AnalysisResult(payload)
