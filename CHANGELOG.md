@@ -19,17 +19,21 @@ Development continues on the development branches. Changes intended for the next
 - `framevitals plan` for previewing applicable modules, execution budgets, source capabilities, and bounded planning samples
 - `framevitals.inspect_source()` for inspecting source shape, storage kind, format, materialization state, projection support, and streaming capability without running diagnostics
 - `framevitals inspect` CLI command with terminal/JSON output and optional persisted source metadata
+- `framevitals snapshot` and `framevitals compare-snapshots` CLI commands for compact monitoring state, snapshot diffs, JSON persistence, and CI-friendly change exit codes
+- `framevitals system-info` CLI command for reproducible CPU/native/GPU capability reports in support and performance workflows
 - Compact versioned analysis snapshots with deterministic fingerprints, JSON persistence, and snapshot-to-snapshot schema/health/ML-readiness/finding diffs
 - `SnapshotHistory` for persistent compact monitoring timelines, latest/previous lookup, labels, and recent-state comparison without storing raw datasets
-- Dict-compatible result objects including `AnalysisResult`, `DriftResult`, `ValidationResult`, `CheckResult`, `GateResult`, and per-column result views
+- Dict-compatible result objects including `AnalysisResult`, `DiagnosticResult`, `DriftResult`, `ValidationResult`, `CheckResult`, `GateResult`, and per-column result views
 - `framevitals.check()` and `framevitals.run_checks()` for exact user-defined DataFrame invariants with warning/error severities and structured findings
 - Opt-in `framevitals.discover_checks()` plugin discovery through the `framevitals.checks` Python entry-point group
+- Installable third-party check-plugin example plus CI that installs, discovers, executes, and gates on external entry points
 - Focused public APIs for profiling, column roles, health, ML readiness, quality, statistics, anomalies, relationships, and target analysis without running unrelated pipeline stages
 - Source abstraction with metadata inspection, projection, and streaming capability discovery
 - Bounded Arrow-backed Parquet execution for public profiling, health, ML-readiness, roles, quality, statistics, anomaly, relationship, target-aware, drift, gate, planning, and full-analysis paths where those diagnostics support bounded execution
 - Optional Arrow-backed CSV and TSV streaming with exact row-count metadata, projected record batches, and pandas fallback for incompatible inputs
 - Native PyArrow `Table` and `RecordBatch` inputs through the same source-aware streaming engine
 - Arrow C Stream / PyCapsule-compatible table input support without requiring a library-specific adapter for every producer
+- Tested Polars DataFrame interoperability through the standard Arrow C Stream boundary without adding Polars as a FrameVitals runtime dependency
 - Optional lazy DuckDB relation source with exact count/schema metadata, projection pushdown, Arrow record batches, and full pandas materialization only for exact/full-row APIs
 - Optional `duckdb` dependency group containing DuckDB plus its Arrow transport
 - Dedicated Arrow/DuckDB interoperability CI coverage
@@ -37,11 +41,18 @@ Development continues on the development branches. Changes intended for the next
 - Optional Rust native core and Python bridge for accelerated streaming numeric state, cardinality/quantile sketches, and backend routing
 - Dedicated Arrow/NumPy-fallback and Rust/native CI coverage
 - Reproducible performance benchmark workflow with time/RSS summaries and retained JSON artifacts
+- Catastrophic performance guardrails for deterministic core and Parquet profiling scenarios with retained measurement artifacts
+- Minimum-dependency CI that installs and tests the declared core dependency floors separately from optional extras
+- Windows and macOS public-API smoke CI alongside the full Linux matrix
+- CodeQL scanning for Python and JavaScript/TypeScript on integration/release branches, pull requests, manual runs, and a scheduled cadence
 - PEP 561 `py.typed` marker for downstream type-checking support
 - Optional `excel` dependency group for XLS/XLSX readers
 - Optional `plot` dependency group for Matplotlib/Seaborn chart and report plotting support
-- Optional `docs` dependency group plus a MkDocs Material documentation site covering source-aware execution, execution provenance, quality gates, custom checks, and plugin trust boundaries
+- Optional `docs` dependency group plus a MkDocs Material documentation site covering source-aware execution, execution provenance, result objects, monitoring, quality gates, custom checks, extension authors, and stability guarantees
 - Strict path-scoped documentation CI using `mkdocs build --strict`
+- Pre-commit and pre-push contributor guardrails mirrored by dedicated CI
+- `SUPPORT.md` guidance for reproducible issue reports without requiring users to share sensitive datasets
+- Stability/compatibility documentation defining the intended `0.x` public-surface, result-schema, execution-provenance, optional-dependency, Python-version, and platform expectations
 - Contributor architecture guidance covering canonical layers, streaming provenance, optional-dependency boundaries, and performance-sensitive changes
 - Focused examples for domain-specific quality gates and persistent snapshot monitoring
 
@@ -56,10 +67,13 @@ Development continues on the development branches. Changes intended for the next
 - Top-level gate execution now reports whether any selected check family required full materialization
 - Materialization provenance is now based on actual execution semantics rather than assuming only file-backed sources can materialize
 - Focused statistics, anomaly, relationship, role, health, ML-readiness, quality, drift, validation, custom-check, and gate paths are converging on execution-provenance schema v1 without removing legacy metadata keys
-- `framevitals.api` is now a lazy compatibility facade over the canonical focused, analysis, planning, operations, check, plugin, and source-inspection engines instead of a second eager implementation
+- Focused diagnostic APIs return dict-compatible `DiagnosticResult` objects with JSON/summary/source/execution ergonomics while preserving existing mapping payloads
+- The package-root `__all__` surface is now regression-tested as an exact `0.2` stabilization contract so accidental additions and removals both fail CI
+- `framevitals.api` is now a lazy compatibility facade over the canonical focused, analysis, planning, operations, check, plugin, and source-inspection engines instead of a second eager implementation, with focused return annotations aligned to `DiagnosticResult`
 - The installed CLI now routes directly through canonical APIs and no longer relies on a runtime monkeypatch shim
 - CLI `--version` works from a no-dependencies wheel smoke install without importing the analytics stack
 - The `all` extra now includes Arrow and DuckDB interoperability capabilities
+- The `dev` extra now includes the pre-commit tool required by the documented and CI-enforced contributor workflow
 - Excel engines moved out of the default dependency set into `framevitals[excel]`; AI-only Pydantic moved into `framevitals[ai]`
 - Matplotlib and Seaborn moved out of the default dependency set into `framevitals[plot]`
 - Explainability no longer requires Matplotlib at module import time; structured importance can run without plotting and SHAP chart rendering is optional
@@ -69,6 +83,7 @@ Development continues on the development branches. Changes intended for the next
 - Project metadata now advertises the package as typed and points documentation users at the maintained `docs/` tree
 - Package CI now requires the `py.typed` marker to be present in built wheels
 - Test and package workflows now use read-only default permissions and cancel stale runs on the same branch
+- Release documentation now separates stabilization-branch promotion to `dev` from intentional `dev` → `main` versioning and PyPI publication
 - Release publishing now verifies that the GitHub release tag, `pyproject.toml` version, and `framevitals.__version__` match before building/publishing
 
 ### Fixed
@@ -79,9 +94,12 @@ Development continues on the development branches. Changes intended for the next
 - Streaming column-role cardinality metadata distinguishes bounded-sample cardinality from full-stream native estimates
 - CSV/TSV streaming sources preserve `FileSource` compatibility for existing callers and tests
 - Dedicated Arrow CI now exercises streaming statistics, drift, CSV/TSV sources, in-memory Arrow inputs, and the quality-gate CLI
+- Arrow `string_view` and `binary_view` inputs are normalized to compute-compatible Arrow types at the in-memory source boundary, fixing Polars sampling on PyArrow 25 without falling back to pandas
+- Optional AI and plotting tests now skip cleanly in core-only/minimum-dependency environments rather than requiring undeclared optional extras during test collection
 - Web runtime dependency boundaries no longer force AI/report/plot packages to import during Flask startup
 - Reusable Gate Action setup no longer relies on an invalid absolute `setup-python` cache dependency path
 - Exact validation/custom-check provenance now reports full materialization for Arrow and relation-backed inputs when they are converted to complete pandas DataFrames
+- Monitoring snapshot and system-capability CLI commands are now implemented by the installed parser/dispatcher rather than existing only as tests/documentation
 
 ## 0.1.0 - 2026-08-15
 
