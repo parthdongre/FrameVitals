@@ -17,7 +17,10 @@ def test_cli_parser():
     assert args.file.name == "dataset.csv"
     assert args.mode == "quick"
     assert args.target is None
-    assert args.artifacts is False
+    assert args.artifacts is None
+    assert args.workers is None
+    assert args.preset is None
+    assert args.config is None
     assert args.output is None
 
 
@@ -32,6 +35,8 @@ def test_cli_target_argument():
         "--mode",
         "deep",
         "--artifacts",
+        "--workers",
+        "6",
         "--output",
         "result.json",
     ])
@@ -40,7 +45,36 @@ def test_cli_target_argument():
     assert args.target == "churn"
     assert args.mode == "deep"
     assert args.artifacts is True
+    assert args.workers == 6
     assert args.output.name == "result.json"
+
+
+def test_cli_config_and_preset_arguments():
+    parser = build_parser()
+
+    args = parser.parse_args([
+        "analyze",
+        "customers.csv",
+        "--preset",
+        "ci",
+        "--config",
+        "framevitals.toml",
+        "--no-artifacts",
+    ])
+    config_args = parser.parse_args([
+        "config",
+        "--file",
+        "framevitals.toml",
+        "--preset",
+        "deep",
+    ])
+
+    assert args.preset == "ci"
+    assert args.config.name == "framevitals.toml"
+    assert args.artifacts is False
+    assert config_args.command == "config"
+    assert config_args.file.name == "framevitals.toml"
+    assert config_args.preset == "deep"
 
 
 def test_cli_compare_parser():
