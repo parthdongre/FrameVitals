@@ -86,7 +86,7 @@ class _CallableReadinessModule(ModuleType):
     """
 
     def __call__(self, data: Any) -> dict[str, Any]:
-        from framevitals.api import ml_readiness as public_ml_readiness
+        from framevitals.focused import ml_readiness as public_ml_readiness
 
         return public_ml_readiness(data)
 
