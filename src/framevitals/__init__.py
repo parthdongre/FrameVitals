@@ -22,12 +22,7 @@ __version__ = "0.1.0"
 
 
 def __getattr__(name: str):
-    """Lazily expose optional/heavier public types.
-
-    ``CleaningPlan`` depends on pandas/NumPy. Delaying that import preserves the
-    package's lightweight top-level import boundary and built-wheel smoke test
-    while keeping ``framevitals.CleaningPlan`` available to normal users.
-    """
+    """Lazily expose optional/heavier public types."""
     if name == "CleaningPlan":
         from framevitals.cleaning_plan import CleaningPlan
 
@@ -203,14 +198,14 @@ def plan(
 
 def plan_cleaning(data: Any) -> CleaningPlan:
     """Infer a conservative cleaning plan without changing the input data."""
-    from framevitals.api import plan_cleaning as _plan_cleaning
+    from framevitals.operations import plan_cleaning as _plan_cleaning
 
     return _plan_cleaning(data)
 
 
 def clean(data: Any, *, plan: Any = None):
     """Return an explicitly cleaned copy using a supplied or inferred plan."""
-    from framevitals.api import clean as _clean
+    from framevitals.operations import clean as _clean
 
     return _clean(data, plan=plan)
 
@@ -223,7 +218,7 @@ def compare(
     max_columns: int = 30,
 ) -> DriftResult:
     """Compare two datasets and return a structured drift report."""
-    from framevitals.api import compare as _compare
+    from framevitals.operations import compare as _compare
 
     return _compare(
         reference,
@@ -244,7 +239,7 @@ def infer_contract(
     allow_extra_columns: bool = False,
 ) -> dict[str, Any]:
     """Infer a reusable data contract from a reference dataset."""
-    from framevitals.api import infer_contract as _infer_contract
+    from framevitals.operations import infer_contract as _infer_contract
 
     return _infer_contract(
         data,
@@ -259,7 +254,7 @@ def infer_contract(
 
 def validate(data: Any, contract: dict[str, Any]) -> ValidationResult:
     """Validate a dataset against an inferred or explicit data contract."""
-    from framevitals.api import validate as _validate
+    from framevitals.operations import validate as _validate
 
     return _validate(data, contract)
 
@@ -276,7 +271,7 @@ def gate(
     fail_on_validation_warning: bool = False,
 ) -> GateResult:
     """Run contract/drift checks and return one CI-friendly quality verdict."""
-    from framevitals.api import gate as _gate
+    from framevitals.operations import gate as _gate
 
     return _gate(
         current,
