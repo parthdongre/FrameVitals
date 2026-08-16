@@ -217,7 +217,12 @@ def _cv_for(task_type: str, y: pd.Series, n_splits: int = 5):
             actual_splits,
         )
 
-    actual_splits = min(n_splits, n_rows)
+    # R² is undefined for a test fold containing fewer than two observations.
+    # Because ML preprocessing already requires >=20 rows, capping KFold at
+    # floor(n/2) guarantees every test fold has at least two rows while still
+    # honouring smaller user-requested fold counts.
+    max_r2_splits = max(2, n_rows // 2)
+    actual_splits = min(n_splits, max_r2_splits)
     if actual_splits < 2:
         raise ValueError("Regression cross-validation needs at least 2 folds.")
     return (
@@ -241,16 +246,29 @@ def _scoring_for(task_type: str) -> tuple[dict[str, str], str]:
     }, "r2"
 
 
+def _json_safe_label(value: Any) -> Any:
+    """Preserve ordinary class-label types while keeping metadata JSON-safe."""
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
 def _encode_classification_target(
     y: pd.Series,
 ) -> tuple[pd.Series, list[dict[str, Any]]]:
     """Encode every classification target to stable consecutive integer labels."""
-    codes, uniques = pd.factorize(y, sort=True)
+    # sort=False also supports heterogeneous object labels that cannot be
+    # ordered against one another (for example a mix of strings and integers).
+    codes, uniques = pd.factorize(y, sort=False)
     encoded = pd.Series(codes, index=y.index, name=y.name, dtype="int64")
     mapping = [
         {
             "encoded": int(index),
-            "label": value.item() if isinstance(value, np.generic) else str(value),
+            "label": _json_safe_label(value),
         }
         for index, value in enumerate(uniques.tolist())
     ]
