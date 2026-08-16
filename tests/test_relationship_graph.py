@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import framevitals as fv
 from framevitals.relationship_graph import build_numeric_relationship_graph
 
 
@@ -97,3 +98,23 @@ def test_relationship_graph_handles_insufficient_numeric_columns():
     assert result["available"] is False
     assert result["nodes"] == 0
     assert result["edges"] == []
+
+
+def test_public_relationships_api_preserves_dataset_name(tmp_path):
+    path = tmp_path / "related.csv"
+    dataframe = pd.DataFrame({
+        "a": np.arange(100, dtype=float),
+        "b": np.arange(100, dtype=float) * 2,
+        "noise": np.random.default_rng(9).normal(size=100),
+    })
+    dataframe.to_csv(path, index=False)
+
+    result = fv.relationships(path, min_abs_correlation=0.95)
+
+    assert result["dataset_name"] == "related.csv"
+    assert result["available"] is True
+    pairs = {
+        frozenset((edge["source"], edge["target"]))
+        for edge in result["edges"]
+    }
+    assert frozenset(("a", "b")) in pairs
