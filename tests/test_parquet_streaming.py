@@ -126,6 +126,43 @@ def test_large_public_health_discloses_bounded_outlier_estimate(tmp_path, monkey
     assert execution["components"]["uniqueness"] == "full_stream_sample_estimate"
 
 
+def test_public_quality_streams_parquet_and_marks_sample_candidates(tmp_path, monkeypatch):
+    path = tmp_path / "quality.parquet"
+    frame = _write_parquet(path, rows=12_000)
+    frame["other_copy"] = frame["other"]
+    pq.write_table(pa.Table.from_pandas(frame, preserve_index=False), path, row_group_size=777)
+
+    def fail_load(self):
+        raise AssertionError("quality must not materialize the complete Parquet file")
+
+    monkeypatch.setattr(ParquetSource, "load", fail_load)
+    result = framevitals.quality(path, max_sample_rows=1_000)
+
+    assert result["dataset_name"] == "quality.parquet"
+    assert result["rows"] == len(frame)
+    assert result["columns"] == len(frame.columns)
+    execution = result["execution"]
+    assert execution["full_materialization"] is False
+    assert execution["sampled"] is True
+    assert execution["sample_rows"] == 1_000
+    assert set(execution["candidate_only_checks"]) == {
+        "primary_key_candidates",
+        "duplicate_columns",
+    }
+
+    duplicate_candidates = result["duplicate_columns"]
+    assert duplicate_candidates
+    candidate = next(
+        item
+        for item in duplicate_candidates
+        if {item["canonical_column"], *item["duplicate_columns"]}
+        >= {"other", "other_copy"}
+    )
+    assert candidate["candidate_only"] is True
+    assert candidate["confirmed_with_full_equality"] is False
+    assert candidate["confirmation_scope"] == "bounded_row_sample"
+
+
 def test_plan_reads_only_bounded_parquet_sample_and_uses_true_shape(tmp_path, monkeypatch):
     path = tmp_path / "plan.parquet"
     frame = _write_parquet(path, rows=12_000)
