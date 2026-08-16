@@ -12,33 +12,16 @@ import numpy as np
 _CATEGORICAL_DTYPES = ["object", "string", "category", "bool"]
 
 
-def calculate_ml_readiness(df, profile=None):
-    """Calculate ML-readiness while reusing profile metrics when available.
-
-    ``profile`` is optional to preserve the standalone helper API. The main
-    pipeline passes the already-built profile so FrameVitals does not rescan
-    the full dataset for missing values, duplicates, and basic column groups.
-    """
-    rows, columns = df.shape
-
-    if profile is None:
-        # Standalone compatibility path. The public focused API builds a profile
-        # first and therefore avoids repeating these scans.
-        missing_total = sum(int(df[column].isna().sum()) for column in df.columns)
-        missing_percent = float(missing_total / max(rows * columns, 1) * 100)
-        duplicate_percent = float(df.duplicated().sum() / max(rows, 1) * 100)
-        categorical_cols = df.select_dtypes(include=_CATEGORICAL_DTYPES).columns.tolist()
-        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    else:
-        missing_total = sum(
-            int(value)
-            for value in profile.get("missing_counts", {}).values()
-            if value is not None
-        )
-        missing_percent = float(missing_total / max(rows * columns, 1) * 100)
-        duplicate_percent = float(profile.get("duplicate_percent", 0.0))
-        categorical_cols = list(profile.get("categorical_columns", []))
-        numeric_cols = list(profile.get("numeric_columns", []))
+def _score_ml_readiness(
+    *,
+    rows: int,
+    columns: int,
+    missing_total: int,
+    duplicate_percent: float,
+    categorical_cols: list[str],
+    numeric_cols: list[str],
+) -> dict[str, Any]:
+    missing_percent = float(missing_total / max(rows * columns, 1) * 100)
 
     encoding_penalty = min(20, len(categorical_cols) * 2)
     missing_penalty = min(30, missing_percent)
@@ -73,6 +56,66 @@ def calculate_ml_readiness(df, profile=None):
             "Select a clear target column for supervised learning.",
         ],
     }
+
+
+def calculate_ml_readiness_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
+    """Calculate ML-readiness directly from a completed dataset profile."""
+    shape = profile.get("shape", {})
+    rows = int(shape.get("rows", 0) or 0)
+    columns = int(shape.get("columns", len(profile.get("columns", []))) or 0)
+    missing_total = sum(
+        int(value)
+        for value in profile.get("missing_counts", {}).values()
+        if value is not None
+    )
+    duplicate_percent = float(profile.get("duplicate_percent", 0.0))
+    categorical_cols = list(profile.get("categorical_columns", []))
+    numeric_cols = list(profile.get("numeric_columns", []))
+
+    return _score_ml_readiness(
+        rows=rows,
+        columns=columns,
+        missing_total=missing_total,
+        duplicate_percent=duplicate_percent,
+        categorical_cols=categorical_cols,
+        numeric_cols=numeric_cols,
+    )
+
+
+def calculate_ml_readiness(df, profile=None):
+    """Calculate ML-readiness while reusing profile metrics when available.
+
+    ``profile`` is optional to preserve the standalone helper API. The main
+    pipeline passes the already-built profile so FrameVitals does not rescan
+    the full dataset for missing values, duplicates, and basic column groups.
+    """
+    rows, columns = df.shape
+
+    if profile is None:
+        # Standalone compatibility path. The public focused API builds a profile
+        # first and therefore avoids repeating these scans.
+        missing_total = sum(int(df[column].isna().sum()) for column in df.columns)
+        duplicate_percent = float(df.duplicated().sum() / max(rows, 1) * 100)
+        categorical_cols = df.select_dtypes(include=_CATEGORICAL_DTYPES).columns.tolist()
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    else:
+        missing_total = sum(
+            int(value)
+            for value in profile.get("missing_counts", {}).values()
+            if value is not None
+        )
+        duplicate_percent = float(profile.get("duplicate_percent", 0.0))
+        categorical_cols = list(profile.get("categorical_columns", []))
+        numeric_cols = list(profile.get("numeric_columns", []))
+
+    return _score_ml_readiness(
+        rows=int(rows),
+        columns=int(columns),
+        missing_total=missing_total,
+        duplicate_percent=duplicate_percent,
+        categorical_cols=categorical_cols,
+        numeric_cols=numeric_cols,
+    )
 
 
 class _CallableReadinessModule(ModuleType):
