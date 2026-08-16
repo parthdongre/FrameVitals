@@ -89,12 +89,13 @@ def run_budgeted_deep_statistics(
         "column_triage": triage_payload,
         "source_columns": int(dataframe.shape[1]),
         "diagnostic_columns": int(len(selected_columns)),
+        "adaptive_strategy": "column_interest_triage",
     }
     return _attach_execution(
         payload,
         budget=budget,
         sampling=sampling,
-        scope="adaptive_deep_statistics",
+        scope="bounded_deep_statistics",
     )
 
 
@@ -154,13 +155,14 @@ def run_budgeted_anomalies(
         ),
         "coverage": "sample" if sampling["sampled"] else "full",
         "anomaly_strategy": anomaly_strategy,
+        "adaptive_strategy": anomaly_strategy,
         "neural_reconstruction_enabled": budget.mode == "research",
     }
     return _attach_execution(
         payload,
         budget=budget,
         sampling=sampling,
-        scope="adaptive_anomaly_detection",
+        scope="bounded_anomaly_detection",
     )
 
 
@@ -224,10 +226,11 @@ def run_budgeted_time_series(
         ),
         "temporal_order_preserved": True,
         "mean_shift_detection_enabled": bool(change_detection_enabled),
+        "adaptive_strategy": "ordered_page_hinkley_mean_shift",
     }
     return _attach_execution(
         payload,
         budget=budget,
         sampling=sampling,
-        scope="adaptive_time_series",
+        scope="bounded_time_series",
     )
