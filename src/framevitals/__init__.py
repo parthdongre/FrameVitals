@@ -7,6 +7,12 @@ from typing import Any
 from framevitals.config import AnalysisConfig
 from framevitals.planning import AnalysisPlan
 from framevitals.result import AnalysisResult, ColumnResult
+from framevitals.snapshots import (
+    AnalysisSnapshot,
+    compare_snapshots,
+    create_snapshot,
+    load_snapshot,
+)
 
 __version__ = "0.1.0"
 
@@ -93,11 +99,15 @@ __all__ = [
     "AnalysisConfig",
     "AnalysisPlan",
     "AnalysisResult",
+    "AnalysisSnapshot",
     "ColumnResult",
     "analyze",
     "plan",
     "compare",
     "infer_contract",
     "validate",
+    "create_snapshot",
+    "load_snapshot",
+    "compare_snapshots",
     "__version__",
 ]
