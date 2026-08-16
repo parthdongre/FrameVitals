@@ -158,7 +158,7 @@ def analyze(
     disabled_modules: list[str] | tuple[str, ...] | None = None,
 ) -> AnalysisResult:
     """Analyze a tabular dataset from a DataFrame or supported file path."""
-    from framevitals.api import analyze as _analyze
+    from framevitals.analysis_api import analyze as _analyze
 
     return _analyze(
         data,
