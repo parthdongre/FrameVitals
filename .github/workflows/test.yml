@@ -227,10 +227,10 @@ jobs:
       - name: Verify dependency consistency
         run: python -m pip check
 
-      - name: Run streaming Parquet tests without native extension
+      - name: Run streaming source tests without native extension
         env:
           FRAMEVITALS_BACKEND: numpy
-        run: pytest -v tests/test_parquet_streaming.py tests/test_statistics_streaming.py tests/test_streaming_drift.py
+        run: pytest -v tests/test_parquet_streaming.py tests/test_statistics_streaming.py tests/test_streaming_drift.py tests/test_csv_streaming.py
 
   optional-features:
     name: optional features (Python 3.12)
@@ -263,6 +263,7 @@ jobs:
           import flask
           import lightgbm
           import ollama
+          import pyarrow
           import pyod
           import shap
           import xgboost
