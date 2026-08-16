@@ -109,16 +109,16 @@ class FileSource:
 
 
 @dataclass(slots=True)
-class DelimitedTextSource:
-    """CSV/TSV source that streams through optional PyArrow when available.
+class DelimitedTextSource(FileSource):
+    """CSV/TSV file source with optional Arrow streaming acceleration.
 
-    Without the Arrow extra this source deliberately advertises itself as
-    non-streaming and falls back to the existing pandas loader. With Arrow it
-    performs one bounded-memory metadata scan to obtain an exact row count,
-    caches that metadata, and then yields projected Arrow record batches.
+    This remains a :class:`FileSource` for compatibility. Without the Arrow
+    extra it advertises the same non-streaming behaviour as a normal file
+    source and falls back to the existing pandas loader. With Arrow it performs
+    one bounded-memory metadata scan to obtain an exact row count, caches that
+    metadata, and then yields projected Arrow record batches.
     """
 
-    path: Path
     delimiter: str = ","
     _metadata_cache: DatasetMetadata | None = field(default=None, init=False, repr=False)
     _schema_cache: Any = field(default=None, init=False, repr=False)
@@ -162,17 +162,7 @@ class DelimitedTextSource:
 
         if self._pyarrow_csv() is None:
             self._arrow_compatible = False
-            self._metadata_cache = DatasetMetadata(
-                name=self.path.name,
-                kind="file",
-                format=self.format,
-                rows=None,
-                columns=None,
-                size_bytes=int(self.path.stat().st_size),
-                materialized=False,
-                supports_projection=False,
-                supports_streaming=False,
-            )
+            self._metadata_cache = super().inspect()
             return self._metadata_cache
 
         try:
@@ -189,17 +179,7 @@ class DelimitedTextSource:
             # Preserve existing CSV/TSV compatibility if Arrow cannot parse a
             # file that the pandas loader may still understand.
             self._arrow_compatible = False
-            self._metadata_cache = DatasetMetadata(
-                name=self.path.name,
-                kind="file",
-                format=self.format,
-                rows=None,
-                columns=None,
-                size_bytes=int(self.path.stat().st_size),
-                materialized=False,
-                supports_projection=False,
-                supports_streaming=False,
-            )
+            self._metadata_cache = super().inspect()
             return self._metadata_cache
 
         self._arrow_compatible = True
@@ -252,10 +232,7 @@ class DelimitedTextSource:
                 yield batch.slice(offset, min(int(batch_size), int(batch.num_rows) - offset))
 
     def load(self) -> pd.DataFrame:
-        dataframe = load_dataset(self.path)
-        if dataframe.empty:
-            raise ValueError(f"Dataset is empty: {self.path}")
-        return dataframe
+        return super().load()
 
 
 @dataclass(slots=True)
