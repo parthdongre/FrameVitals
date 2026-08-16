@@ -14,6 +14,7 @@ from typing import Any
 import pandas as pd
 
 from framevitals.column_roles import infer_column_roles
+from framevitals.provenance import normalize_execution
 from framevitals.quality_diagnostics import run_quality_diagnostics
 
 
@@ -147,30 +148,34 @@ def run_streaming_quality_diagnostics(
         "issue_count": issue_count + (1 if duplicate_rows else 0),
         "primary_key_candidate_count": len(payload.get("primary_key_candidates", [])),
     }
-    payload["execution"] = {
-        "method": "streaming_profile_with_bounded_quality_sample",
-        "full_materialization": False,
-        "source_rows": int(source_rows),
-        "source_columns": int(source_columns),
-        "sample_rows": sample_rows,
-        "sampled": sample_rows < int(source_rows),
-        "full_source_inputs": ["missingness", "duplicate_row_estimate"],
-        "sample_inputs": [
-            "column_roles",
-            "identifier_duplicates",
-            "quasi_constants",
-            "duplicate_column_candidates",
-            "coercion_candidates",
-            "category_normalisation",
-            "blank_strings",
-            "infinite_values",
-            "mixed_object_types",
-            "missingness_relationships",
-        ],
-        "candidate_only_checks": (
-            ["primary_key_candidates", "duplicate_columns"]
-            if sample_rows < int(source_rows)
-            else []
-        ),
-    }
+    payload["execution"] = normalize_execution(
+        {
+            "method": "streaming_profile_with_bounded_quality_sample",
+            "full_materialization": False,
+            "source_rows": int(source_rows),
+            "source_columns": int(source_columns),
+            "sample_rows": sample_rows,
+            "sampled": sample_rows < int(source_rows),
+            "full_source_inputs": ["missingness", "duplicate_row_estimate"],
+            "sample_inputs": [
+                "column_roles",
+                "identifier_duplicates",
+                "quasi_constants",
+                "duplicate_column_candidates",
+                "coercion_candidates",
+                "category_normalisation",
+                "blank_strings",
+                "infinite_values",
+                "mixed_object_types",
+                "missingness_relationships",
+            ],
+            "candidate_only_checks": (
+                ["primary_key_candidates", "duplicate_columns"]
+                if sample_rows < int(source_rows)
+                else []
+            ),
+        },
+        method="streaming_profile_with_bounded_quality_sample",
+        full_materialization=False,
+    )
     return payload
