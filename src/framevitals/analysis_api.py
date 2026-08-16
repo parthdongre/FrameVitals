@@ -37,14 +37,17 @@ _MODE_DISABLED_MODULES: dict[str, frozenset[str]] = {
     }),
     # Standard is the operational default. It keeps practical anomaly,
     # time-series and target diagnostics, but leaves research-grade statistics,
-    # free-text profiling and model training/explainability to deep mode.
+    # free-text profiling and model training/explainability to deeper tiers.
     "standard": frozenset({
         "deep_statistics",
         "text_profile",
         "modeling",
         "explainability",
     }),
-    "deep": frozenset(),
+    # Deep is the advanced diagnostic tier: research-grade statistics and text
+    # profiling are enabled, while repeated model CV/refitting is reserved for
+    # research mode where the extra runtime is an explicit user choice.
+    "deep": frozenset({"modeling", "explainability"}),
     "research": frozenset(),
 }
 
