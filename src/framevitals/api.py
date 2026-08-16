@@ -23,7 +23,7 @@ if TYPE_CHECKING:
         GateResult,
         ValidationResult,
     )
-    from framevitals.result import AnalysisResult
+    from framevitals.result import AnalysisResult, DiagnosticResult
 
 
 DataInput = Any
@@ -36,28 +36,28 @@ def inspect_source(data: DataInput) -> dict[str, Any]:
     return _inspect_source(data)
 
 
-def profile(data: DataInput) -> dict[str, Any]:
+def profile(data: DataInput) -> DiagnosticResult:
     """Profile a dataset through the canonical focused execution path."""
     from framevitals.focused import profile as _profile
 
     return _profile(data)
 
 
-def roles(data: DataInput) -> dict[str, Any]:
+def roles(data: DataInput) -> DiagnosticResult:
     """Infer column roles through the canonical focused execution path."""
     from framevitals.focused import roles as _roles
 
     return _roles(data)
 
 
-def health(data: DataInput) -> dict[str, Any]:
+def health(data: DataInput) -> DiagnosticResult:
     """Calculate dataset health through the canonical focused execution path."""
     from framevitals.focused import health as _health
 
     return _health(data)
 
 
-def ml_readiness(data: DataInput) -> dict[str, Any]:
+def ml_readiness(data: DataInput) -> DiagnosticResult:
     """Calculate ML readiness through the canonical focused execution path."""
     from framevitals.focused import ml_readiness as _ml_readiness
 
@@ -70,7 +70,7 @@ def quality(
     max_sample_rows: int = 5_000,
     max_columns: int = 100,
     max_missingness_columns: int = 25,
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     """Run deterministic quality diagnostics through the focused engine."""
     from framevitals.focused import quality as _quality
 
@@ -87,7 +87,7 @@ def statistics(
     *,
     max_pairs: int = 20,
     mode: str = "standard",
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     """Run bounded deep statistics through the focused engine."""
     from framevitals.focused import statistics as _statistics
 
@@ -102,7 +102,7 @@ def anomalies(
     max_columns: int = 30,
     top_k: int = 25,
     mode: str = "standard",
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     """Run bounded anomaly diagnostics through the focused engine."""
     from framevitals.focused import anomalies as _anomalies
 
@@ -124,7 +124,7 @@ def relationships(
     min_abs_correlation: float = 0.80,
     max_candidate_pairs: int = 250_000,
     max_edges_returned: int = 5_000,
-) -> dict[str, Any]:
+) -> DiagnosticResult:
     """Discover strong numeric relationships through the focused engine."""
     from framevitals.focused import relationships as _relationships
 
@@ -138,7 +138,7 @@ def relationships(
     )
 
 
-def target_analysis(data: DataInput, *, target: str) -> dict[str, Any]:
+def target_analysis(data: DataInput, *, target: str) -> DiagnosticResult:
     """Run target diagnostics through the focused source-aware engine."""
     from framevitals.focused import target_analysis as _target_analysis
 
