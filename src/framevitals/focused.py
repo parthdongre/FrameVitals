@@ -101,11 +101,33 @@ def quality(
     max_columns: int = 100,
     max_missingness_columns: int = 25,
 ) -> dict[str, Any]:
+    source = resolve_source(data)
+    metadata = source.inspect()
+    if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
+        from framevitals.streaming_profile import build_streaming_profile
+        from framevitals.streaming_quality import run_streaming_quality_diagnostics
+
+        dataset_profile, sample = build_streaming_profile(
+            source,
+            sample_rows=max_sample_rows,
+            return_sample=True,
+        )
+        payload = run_streaming_quality_diagnostics(
+            sample,
+            profile=dataset_profile,
+            source_rows=int(metadata.rows or len(sample)),
+            source_columns=int(metadata.columns or len(sample.columns)),
+            max_sample_rows=max_sample_rows,
+            max_columns=max_columns,
+            max_missingness_columns=max_missingness_columns,
+        )
+        return _named(payload, metadata.name)
+
     from framevitals.column_roles import infer_column_roles
     from framevitals.profiler import build_profile
     from framevitals.quality_diagnostics import run_quality_diagnostics
 
-    dataframe, source_name = _load(data)
+    dataframe = source.load()
     dataset_profile = build_profile(dataframe)
     column_roles = infer_column_roles(dataframe)
     payload = run_quality_diagnostics(
@@ -116,7 +138,7 @@ def quality(
         max_columns=max_columns,
         max_missingness_columns=max_missingness_columns,
     )
-    return _named(payload, source_name)
+    return _named(payload, metadata.name)
 
 
 def statistics(
