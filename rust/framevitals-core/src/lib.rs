@@ -108,9 +108,7 @@ impl NumericState {
         let right_f = other.count as f64;
 
         let mean = self.mean + delta * right_f / total_f;
-        let m2 = self.m2
-            + other.m2
-            + delta * delta * left_f * right_f / total_f;
+        let m2 = self.m2 + other.m2 + delta * delta * left_f * right_f / total_f;
 
         Self {
             count: total,
