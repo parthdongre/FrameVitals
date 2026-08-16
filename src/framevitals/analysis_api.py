@@ -24,18 +24,16 @@ DataInput = Any
 
 
 _MODE_DISABLED_MODULES: dict[str, frozenset[str]] = {
-    # Quick is intentionally an overview: profile/roles/health/readiness and
-    # lightweight quality signals only. Expensive row-dependent modules are
-    # omitted even if a target is supplied.
+    # Quick is intentionally an overview. Keep explicit target intelligence and
+    # artifact cleaning available for backwards compatibility, while omitting
+    # the heavier anomaly/time-series/research/modeling layers.
     "quick": frozenset({
         "deep_statistics",
         "anomaly_detection",
         "time_series",
         "text_profile",
-        "target_intelligence",
         "modeling",
         "explainability",
-        "cleaning",
     }),
     # Standard is the operational default. It keeps practical anomaly,
     # time-series and target diagnostics, but leaves research-grade statistics,
@@ -83,7 +81,6 @@ def analyze(
         workers=workers,
         disabled_modules=disabled_modules,
     )
-    mode_disabled = tuple(sorted(_MODE_DISABLED_MODULES[resolved.mode]))
     effective_disabled = _effective_disabled_modules(
         resolved.mode,
         resolved.disabled_modules,
@@ -160,9 +157,8 @@ def analyze(
                 disabled_modules=effective_disabled,
             )
 
-    payload["config"] = {
-        **resolved.to_dict(),
-        "mode_disabled_modules": list(mode_disabled),
-        "effective_disabled_modules": list(effective_disabled),
-    }
+    # Keep the established public config schema stable. Effective mode policy is
+    # already visible through execution.module_status and does not need to mutate
+    # the versioned config payload.
+    payload["config"] = resolved.to_dict()
     return AnalysisResult(payload)
