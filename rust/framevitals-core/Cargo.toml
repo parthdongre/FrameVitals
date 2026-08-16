@@ -9,3 +9,11 @@ publish = false
 [lib]
 name = "framevitals_core"
 path = "src/lib.rs"
+
+[features]
+default = []
+arrow = ["dep:arrow-array", "dep:arrow-schema"]
+
+[dependencies]
+arrow-array = { version = "59.1", optional = true }
+arrow-schema = { version = "59.1", optional = true }
