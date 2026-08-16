@@ -82,3 +82,49 @@ def test_large_parquet_retains_only_bounded_row_sample(tmp_path):
     assert result["correlation_metadata"]["row_sampled"] is True
     assert result["duplicate_metadata"]["sampled"] is True
     assert result["missing_counts"]["value"] == int(frame["value"].isna().sum())
+
+
+def test_plan_reads_only_bounded_parquet_sample_and_uses_true_shape(tmp_path, monkeypatch):
+    path = tmp_path / "plan.parquet"
+    frame = _write_parquet(path, rows=12_000)
+
+    def fail_load(self):
+        raise AssertionError("plan must not materialize the complete Parquet file")
+
+    monkeypatch.setattr(ParquetSource, "load", fail_load)
+    result = framevitals.plan(path, mode="standard")
+
+    assert result["shape"] == {"rows": len(frame), "columns": 4}
+    assert result["signals"]["row_count"] == len(frame)
+    assert result["signals"]["column_count"] == 4
+    assert result["execution_budget"]["rows"] == len(frame)
+    planning = result["planning_data"]
+    assert planning["materialized_full_dataset"] is False
+    assert planning["full_scan"] is False
+    assert planning["sampled"] is True
+    assert planning["sample_rows"] == 5_000
+    assert result["source"]["supports_streaming"] is True
+
+
+def test_relationships_stream_numeric_projection_without_full_materialization(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "relationships.parquet"
+    frame = _write_parquet(path, rows=12_000)
+
+    def fail_load(self):
+        raise AssertionError("relationships must not materialize the complete Parquet file")
+
+    monkeypatch.setattr(ParquetSource, "load", fail_load)
+    result = framevitals.relationships(path, max_sample_rows=256)
+
+    assert result["available"] is True
+    assert result["sample"]["source_rows"] == len(frame)
+    assert result["sample"]["sample_rows"] <= 256
+    assert result["sample"]["sampled"] is True
+    assert result["sample"]["full_materialization"] is False
+    assert result["sample"]["strategy"] == "streaming_evenly_spaced_global_rows"
+    assert result["source"]["supports_projection"] is True
+    edge_pairs = {(edge["source"], edge["target"]) for edge in result["edges"]}
+    assert ("value", "other") in edge_pairs or ("other", "value") in edge_pairs
