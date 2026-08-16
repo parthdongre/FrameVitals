@@ -121,6 +121,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_output_argument(analyze_parser)
 
+    inspect_parser = subparsers.add_parser(
+        "inspect",
+        help="Inspect dataset source metadata and execution capabilities.",
+    )
+    inspect_parser.add_argument("file", type=Path, help="Path to the dataset.")
+    inspect_parser.add_argument(
+        "--format",
+        choices=["terminal", "json"],
+        default="terminal",
+        help="Source metadata output format.",
+    )
+    _add_output_argument(inspect_parser)
+
     plan_parser = subparsers.add_parser(
         "plan",
         help="Preview applicable analyses without running heavy stages.",
@@ -340,6 +353,25 @@ def _emit(payload: dict, output: Path | None) -> None:
     print(json.dumps(payload, indent=2, default=str))
 
 
+def _render_source(source: dict) -> str:
+    rows = source.get("rows")
+    columns = source.get("columns")
+    size_bytes = source.get("size_bytes")
+    lines = [
+        "FrameVitals source",
+        f"Name            {source.get('name', 'unknown')}",
+        f"Kind            {source.get('kind', 'unknown')}",
+        f"Format          {source.get('format', 'unknown')}",
+        f"Rows            {rows if rows is not None else 'unknown'}",
+        f"Columns         {columns if columns is not None else 'unknown'}",
+        f"Size bytes      {size_bytes if size_bytes is not None else 'unknown'}",
+        f"Materialized    {'yes' if source.get('materialized') else 'no'}",
+        f"Projection      {'yes' if source.get('supports_projection') else 'no'}",
+        f"Streaming       {'yes' if source.get('supports_streaming') else 'no'}",
+    ]
+    return "\n".join(lines)
+
+
 def _render_validation(report: dict) -> str:
     summary = report.get("summary", {})
     lines = [
@@ -451,6 +483,20 @@ def main() -> int:
                 print(f"Full JSON     {args.output}")
             if args.html_report is not None:
                 print(f"HTML report   {args.html_report}")
+        return 0
+
+    if args.command == "inspect":
+        from framevitals.sources import inspect_source
+
+        result = inspect_source(args.file)
+        if args.output is not None:
+            _write_json(result, args.output)
+        if args.format == "json":
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            print(_render_source(result))
+            if args.output is not None:
+                print(f"Source JSON    {args.output}")
         return 0
 
     if args.command == "plan":
