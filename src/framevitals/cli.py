@@ -71,6 +71,13 @@ def _load_contract(path: Path) -> dict:
     return payload
 
 
+def _parse_columns(value: str | None) -> list[str] | None:
+    if not value:
+        return None
+    columns = [item.strip() for item in value.split(",") if item.strip()]
+    return columns or None
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="framevitals",
@@ -249,6 +256,59 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_output_argument(validate_parser)
 
+    gate_parser = subparsers.add_parser(
+        "gate",
+        help="Run contract and/or drift checks as one CI-friendly quality gate.",
+    )
+    gate_parser.add_argument("current", type=Path, help="Current dataset path.")
+    gate_parser.add_argument(
+        "--reference",
+        type=Path,
+        default=None,
+        help="Optional reference dataset for drift checks.",
+    )
+    gate_parser.add_argument(
+        "--contract",
+        type=Path,
+        default=None,
+        help="Optional JSON data contract for exact validation.",
+    )
+    gate_parser.add_argument(
+        "--columns",
+        default=None,
+        help="Optional comma-separated columns to include in drift checks.",
+    )
+    gate_parser.add_argument(
+        "--max-columns",
+        type=int,
+        default=30,
+        help="Maximum number of shared columns to compare for drift.",
+    )
+    gate_parser.add_argument(
+        "--drift-warn-on",
+        choices=["stable", "minor", "moderate", "severe"],
+        default="moderate",
+        help="Drift severity that changes a passing gate to warning.",
+    )
+    gate_parser.add_argument(
+        "--drift-fail-on",
+        choices=["stable", "minor", "moderate", "severe"],
+        default="severe",
+        help="Drift severity that fails the gate.",
+    )
+    gate_parser.add_argument(
+        "--fail-on-validation-warning",
+        action="store_true",
+        help="Promote contract validation warnings to gate failures.",
+    )
+    gate_parser.add_argument(
+        "--format",
+        choices=["json", "terminal"],
+        default="terminal",
+        help="Stdout format.",
+    )
+    _add_output_argument(gate_parser)
+
     config_parser = subparsers.add_parser(
         "config",
         help="Resolve and inspect FrameVitals runtime configuration.",
@@ -330,6 +390,22 @@ def _render_compare(report: dict) -> str:
             lines.append(
                 f"- [{str(entry.get('drift_severity')).upper()}] {entry.get('column')}"
             )
+    return "\n".join(lines)
+
+
+def _render_gate(report: dict) -> str:
+    lines = [
+        "FrameVitals gate",
+        f"Status          {str(report.get('status', 'unknown')).upper()}",
+        f"Passed          {'yes' if report.get('passed') else 'no'}",
+        f"Checks          {', '.join(report.get('checks_run', [])) or 'none'}",
+    ]
+    reasons = report.get("reasons", [])
+    if reasons:
+        lines.append("")
+        lines.append("Reasons")
+        for reason in reasons[:10]:
+            lines.append(f"- {reason}")
     return "\n".join(lines)
 
 
@@ -430,18 +506,10 @@ def main() -> int:
         from framevitals.drift_analysis import severity_at_least
         from framevitals.operations import compare
 
-        columns = None
-        if args.columns:
-            columns = [
-                value.strip()
-                for value in args.columns.split(",")
-                if value.strip()
-            ]
-
         report = compare(
             args.reference,
             args.current,
-            columns=columns,
+            columns=_parse_columns(args.columns),
             max_columns=args.max_columns,
         )
         if args.output is not None:
@@ -492,6 +560,28 @@ def main() -> int:
         if report.get("status") == "warn" and args.fail_on_warn:
             return 1
         return 0
+
+    if args.command == "gate":
+        from framevitals.operations import gate
+
+        contract = _load_contract(args.contract) if args.contract is not None else None
+        report = gate(
+            args.current,
+            reference=args.reference,
+            contract=contract,
+            columns=_parse_columns(args.columns),
+            max_columns=args.max_columns,
+            drift_warn_on=args.drift_warn_on,
+            drift_fail_on=args.drift_fail_on,
+            fail_on_validation_warning=args.fail_on_validation_warning,
+        )
+        if args.output is not None:
+            _write_json(report, args.output)
+        if args.format == "json":
+            print(json.dumps(report, indent=2, default=str))
+        else:
+            print(_render_gate(report))
+        return 0 if report.get("passed") else 1
 
     if args.command == "config":
         from framevitals.config import resolve_config
