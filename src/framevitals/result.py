@@ -12,7 +12,12 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from framevitals.findings import findings_from_signals, recommendations_from_findings
+from framevitals.findings import (
+    findings_from_signals,
+    findings_from_target_intelligence,
+    merge_findings,
+    recommendations_from_findings,
+)
 
 
 class ColumnResult(dict):
@@ -37,7 +42,10 @@ class AnalysisResult(dict):
             signals = self.get("signals", [])
             if not isinstance(signals, list):
                 signals = []
-            self["findings"] = findings_from_signals(signals)
+            self["findings"] = merge_findings(
+                findings_from_signals(signals),
+                findings_from_target_intelligence(self.get("target_intelligence")),
+            )
 
     def __getattr__(self, name: str) -> Any:
         try:
