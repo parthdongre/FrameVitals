@@ -7,7 +7,7 @@ simple validation or comparison call from importing the heavy analysis stack.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -246,15 +246,18 @@ def gate(
     *,
     reference: DataInput | None = None,
     contract: Mapping[str, Any] | None = None,
+    custom_checks: Sequence[Any] | None = None,
     columns: list[str] | None = None,
     max_columns: int = 30,
     drift_warn_on: str = "moderate",
     drift_fail_on: str = "severe",
     fail_on_validation_warning: bool = False,
 ) -> GateResult:
-    """Combine exact contract checks and bounded drift into one CI-friendly verdict."""
-    if reference is None and contract is None:
-        raise ValueError("gate requires at least one of reference= or contract=.")
+    """Combine contracts, custom invariants, and bounded drift into one verdict."""
+    if reference is None and contract is None and not custom_checks:
+        raise ValueError(
+            "gate requires at least one of reference=, contract=, or custom_checks=."
+        )
     if drift_warn_on not in _DRIFT_SEVERITY_RANK:
         raise ValueError("drift_warn_on must be one of: stable, minor, moderate, severe.")
     if drift_fail_on not in _DRIFT_SEVERITY_RANK:
@@ -341,6 +344,24 @@ def gate(
                     if text and text not in reasons:
                         reasons.append(text)
 
+    if custom_checks:
+        from framevitals.checks import run_checks
+
+        custom_payload = run_checks(current, custom_checks)
+        checks["custom"] = custom_payload
+        custom_status = custom_payload.get("status")
+        if custom_status == "fail":
+            fail()
+        elif custom_status == "warn":
+            warn()
+
+        for result in custom_payload.get("results", [])[:10]:
+            if not isinstance(result, Mapping) or result.get("passed"):
+                continue
+            message = str(result.get("message") or result.get("name") or "Custom check failed.")
+            if message and message not in reasons:
+                reasons.append(message)
+
     return GateResult({
         "status": status,
         "passed": status != "fail",
@@ -362,6 +383,11 @@ def gate(
             "drift": (
                 checks.get("drift", {}).get("execution")
                 if isinstance(checks.get("drift"), Mapping)
+                else None
+            ),
+            "custom": (
+                checks.get("custom", {}).get("execution")
+                if isinstance(checks.get("custom"), Mapping)
                 else None
             ),
         },
