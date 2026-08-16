@@ -107,6 +107,9 @@ package-dir = {"" = "src"}
 where = ["src"]
 include = ["framevitals*"]
 
+[tool.setuptools.package-data]
+framevitals = ["py.typed"]
+
 [tool.maturin]
 python-source = "src"
 module-name = "framevitals._native"
