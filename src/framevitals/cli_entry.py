@@ -1,18 +1,14 @@
-"""Installed CLI entrypoint with source-aware analysis routing.
+"""Backward-compatible CLI entrypoint.
 
-The legacy CLI parser remains the single command implementation. Before it
-runs, this shim replaces only ``framevitals.api.analyze`` with the newer source
-dispatcher so ``framevitals analyze`` and ``framevitals.analyze`` share the same
-streaming behavior without duplicating CLI parsing or output code.
+The installed console script now points directly to :mod:`framevitals.cli`.
+This module remains as a lightweight compatibility alias for callers that
+imported ``framevitals.cli_entry.main`` during the 0.x series.
 """
 
 from __future__ import annotations
 
 
 def main() -> int:
-    from framevitals import api as legacy_api
-    from framevitals.analysis_api import analyze
-    from framevitals.cli import main as legacy_main
+    from framevitals.cli import main as cli_main
 
-    legacy_api.analyze = analyze
-    return legacy_main()
+    return cli_main()
