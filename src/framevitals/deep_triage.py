@@ -85,9 +85,6 @@ def _numeric_interest_scores(frame: pd.DataFrame) -> dict[str, float]:
         kurtosis = numeric.kurt(axis=0, skipna=True).abs().fillna(0.0)
         std = numeric.std(axis=0, skipna=True).fillna(0.0)
 
-    # The score is intentionally diagnostic rather than predictive. High
-    # missingness, skew/tails, near-constant behaviour and unusual cardinality
-    # are the situations where bootstrap/distribution fitting adds most value.
     scores: dict[str, float] = {}
     for column in numeric.columns:
         unique_count = int(unique.get(column, 0))
@@ -127,7 +124,7 @@ def _categorical_interest_scores(frame: pd.DataFrame) -> dict[str, float]:
         else:
             relationship_value = 0.25
         rarity_signal = min(cardinality / n_rows, 1.0) * 0.25
-        score = missing_rate * 4.0 + relationship_value + rarity_signal
+        score = missing_rate * 8.0 + relationship_value + rarity_signal
         scores[str(column)] = round(float(score), 6)
     return scores
 
