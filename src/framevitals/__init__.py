@@ -35,6 +35,86 @@ def __getattr__(name: str):
     raise AttributeError(name)
 
 
+def profile(data: Any) -> dict[str, Any]:
+    """Profile shape, dtypes, missingness, cardinality, and basic summaries."""
+    from framevitals.api import profile as _profile
+
+    return _profile(data)
+
+
+def roles(data: Any) -> dict[str, Any]:
+    """Infer semantic and structural roles for dataset columns."""
+    from framevitals.api import roles as _roles
+
+    return _roles(data)
+
+
+def health(data: Any) -> dict[str, Any]:
+    """Calculate only the FrameVitals data-health score."""
+    from framevitals.api import health as _health
+
+    return _health(data)
+
+
+def ml_readiness(data: Any) -> dict[str, Any]:
+    """Calculate only ML-readiness diagnostics."""
+    from framevitals.api import ml_readiness as _ml_readiness
+
+    return _ml_readiness(data)
+
+
+def quality(
+    data: Any,
+    *,
+    max_sample_rows: int = 5_000,
+    max_columns: int = 100,
+    max_missingness_columns: int = 25,
+) -> dict[str, Any]:
+    """Run practical deterministic data-quality diagnostics only."""
+    from framevitals.api import quality as _quality
+
+    return _quality(
+        data,
+        max_sample_rows=max_sample_rows,
+        max_columns=max_columns,
+        max_missingness_columns=max_missingness_columns,
+    )
+
+
+def statistics(data: Any, *, max_pairs: int = 20) -> dict[str, Any]:
+    """Run the deep statistical diagnostics layer only."""
+    from framevitals.api import statistics as _statistics
+
+    return _statistics(data, max_pairs=max_pairs)
+
+
+def anomalies(
+    data: Any,
+    *,
+    contamination: float = 0.05,
+    threshold: float = 0.6,
+    max_columns: int = 30,
+    top_k: int = 25,
+) -> dict[str, Any]:
+    """Run only the FrameVitals tabular anomaly ensemble."""
+    from framevitals.api import anomalies as _anomalies
+
+    return _anomalies(
+        data,
+        contamination=contamination,
+        threshold=threshold,
+        max_columns=max_columns,
+        top_k=top_k,
+    )
+
+
+def target_analysis(data: Any, *, target: str) -> dict[str, Any]:
+    """Run target quality, leakage, association, and split diagnostics only."""
+    from framevitals.api import target_analysis as _target_analysis
+
+    return _target_analysis(data, target=target)
+
+
 def analyze(
     data: Any,
     *,
@@ -157,6 +237,14 @@ __all__ = [
     "ColumnResult",
     "DriftResult",
     "ValidationResult",
+    "profile",
+    "roles",
+    "health",
+    "ml_readiness",
+    "quality",
+    "statistics",
+    "anomalies",
+    "target_analysis",
     "analyze",
     "plan",
     "plan_cleaning",
