@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from framevitals.findings import (
+    findings_from_quality_diagnostics,
     findings_from_signals,
     findings_from_target_intelligence,
     merge_findings,
@@ -44,6 +45,7 @@ class AnalysisResult(dict):
                 signals = []
             self["findings"] = merge_findings(
                 findings_from_signals(signals),
+                findings_from_quality_diagnostics(self.get("quality_diagnostics")),
                 findings_from_target_intelligence(self.get("target_intelligence")),
             )
 
@@ -118,7 +120,7 @@ class AnalysisResult(dict):
         }
 
     def column(self, name: str) -> ColumnResult:
-        """Return the combined profile, role, and semantic view for one column."""
+        """Return the combined profile, role, semantic, and quality view for one column."""
         profile = self.get("profile", {})
         roles = self.get("column_roles", {})
         if not isinstance(profile, dict):
@@ -144,6 +146,16 @@ class AnalysisResult(dict):
         if not isinstance(correlations, dict):
             correlations = {}
 
+        quality_findings = [
+            finding
+            for finding in self.findings
+            if str(finding.get("code", "")).startswith("quality.")
+            and (
+                f".{name.lower().replace(' ', '_')}" in str(finding.get("code", ""))
+                or name in str(finding.get("title", ""))
+            )
+        ]
+
         payload = {
             "name": name,
             "dtype": profile.get("dtypes", {}).get(name),
@@ -161,6 +173,7 @@ class AnalysisResult(dict):
             "numeric_summary": numeric_summary.get(name),
             "categorical_summary": categorical_summary.get(name),
             "correlations": correlations.get(name, {}),
+            "quality_findings": quality_findings,
         }
         return ColumnResult(payload)
 
