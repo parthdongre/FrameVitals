@@ -60,6 +60,9 @@ web = [
     "gunicorn>=22.0",
     "werkzeug>=3.0",
 ]
+arrow = [
+    "pyarrow>=25.0,<26",
+]
 all = [
     "xgboost>=2.0",
     "lightgbm>=4.3",
