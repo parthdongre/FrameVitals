@@ -83,7 +83,9 @@ def test_regression_cv_caps_requested_folds_and_reports_baseline(monkeypatch):
 
     assert result["available"] is True
     assert result["cv"]["requested_splits"] == 100
-    assert result["cv"]["actual_splits"] == rows
+    # R2 needs at least two observations in each test fold, so the safe upper
+    # bound is floor(n_rows / 2), not one fold per row.
+    assert result["cv"]["actual_splits"] == rows // 2
     assert result["baseline"]["model"] == "DummyRegressor"
     assert result["winner"]["model"] == "Ridge"
     assert result["winner"]["beats_baseline"] is True
