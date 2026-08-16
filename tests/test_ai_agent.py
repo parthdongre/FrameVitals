@@ -1,9 +1,10 @@
 import pandas as pd
+import pytest
+
+pytest.importorskip("pydantic")
 
 import framevitals.ai_agent as ai_agent
-from framevitals.ai_agent import (
-    answer_with_agent,
-)
+from framevitals.ai_agent import answer_with_agent
 
 
 def make_result():
