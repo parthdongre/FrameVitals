@@ -68,6 +68,30 @@ def test_public_profile_streams_parquet_without_calling_load(tmp_path, monkeypat
     assert "event_time" in result["date_columns"]
 
 
+def test_public_analyze_streams_parquet_without_calling_load(tmp_path, monkeypatch):
+    path = tmp_path / "analyze.parquet"
+    frame = _write_parquet(path, rows=12_000)
+
+    def fail_load(self):
+        raise AssertionError("analyze must not materialize the complete Parquet file")
+
+    monkeypatch.setattr(ParquetSource, "load", fail_load)
+    result = framevitals.analyze(path, mode="quick", artifacts=False, workers=1)
+
+    assert result["filename"] == "analyze.parquet"
+    assert result["profile"]["shape"] == {"rows": len(frame), "columns": 4}
+    assert result["dataset_signals"]["row_count"] == len(frame)
+    assert result["execution"]["streaming"]["enabled"] is True
+    assert result["execution"]["streaming"]["full_materialization"] is False
+    assert result["execution"]["streaming"]["source_rows"] == len(frame)
+    assert result["execution"]["streaming"]["working_sample_rows"] == 5_000
+    assert result["execution"]["streaming"]["single_full_source_profile_scan"] is True
+    assert result["execution"]["module_scope"]["profile"] == "full_stream"
+    assert result["cleaning"]["streaming_status"] == "deferred_streaming"
+    assert result["charts"] == []
+    assert result["config"]["artifacts"] is False
+
+
 def test_public_roles_stream_parquet_without_calling_load(tmp_path, monkeypatch):
     path = tmp_path / "roles.parquet"
     frame = _write_parquet(path, rows=12_000)
