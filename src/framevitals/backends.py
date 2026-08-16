@@ -136,12 +136,28 @@ def numeric_profile(
     return payload
 
 
+def create_numeric_accumulator(*, stream_id: int = 0):
+    """Create a persistent native accumulator for multi-batch scans.
+
+    Returns ``None`` when the active backend is NumPy. This keeps callers free
+    to implement a mergeable Python fallback without importing the native
+    extension unless it is actually selected.
+    """
+    if resolve_numeric_backend() != "rust":
+        return None
+    native = import_module("framevitals._native")
+    return native.NumericAccumulator(stream_id=int(stream_id))
+
+
 def backend_status() -> dict[str, Any]:
     """Return lightweight backend availability without importing native code."""
-    selected = resolve_numeric_backend("auto")
+    has_native = native_available()
+    eligible = ["numpy"]
+    if has_native:
+        eligible.append("rust")
     return {
-        "selected": selected,
-        "native_available": native_available(),
+        "selected": resolve_numeric_backend("auto"),
+        "native_available": has_native,
         "environment_override": os.getenv("FRAMEVITALS_BACKEND"),
-        "eligible": ["numpy", *( ["rust"] if native_available() else [] )],
+        "eligible": eligible,
     }
