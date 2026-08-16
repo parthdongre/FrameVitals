@@ -23,6 +23,7 @@ from framevitals.loader import load_dataset
 from framevitals.pipeline import run_full_analysis
 from framevitals.planning import AnalysisPlan
 from framevitals.profiler import build_profile
+from framevitals.quality_results import DriftResult, ValidationResult
 from framevitals.result import AnalysisResult
 
 DataInput = str | Path | pd.DataFrame
@@ -191,7 +192,7 @@ def compare(
     *,
     columns: list[str] | None = None,
     max_columns: int = 30,
-) -> dict[str, Any]:
+) -> DriftResult:
     """Compare reference and current datasets for distribution and schema drift."""
     if max_columns < 1:
         raise ValueError("max_columns must be at least 1.")
@@ -199,15 +200,15 @@ def compare(
     ref_df, ref_name = _load_input(reference, label="Reference")
     cur_df, cur_name = _load_input(current, label="Current")
 
-    result = compare_datasets(
+    payload = compare_datasets(
         ref_df,
         cur_df,
         columns=columns,
         max_columns=max_columns,
     )
-    result["reference_name"] = ref_name
-    result["current_name"] = cur_name
-    return result
+    payload["reference_name"] = ref_name
+    payload["current_name"] = cur_name
+    return DriftResult(payload)
 
 
 def infer_contract(
@@ -238,9 +239,9 @@ def infer_contract(
 def validate(
     data: DataInput,
     contract: Mapping[str, Any],
-) -> dict[str, Any]:
+) -> ValidationResult:
     """Validate a dataset against an inferred or explicit data contract."""
     dataframe, source_name = _load_input(data, label="Dataset")
-    result = validate_contract(dataframe, contract)
-    result["dataset_name"] = source_name
-    return result
+    payload = validate_contract(dataframe, contract)
+    payload["dataset_name"] = source_name
+    return ValidationResult(payload)
