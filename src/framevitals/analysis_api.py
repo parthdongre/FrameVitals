@@ -157,8 +157,12 @@ def analyze(
                 disabled_modules=effective_disabled,
             )
 
-    # Keep the established public config schema stable. Effective mode policy is
-    # already visible through execution.module_status and does not need to mutate
-    # the versioned config payload.
+    # Keep public configuration/provenance compatible: ``disabled_modules``
+    # describes only explicit caller configuration. Mode policy is observable
+    # through ``execution.module_status`` and analysis selection instead of
+    # masquerading as a user-supplied disable list.
     payload["config"] = resolved.to_dict()
+    execution = payload.get("execution")
+    if isinstance(execution, dict):
+        execution["disabled_modules"] = sorted(resolved.disabled_modules)
     return AnalysisResult(payload)
