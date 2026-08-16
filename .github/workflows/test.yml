@@ -237,7 +237,7 @@ jobs:
       - name: Run streaming source tests without native extension
         env:
           FRAMEVITALS_BACKEND: numpy
-        run: pytest -v tests/test_parquet_streaming.py tests/test_statistics_streaming.py tests/test_streaming_drift.py tests/test_csv_streaming.py tests/test_cli_gate_streaming.py
+        run: pytest -v tests/test_parquet_streaming.py tests/test_statistics_streaming.py tests/test_streaming_drift.py tests/test_csv_streaming.py tests/test_arrow_memory.py tests/test_cli_gate_streaming.py
 
   optional-features:
     name: optional features (Python 3.12)
