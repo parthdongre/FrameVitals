@@ -24,6 +24,63 @@ def test_cli_parser():
     assert args.output is None
 
 
+def test_cli_inspect_parser():
+    parser = build_parser()
+
+    args = parser.parse_args([
+        "inspect",
+        "dataset.parquet",
+        "--format",
+        "json",
+        "--output",
+        "source.json",
+    ])
+
+    assert args.command == "inspect"
+    assert args.file.name == "dataset.parquet"
+    assert args.format == "json"
+    assert args.output.name == "source.json"
+
+
+def test_cli_inspect_emits_source_metadata_and_json_file(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    dataset = tmp_path / "dataset.csv"
+    output = tmp_path / "source.json"
+    dataset.write_text("value,label\n1,a\n2,b\n3,c\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "framevitals.sources.DelimitedTextSource._pyarrow_csv",
+        lambda self: None,
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "framevitals",
+            "inspect",
+            str(dataset),
+            "--format",
+            "json",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert main() == 0
+    rendered = json.loads(capsys.readouterr().out)
+    saved = json.loads(output.read_text(encoding="utf-8"))
+
+    assert rendered == saved
+    assert rendered["name"] == "dataset.csv"
+    assert rendered["kind"] == "file"
+    assert rendered["format"] == "csv"
+    assert rendered["supports_streaming"] is False
+    assert rendered["supports_projection"] is False
+    assert rendered["size_bytes"] == dataset.stat().st_size
+
+
 def test_cli_target_argument():
     parser = build_parser()
 
