@@ -1,9 +1,10 @@
-"""Compact versioned snapshots derived from FrameVitals analysis results."""
+"""Compact versioned snapshots and lightweight local monitoring history."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -72,6 +73,26 @@ def _fingerprint(state: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _created_at(snapshot: Mapping[str, Any]) -> datetime:
+    value = snapshot.get("created_at")
+    if not isinstance(value, str):
+        raise ValueError("Snapshot is missing a valid created_at timestamp.")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"Snapshot has an invalid created_at timestamp: {value!r}") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _safe_label(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip()).strip("-._")
+    return cleaned[:80] or None
+
+
 class AnalysisSnapshot(dict):
     """Small JSON-friendly state record for monitoring and history."""
 
@@ -133,6 +154,7 @@ def load_snapshot(path: str | Path) -> AnalysisSnapshot:
         )
     if not isinstance(payload.get("state"), dict):
         raise ValueError("Snapshot is missing a valid state object.")
+    _created_at(payload)
     return AnalysisSnapshot(payload)
 
 
@@ -179,9 +201,7 @@ def compare_snapshots(
     ref_findings = set(ref_state.get("finding_codes", []) or [])
     cur_findings = set(cur_state.get("finding_codes", []) or [])
 
-    changed = bool(
-        reference.get("fingerprint") != current.get("fingerprint")
-    )
+    changed = bool(reference.get("fingerprint") != current.get("fingerprint"))
     return {
         "changed": changed,
         "reference_fingerprint": reference.get("fingerprint"),
@@ -207,3 +227,101 @@ def compare_snapshots(
             "resolved": sorted(ref_findings - cur_findings),
         },
     }
+
+
+class SnapshotHistory:
+    """Filesystem-backed history of compact FrameVitals snapshots.
+
+    The history store never writes raw datasets. It persists only the compact
+    snapshot representation and provides lightweight timeline/latest/diff
+    helpers for local monitoring and CI workflows.
+    """
+
+    def __init__(self, directory: str | Path = ".framevitals/history") -> None:
+        self.directory = Path(directory)
+
+    def __len__(self) -> int:
+        return len(self.paths())
+
+    def paths(self) -> list[Path]:
+        """Return snapshot files in chronological filename order."""
+        if not self.directory.exists():
+            return []
+        return sorted(path for path in self.directory.glob("*.json") if path.is_file())
+
+    def snapshots(self) -> list[AnalysisSnapshot]:
+        """Load all valid snapshots ordered by their created-at timestamp."""
+        items = [load_snapshot(path) for path in self.paths()]
+        items.sort(key=_created_at)
+        return items
+
+    def add(
+        self,
+        result_or_snapshot: Mapping[str, Any],
+        *,
+        label: str | None = None,
+    ) -> Path:
+        """Persist an analysis result or an existing snapshot and return its path."""
+        if result_or_snapshot.get("snapshot_schema_version") is not None:
+            if result_or_snapshot.get("snapshot_schema_version") != SNAPSHOT_SCHEMA_VERSION:
+                raise ValueError(
+                    "Unsupported FrameVitals snapshot schema version: "
+                    f"{result_or_snapshot.get('snapshot_schema_version')!r}"
+                )
+            if not isinstance(result_or_snapshot.get("state"), Mapping):
+                raise ValueError("Snapshot is missing a valid state object.")
+            snapshot = AnalysisSnapshot(dict(result_or_snapshot))
+            created_at = _created_at(snapshot)
+        else:
+            snapshot = create_snapshot(result_or_snapshot)
+            created_at = _created_at(snapshot)
+
+        self.directory.mkdir(parents=True, exist_ok=True)
+        timestamp = created_at.strftime("%Y%m%dT%H%M%S.%fZ")
+        fingerprint = str(snapshot.get("fingerprint") or "unknown")[:12]
+        label_part = _safe_label(label)
+        filename = "_".join(
+            part for part in (timestamp, label_part, fingerprint) if part
+        ) + ".json"
+        path = self.directory / filename
+        snapshot.to_json(path)
+        return path
+
+    def latest(self) -> AnalysisSnapshot | None:
+        """Return the newest snapshot or ``None`` for an empty history."""
+        items = self.snapshots()
+        return items[-1] if items else None
+
+    def previous(self) -> AnalysisSnapshot | None:
+        """Return the snapshot immediately before the latest one, if available."""
+        items = self.snapshots()
+        return items[-2] if len(items) >= 2 else None
+
+    def compare_latest(self) -> dict[str, Any]:
+        """Compare the two newest snapshots."""
+        items = self.snapshots()
+        if len(items) < 2:
+            raise ValueError("Snapshot history needs at least two entries to compare.")
+        return compare_snapshots(items[-2], items[-1])
+
+    def timeline(self) -> list[dict[str, Any]]:
+        """Return compact chronological monitoring points for charts or logs."""
+        rows: list[dict[str, Any]] = []
+        for snapshot in self.snapshots():
+            state = _as_mapping(snapshot.get("state"))
+            dataset = _as_mapping(state.get("dataset"))
+            health = _as_mapping(state.get("health"))
+            ml = _as_mapping(state.get("ml_readiness"))
+            findings = state.get("finding_codes", [])
+            if not isinstance(findings, list):
+                findings = []
+            rows.append({
+                "created_at": snapshot.get("created_at"),
+                "fingerprint": snapshot.get("fingerprint"),
+                "filename": _as_mapping(snapshot.get("source")).get("filename"),
+                "shape": dict(_as_mapping(dataset.get("shape"))),
+                "health_score": _number(health.get("overall_score")),
+                "ml_readiness_score": _number(ml.get("score")),
+                "finding_count": len(findings),
+            })
+        return rows
