@@ -151,6 +151,184 @@ def findings_from_target_intelligence(
     return _sort_findings(findings)
 
 
+def _quality_finding(
+    *,
+    code: str,
+    title: str,
+    severity: Any,
+    evidence: str,
+    recommendation: str,
+    scope: str = "column",
+) -> dict[str, Any]:
+    return {
+        "code": code,
+        "title": title,
+        "severity": normalize_severity(severity),
+        "scope": scope,
+        "status": "Review",
+        "evidence": evidence,
+        "recommendation": recommendation,
+        "method": "quality_diagnostics",
+        "confidence": "deterministic",
+    }
+
+
+def findings_from_quality_diagnostics(
+    diagnostics: Mapping[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Translate deterministic quality diagnostics into actionable findings."""
+    if not isinstance(diagnostics, Mapping) or not diagnostics.get("available"):
+        return []
+
+    findings: list[dict[str, Any]] = []
+
+    for item in diagnostics.get("identifier_duplicates", []):
+        if not isinstance(item, Mapping):
+            continue
+        column = str(item.get("column") or "identifier")
+        duplicate_rows = int(item.get("duplicate_rows") or 0)
+        findings.append(_quality_finding(
+            code=f"quality.identifier_duplicates.{_slug(column)}",
+            title=f"Duplicate identifiers: {column}",
+            severity=item.get("severity", "high"),
+            evidence=f"{duplicate_rows} rows share duplicated values in identifier-like column '{column}'.",
+            recommendation=(
+                f"Verify uniqueness rules for '{column}' and resolve duplicated identifiers before joins, "
+                "deduplication, or model evaluation."
+            ),
+        ))
+
+    for item in diagnostics.get("duplicate_columns", []):
+        if not isinstance(item, Mapping):
+            continue
+        canonical = str(item.get("canonical_column") or "column")
+        duplicates = [str(value) for value in item.get("duplicate_columns", [])]
+        if not duplicates:
+            continue
+        findings.append(_quality_finding(
+            code=f"quality.duplicate_columns.{_slug(canonical)}",
+            title=f"Duplicate columns: {canonical}",
+            severity=item.get("severity", "medium"),
+            evidence=(
+                f"'{canonical}' is exactly duplicated by: {', '.join(duplicates)}."
+            ),
+            recommendation=(
+                "Remove or explicitly document redundant columns to reduce ambiguity, memory usage, and leakage risk."
+            ),
+        ))
+
+    for item in diagnostics.get("quasi_constant_columns", []):
+        if not isinstance(item, Mapping):
+            continue
+        column = str(item.get("column") or "column")
+        ratio = float(item.get("top_value_ratio") or 0)
+        findings.append(_quality_finding(
+            code=f"quality.quasi_constant.{_slug(column)}",
+            title=f"Quasi-constant column: {column}",
+            severity=item.get("severity", "low"),
+            evidence=f"One value represents approximately {ratio:.1%} of non-missing sampled values.",
+            recommendation=(
+                f"Review whether '{column}' carries useful signal; near-constant features often add little analytical value."
+            ),
+        ))
+
+    for item in diagnostics.get("coercion_candidates", []):
+        if not isinstance(item, Mapping):
+            continue
+        column = str(item.get("column") or "column")
+        suggested = str(item.get("suggested_type") or "structured")
+        ratio = float(item.get("parse_ratio") or 0)
+        findings.append(_quality_finding(
+            code=f"quality.coercion.{_slug(column)}",
+            title=f"Type coercion candidate: {column}",
+            severity=item.get("severity", "low"),
+            evidence=f"Approximately {ratio:.1%} of sampled values parse cleanly as {suggested}.",
+            recommendation=(
+                f"Consider converting '{column}' to {suggested} after reviewing non-parsing values and preserving intended semantics."
+            ),
+        ))
+
+    for item in diagnostics.get("category_normalisation", []):
+        if not isinstance(item, Mapping):
+            continue
+        column = str(item.get("column") or "column")
+        groups = int(item.get("variant_group_count") or 0)
+        findings.append(_quality_finding(
+            code=f"quality.category_normalisation.{_slug(column)}",
+            title=f"Category normalization issue: {column}",
+            severity=item.get("severity", "medium"),
+            evidence=f"Detected {groups} category groups that differ only by case or surrounding whitespace.",
+            recommendation=(
+                f"Normalize whitespace/casing in '{column}' with an explicit mapping before grouping, validation, or modelling."
+            ),
+        ))
+
+    for item in diagnostics.get("blank_strings", []):
+        if not isinstance(item, Mapping):
+            continue
+        column = str(item.get("column") or "column")
+        count = int(item.get("blank_count_in_sample") or 0)
+        findings.append(_quality_finding(
+            code=f"quality.blank_strings.{_slug(column)}",
+            title=f"Blank strings: {column}",
+            severity=item.get("severity", "medium"),
+            evidence=f"Found {count} blank/whitespace-only values in the diagnostic sample.",
+            recommendation=(
+                f"Treat blank strings in '{column}' consistently as missing values or a documented category."
+            ),
+        ))
+
+    for item in diagnostics.get("infinite_values", []):
+        if not isinstance(item, Mapping):
+            continue
+        column = str(item.get("column") or "column")
+        count = int(item.get("infinite_count_in_sample") or 0)
+        findings.append(_quality_finding(
+            code=f"quality.infinite_values.{_slug(column)}",
+            title=f"Infinite numeric values: {column}",
+            severity=item.get("severity", "high"),
+            evidence=f"Found {count} positive/negative infinite values in the diagnostic sample.",
+            recommendation=(
+                f"Replace or explicitly handle infinities in '{column}' before statistics, scaling, or model training."
+            ),
+        ))
+
+    for item in diagnostics.get("mixed_object_types", []):
+        if not isinstance(item, Mapping):
+            continue
+        column = str(item.get("column") or "column")
+        types = item.get("python_types", {})
+        findings.append(_quality_finding(
+            code=f"quality.mixed_object_types.{_slug(column)}",
+            title=f"Mixed Python types: {column}",
+            severity=item.get("severity", "medium"),
+            evidence=f"Object column contains multiple runtime value types: {types}.",
+            recommendation=(
+                f"Standardize the representation of '{column}' before serialization, joins, validation, or type conversion."
+            ),
+        ))
+
+    for item in diagnostics.get("missingness_relationships", []):
+        if not isinstance(item, Mapping):
+            continue
+        columns = [str(value) for value in item.get("columns", [])]
+        if len(columns) != 2:
+            continue
+        jaccard = float(item.get("jaccard") or 0)
+        findings.append(_quality_finding(
+            code=f"quality.missingness_relationship.{_slug(columns[0])}.{_slug(columns[1])}",
+            title=f"Linked missingness: {columns[0]} + {columns[1]}",
+            severity=item.get("severity", "low"),
+            evidence=f"Their missing-value masks have Jaccard similarity {jaccard:.2f} in the diagnostic sample.",
+            recommendation=(
+                "Investigate whether these columns are jointly missing because of one upstream process, segment, or collection rule."
+            ),
+            scope="dataset",
+        ))
+
+    return _sort_findings(findings)
+
+
 def merge_findings(*groups: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """Merge finding groups, de-duplicating by stable code."""
     merged: list[dict[str, Any]] = []
