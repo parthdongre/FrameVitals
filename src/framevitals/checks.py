@@ -6,15 +6,16 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
+import numpy as np
 import pandas as pd
 
 from framevitals.sources import resolve_source
 
 
 CheckSeverity = Literal["warning", "error"]
-CheckFunction = Callable[[pd.DataFrame], bool | Mapping[str, Any]]
+CheckFunction = Callable[[pd.DataFrame], bool | np.bool_ | Mapping[str, Any]]
 DataInput = str | Path | pd.DataFrame
 
 
@@ -26,7 +27,7 @@ def _slug(value: str) -> str:
 def _validate_severity(value: str) -> CheckSeverity:
     if value not in {"warning", "error"}:
         raise ValueError("check severity must be 'warning' or 'error'.")
-    return value  # type: ignore[return-value]
+    return cast(CheckSeverity, value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +46,7 @@ class DataCheck:
             raise TypeError("check function must be callable.")
         _validate_severity(self.severity)
 
-    def __call__(self, dataframe: pd.DataFrame) -> bool | Mapping[str, Any]:
+    def __call__(self, dataframe: pd.DataFrame) -> bool | np.bool_ | Mapping[str, Any]:
         return self.function(dataframe)
 
 
@@ -87,10 +88,10 @@ def _normalize_check(value: DataCheck | CheckFunction) -> DataCheck:
 
 def _normalize_outcome(
     definition: DataCheck,
-    raw: bool | Mapping[str, Any],
+    raw: bool | np.bool_ | Mapping[str, Any],
 ) -> dict[str, Any]:
-    if isinstance(raw, bool):
-        passed = raw
+    if isinstance(raw, (bool, np.bool_)):
+        passed = bool(raw)
         message = (
             f"{definition.name} passed."
             if passed
