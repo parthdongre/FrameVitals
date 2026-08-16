@@ -237,8 +237,15 @@ def relationships(
             max_candidate_pairs=max_candidate_pairs,
             max_edges_returned=max_edges_returned,
         )
-        payload["source_rows"] = metadata.rows
-        payload["source_columns"] = metadata.columns
+        sample_metadata = payload.setdefault("sample", {})
+        sample_metadata.update({
+            "source_rows": int(metadata.rows or len(sample)),
+            "sample_rows": int(len(sample)),
+            "sampled": bool((metadata.rows or len(sample)) > len(sample)),
+            "full_materialization": False,
+            "strategy": "streaming_evenly_spaced_global_rows",
+        })
+        payload["source"] = metadata.to_dict()
         payload["streaming_source"] = True
         payload["full_materialization"] = False
         return _named(payload, metadata.name)
