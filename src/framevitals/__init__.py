@@ -10,6 +10,7 @@ from framevitals.quality_results import DriftResult, GateResult, ValidationResul
 from framevitals.result import AnalysisResult, ColumnResult
 from framevitals.snapshots import (
     AnalysisSnapshot,
+    SnapshotHistory,
     compare_snapshots,
     create_snapshot,
     load_snapshot,
@@ -290,6 +291,7 @@ __all__ = [
     "AnalysisPlan",
     "AnalysisResult",
     "AnalysisSnapshot",
+    "SnapshotHistory",
     "CleaningPlan",
     "ColumnResult",
     "DriftResult",
