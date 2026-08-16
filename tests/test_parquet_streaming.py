@@ -266,6 +266,32 @@ def test_public_quality_streams_parquet_and_marks_sample_candidates(tmp_path, mo
     assert candidate["confirmation_scope"] == "bounded_row_sample"
 
 
+def test_public_anomalies_stream_numeric_projection_without_calling_load(tmp_path, monkeypatch):
+    path = tmp_path / "anomalies.parquet"
+    frame = _write_parquet(path, rows=12_000)
+
+    def fail_load(self):
+        raise AssertionError("anomalies must not materialize the complete Parquet file")
+
+    monkeypatch.setattr(ParquetSource, "load", fail_load)
+    result = framevitals.anomalies(
+        path,
+        mode="quick",
+        max_columns=2,
+        top_k=5,
+    )
+
+    execution = result["execution"]
+    assert execution["full_materialization"] is False
+    assert execution["source_rows"] == len(frame)
+    assert execution["source_columns"] == 4
+    assert execution["projected_columns"] == 2
+    assert execution["sample_rows"] == 5_000
+    assert execution["sampled"] is True
+    assert execution["strategy"] == "streaming_evenly_spaced_numeric_projection"
+    assert result["source"]["supports_projection"] is True
+
+
 def test_plan_reads_only_bounded_parquet_sample_and_uses_true_shape(tmp_path, monkeypatch):
     path = tmp_path / "plan.parquet"
     frame = _write_parquet(path, rows=12_000)
