@@ -77,7 +77,7 @@ def test_cli_config_and_preset_arguments():
     assert config_args.preset == "deep"
 
 
-def test_cli_compare_parser():
+def test_cli_compare_parser_supports_gate_controls():
     parser = build_parser()
 
     args = parser.parse_args([
@@ -88,6 +88,10 @@ def test_cli_compare_parser():
         "age,income",
         "--max-columns",
         "12",
+        "--format",
+        "terminal",
+        "--fail-on",
+        "moderate",
         "--output",
         "drift.json",
     ])
@@ -97,15 +101,25 @@ def test_cli_compare_parser():
     assert args.current.name == "production.csv"
     assert args.columns == "age,income"
     assert args.max_columns == 12
+    assert args.format == "terminal"
+    assert args.fail_on == "moderate"
     assert args.output.name == "drift.json"
 
 
-def test_cli_contract_parsers():
+def test_cli_contract_parsers_expose_inference_and_warning_controls():
     parser = build_parser()
 
     infer_args = parser.parse_args([
         "infer-contract",
         "reference.csv",
+        "--numeric-tolerance",
+        "0.1",
+        "--max-categories",
+        "15",
+        "--null-fraction-tolerance",
+        "0.08",
+        "--no-infer-unique",
+        "--allow-extra-columns",
         "--output",
         "contract.json",
     ])
@@ -114,20 +128,30 @@ def test_cli_contract_parsers():
         "candidate.csv",
         "--contract",
         "contract.json",
+        "--format",
+        "terminal",
+        "--fail-on-warn",
         "--output",
         "validation.json",
     ])
 
     assert infer_args.command == "infer-contract"
     assert infer_args.file.name == "reference.csv"
+    assert infer_args.numeric_tolerance == 0.1
+    assert infer_args.max_categories == 15
+    assert infer_args.null_fraction_tolerance == 0.08
+    assert infer_args.infer_unique is False
+    assert infer_args.allow_extra_columns is True
     assert infer_args.output.name == "contract.json"
     assert validate_args.command == "validate"
     assert validate_args.file.name == "candidate.csv"
     assert validate_args.contract.name == "contract.json"
+    assert validate_args.format == "terminal"
+    assert validate_args.fail_on_warn is True
     assert validate_args.output.name == "validation.json"
 
 
-def test_cli_validate_returns_nonzero_for_contract_errors(tmp_path, monkeypatch):
+def test_cli_validate_returns_two_for_contract_errors(tmp_path, monkeypatch):
     dataset = tmp_path / "candidate.csv"
     contract = tmp_path / "contract.json"
     dataset.write_text("age\n15\n", encoding="utf-8")
@@ -156,4 +180,44 @@ def test_cli_validate_returns_nonzero_for_contract_errors(tmp_path, monkeypatch)
         ],
     )
 
+    assert main() == 2
+
+
+def test_cli_validate_warning_exit_is_opt_in(tmp_path, monkeypatch, capsys):
+    dataset = tmp_path / "candidate.csv"
+    contract = tmp_path / "contract.json"
+    dataset.write_text("plan\nenterprise\n", encoding="utf-8")
+    contract.write_text(
+        json.dumps({
+            "version": 2,
+            "columns": {
+                "plan": {
+                    "type": "string",
+                    "nullable": False,
+                    "allowed_values": ["basic", "pro"],
+                    "allowed_values_severity": "warning",
+                },
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["framevitals", "validate", str(dataset), "--contract", str(contract)],
+    )
+    assert main() == 0
+    capsys.readouterr()
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "framevitals",
+            "validate",
+            str(dataset),
+            "--contract",
+            str(contract),
+            "--fail-on-warn",
+        ],
+    )
     assert main() == 1
