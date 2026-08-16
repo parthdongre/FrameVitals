@@ -17,6 +17,8 @@ Development continues on the development branches. Changes intended for the next
 - Reusable root `action.yml` GitHub Action for running FrameVitals quality gates with status/result outputs
 - Path-scoped smoke CI for the reusable Gate Action
 - `framevitals plan` for previewing applicable modules, execution budgets, source capabilities, and bounded planning samples
+- `framevitals.inspect_source()` for inspecting source shape, storage kind, format, materialization state, projection support, and streaming capability without running diagnostics
+- `framevitals inspect` CLI command with terminal/JSON output and optional persisted source metadata
 - Compact versioned analysis snapshots with deterministic fingerprints, JSON persistence, and snapshot-to-snapshot schema/health/ML-readiness/finding diffs
 - `SnapshotHistory` for persistent compact monitoring timelines, latest/previous lookup, labels, and recent-state comparison without storing raw datasets
 - Dict-compatible result objects including `AnalysisResult`, `DriftResult`, `ValidationResult`, `CheckResult`, `GateResult`, and per-column result views
@@ -31,13 +33,15 @@ Development continues on the development branches. Changes intended for the next
 - Optional lazy DuckDB relation source with exact count/schema metadata, projection pushdown, Arrow record batches, and full pandas materialization only for exact/full-row APIs
 - Optional `duckdb` dependency group containing DuckDB plus its Arrow transport
 - Dedicated Arrow/DuckDB interoperability CI coverage
-- Execution provenance that distinguishes exact full-stream metrics, bounded row samples, estimates, and full materialization
+- Versioned execution-provenance schema v1 with shared `method`, `full_materialization`, source, sampling, strategy, component, and reason fields while preserving legacy operation-specific metadata during the `0.x` migration
 - Optional Rust native core and Python bridge for accelerated streaming numeric state, cardinality/quantile sketches, and backend routing
 - Dedicated Arrow/NumPy-fallback and Rust/native CI coverage
 - Reproducible performance benchmark workflow with time/RSS summaries and retained JSON artifacts
 - PEP 561 `py.typed` marker for downstream type-checking support
 - Optional `excel` dependency group for XLS/XLSX readers
 - Optional `plot` dependency group for Matplotlib/Seaborn chart and report plotting support
+- Optional `docs` dependency group plus a MkDocs Material documentation site covering source-aware execution, execution provenance, quality gates, custom checks, and plugin trust boundaries
+- Strict path-scoped documentation CI using `mkdocs build --strict`
 - Contributor architecture guidance covering canonical layers, streaming provenance, optional-dependency boundaries, and performance-sensitive changes
 - Focused examples for domain-specific quality gates and persistent snapshot monitoring
 
@@ -51,7 +55,8 @@ Development continues on the development branches. Changes intended for the next
 - Arbitrary custom Python checks explicitly remain exact and materialize non-pandas sources rather than silently sampling user-defined invariants
 - Top-level gate execution now reports whether any selected check family required full materialization
 - Materialization provenance is now based on actual execution semantics rather than assuming only file-backed sources can materialize
-- `framevitals.api` is now a lazy compatibility facade over the canonical focused, analysis, planning, operations, check, and plugin engines instead of a second eager implementation
+- Focused statistics, anomaly, relationship, role, health, ML-readiness, quality, drift, validation, custom-check, and gate paths are converging on execution-provenance schema v1 without removing legacy metadata keys
+- `framevitals.api` is now a lazy compatibility facade over the canonical focused, analysis, planning, operations, check, plugin, and source-inspection engines instead of a second eager implementation
 - The installed CLI now routes directly through canonical APIs and no longer relies on a runtime monkeypatch shim
 - CLI `--version` works from a no-dependencies wheel smoke install without importing the analytics stack
 - The `all` extra now includes Arrow and DuckDB interoperability capabilities
@@ -61,6 +66,7 @@ Development continues on the development branches. Changes intended for the next
 - Flask startup no longer eagerly imports the agentic AI or report/plot stacks; those capabilities load only when their endpoints are used
 - Excel loading now reports a FrameVitals-specific install hint when the optional reader capability is missing
 - README and roadmap now describe the source-aware analyze → compare → validate → gate → monitor direction, source interoperability, exact-vs-bounded execution, optional capability groups, plugins, and the reusable Gate Action
+- Project metadata now advertises the package as typed and points documentation users at the maintained `docs/` tree
 - Package CI now requires the `py.typed` marker to be present in built wheels
 - Test and package workflows now use read-only default permissions and cancel stale runs on the same branch
 - Release publishing now verifies that the GitHub release tag, `pyproject.toml` version, and `framevitals.__version__` match before building/publishing
