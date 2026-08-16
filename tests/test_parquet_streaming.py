@@ -68,6 +68,40 @@ def test_public_profile_streams_parquet_without_calling_load(tmp_path, monkeypat
     assert "event_time" in result["date_columns"]
 
 
+def test_public_roles_stream_parquet_without_calling_load(tmp_path, monkeypatch):
+    path = tmp_path / "roles.parquet"
+    frame = _write_parquet(path, rows=12_000)
+
+    def fail_load(self):
+        raise AssertionError("roles must not materialize the complete Parquet file")
+
+    monkeypatch.setattr(ParquetSource, "load", fail_load)
+    result = framevitals.roles(path)
+
+    assert result["dataset_name"] == "roles.parquet"
+    execution = result["execution"]
+    assert execution["full_materialization"] is False
+    assert execution["source_rows"] == len(frame)
+    assert execution["sample_rows"] == 5_000
+    assert execution["sampled"] is True
+
+    value = result["columns"]["value"]
+    expected_missing = int(frame["value"].isna().sum()) / len(frame) * 100
+    assert value["missing_percent"] == pytest.approx(round(expected_missing, 2))
+    assert value["source_rows"] == len(frame)
+    assert value["sample_rows"] == 5_000
+    assert value["cardinality_scope"] == "bounded_row_sample"
+    assert value["cardinality_approximate"] is True
+
+    group = result["columns"]["group"]
+    assert group["unique_count"] == 7
+    assert "low_cardinality" in group["roles"]
+    assert group["cardinality_scope"] in {
+        "bounded_row_sample",
+        "full_stream_approximate",
+    }
+
+
 def test_large_parquet_retains_only_bounded_row_sample(tmp_path):
     path = tmp_path / "large.parquet"
     frame = _write_parquet(path, rows=60_000)
