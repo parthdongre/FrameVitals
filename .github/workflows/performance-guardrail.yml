@@ -1,0 +1,101 @@
+name: Performance Guardrail
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/framevitals/profiler.py"
+      - "src/framevitals/streaming_profile.py"
+      - "src/framevitals/sources.py"
+      - "src/framevitals/focused.py"
+      - "src/framevitals/native_core.py"
+      - "rust/**"
+      - "benchmarks/performance_guardrail.py"
+      - "benchmarks/performance_budgets.json"
+      - ".github/workflows/performance-guardrail.yml"
+  push:
+    branches: [main, dev, "develop/august"]
+    paths:
+      - "src/framevitals/profiler.py"
+      - "src/framevitals/streaming_profile.py"
+      - "src/framevitals/sources.py"
+      - "src/framevitals/focused.py"
+      - "src/framevitals/native_core.py"
+      - "rust/**"
+      - "benchmarks/performance_guardrail.py"
+      - "benchmarks/performance_budgets.json"
+      - ".github/workflows/performance-guardrail.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  profile-guardrails:
+    name: profiling time + RSS ceilings
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install profiling capabilities
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[arrow]"
+
+      - name: Verify dependency consistency
+        run: python -m pip check
+
+      - name: Run performance guardrails
+        env:
+          FRAMEVITALS_BACKEND: numpy
+        run: |
+          python benchmarks/performance_guardrail.py \
+            --output performance-guardrail.json
+
+      - name: Publish job summary
+        if: always()
+        run: |
+          if [[ ! -f performance-guardrail.json ]]; then
+            exit 0
+          fi
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("performance-guardrail.json").read_text())
+          print("## FrameVitals performance guardrail")
+          print()
+          print("| Scenario | Time (s) | Time budget | Peak RSS (MB) | RSS budget | Result |")
+          print("| --- | ---: | ---: | ---: | ---: | --- |")
+          for item in payload["measurements"]:
+              budget = item["budget"]
+              result = "PASS" if item["passed"] else "FAIL"
+              print(
+                  f"| {item['name']} | {item['elapsed_seconds']:.3f} | "
+                  f"{budget['max_seconds']:.1f} | {item['peak_rss_mb']:.1f} | "
+                  f"{budget['max_peak_rss_mb']:.1f} | {result} |"
+              )
+          PY
+
+      - name: Upload guardrail measurements
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: performance-guardrail
+          path: performance-guardrail.json
+          if-no-files-found: ignore
+          retention-days: 30
