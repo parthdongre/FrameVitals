@@ -15,6 +15,7 @@ import pandas as pd
 from framevitals.anomaly_ensemble import detect_anomalies_ensemble
 from framevitals.deep_statistics_v2 import run_deep_statistics_v2
 from framevitals.execution import ExecutionBudget, deterministic_sample_frame
+from framevitals.provenance import normalize_execution
 from framevitals.time_series import detect_and_analyze_time_series
 
 
@@ -26,11 +27,15 @@ def _attach_execution(
     scope: str,
 ) -> dict[str, Any]:
     result = dict(payload)
-    result["execution"] = {
-        "scope": scope,
-        "scale_class": budget.scale_class,
-        **sampling,
-    }
+    result["execution"] = normalize_execution(
+        {
+            "scope": scope,
+            "scale_class": budget.scale_class,
+            **sampling,
+        },
+        method=scope,
+        full_materialization=False,
+    )
     return result
 
 
