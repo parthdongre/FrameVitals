@@ -10,7 +10,7 @@ def _add_output_argument(parser: argparse.ArgumentParser) -> None:
         "--output",
         type=Path,
         default=None,
-        help="Optional path to write the JSON result.",
+        help="Optional path to write the complete JSON result.",
     )
 
 
@@ -68,6 +68,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--artifacts",
         action="store_true",
         help="Persist cleaned CSV/chart artifacts.",
+    )
+    analyze_parser.add_argument(
+        "--format",
+        choices=["terminal", "json"],
+        default="terminal",
+        help="Stdout format. JSON prints the complete result.",
+    )
+    analyze_parser.add_argument(
+        "--html-report",
+        type=Path,
+        default=None,
+        help="Optional path to write a self-contained HTML report.",
     )
     _add_output_argument(analyze_parser)
 
@@ -151,16 +163,19 @@ def main() -> int:
             artifacts=args.artifacts,
         )
 
-        summary = {
-            "file": report.get("filename"),
-            "mode": report.get("analysis_mode"),
-            "health": report.get("health"),
-            "ml_readiness": report.get("ml_readiness"),
-            "dataset_signals": report.get("dataset_signals"),
-            "artifacts_enabled": report.get("artifacts_enabled"),
-            "timings_ms": report.get("timings_ms"),
-        }
-        _emit(summary, args.output)
+        if args.output is not None:
+            report.to_json(args.output)
+        if args.html_report is not None:
+            report.to_html(args.html_report)
+
+        if args.format == "json":
+            print(report.to_json())
+        else:
+            print(report.summary_text())
+            if args.output is not None:
+                print(f"Full JSON     {args.output}")
+            if args.html_report is not None:
+                print(f"HTML report   {args.html_report}")
         return 0
 
     if args.command == "compare":
