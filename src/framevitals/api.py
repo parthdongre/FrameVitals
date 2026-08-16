@@ -1,104 +1,55 @@
+"""Backward-compatible public API facade.
+
+Historically this module contained a second eager implementation of most
+FrameVitals operations. The canonical implementations now live in focused,
+source-aware modules. Keeping this file as a thin lazy facade preserves imports
+such as ``from framevitals.api import analyze`` without maintaining two engines
+that can diverge in behavior, streaming support, or execution metadata.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
-from pathlib import Path
-from typing import Any
-from uuid import uuid4
+from typing import TYPE_CHECKING, Any
 
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 
-from framevitals.analysis_selector import select_analyses
-from framevitals.anomaly_ensemble import detect_anomalies_ensemble
-from framevitals.cleaning_plan import (
-    CleaningPlan,
-    apply_cleaning_plan,
-    infer_cleaning_plan,
-)
-from framevitals.column_roles import infer_column_roles, summarize_roles
-from framevitals.config import ConfigInput, VALID_MODULES, resolve_config
-from framevitals.contracts import infer_contract as _infer_contract
-from framevitals.contracts import validate_contract
-from framevitals.dataset_signals import detect_dataset_signals
-from framevitals.deep_statistics_v2 import run_deep_statistics_v2
-from framevitals.drift_analysis import compare_datasets, severity_at_least
-from framevitals.health_score import calculate_health_score
-from framevitals.loader import load_dataset
-from framevitals.ml_readiness import calculate_ml_readiness
-from framevitals.pipeline import run_full_analysis
-from framevitals.planning import AnalysisPlan
-from framevitals.profiler import build_profile
-from framevitals.quality_diagnostics import run_quality_diagnostics
-from framevitals.quality_results import DriftResult, GateResult, ValidationResult
-from framevitals.result import AnalysisResult
-from framevitals.target_intelligence import run_target_intelligence
-
-DataInput = str | Path | pd.DataFrame
-_DRIFT_SEVERITY_RANK = {"stable": 0, "minor": 1, "moderate": 2, "severe": 3}
+    from framevitals.cleaning_plan import CleaningPlan
+    from framevitals.planning import AnalysisPlan
+    from framevitals.quality_results import DriftResult, GateResult, ValidationResult
+    from framevitals.result import AnalysisResult
 
 
-def _validated_path(value: str | Path, *, label: str = "Dataset") -> Path:
-    path = Path(value)
-    if not path.exists():
-        raise FileNotFoundError(f"{label} not found: {path}")
-    if not path.is_file():
-        raise ValueError(f"Expected a file for {label.lower()}, got: {path}")
-    return path
-
-
-def _load_input(value: DataInput, *, label: str) -> tuple[pd.DataFrame, str]:
-    if isinstance(value, pd.DataFrame):
-        if value.empty:
-            raise ValueError(f"{label} DataFrame is empty.")
-        return value.copy(), "<dataframe>"
-
-    if isinstance(value, (str, Path)):
-        path = _validated_path(value, label=label)
-        df = load_dataset(path)
-        if df.empty:
-            raise ValueError(f"{label} dataset is empty: {path}")
-        return df, path.name
-
-    raise TypeError(
-        f"{label} must be a pandas DataFrame or a path to a supported dataset."
-    )
-
-
-def _with_dataset_name(payload: dict[str, Any], source_name: str) -> dict[str, Any]:
-    """Attach source identity without mutating an analysis module's own result."""
-    return {"dataset_name": source_name, **payload}
+DataInput = Any
 
 
 def profile(data: DataInput) -> dict[str, Any]:
-    """Profile shape, types, missingness, cardinality, and basic summaries only."""
-    dataframe, source_name = _load_input(data, label="Dataset")
-    return _with_dataset_name(build_profile(dataframe), source_name)
+    """Profile a dataset through the canonical focused execution path."""
+    from framevitals.focused import profile as _profile
+
+    return _profile(data)
 
 
 def roles(data: DataInput) -> dict[str, Any]:
-    """Infer semantic/structural column roles without running the full pipeline."""
-    dataframe, source_name = _load_input(data, label="Dataset")
-    column_roles = infer_column_roles(dataframe)
-    return {
-        "dataset_name": source_name,
-        "columns": column_roles,
-        "summary": summarize_roles(column_roles),
-    }
+    """Infer column roles through the canonical focused execution path."""
+    from framevitals.focused import roles as _roles
+
+    return _roles(data)
 
 
 def health(data: DataInput) -> dict[str, Any]:
-    """Calculate the FrameVitals data-health score only."""
-    dataframe, source_name = _load_input(data, label="Dataset")
-    dataset_profile = build_profile(dataframe)
-    payload = calculate_health_score(dataframe, dataset_profile)
-    return _with_dataset_name(payload, source_name)
+    """Calculate dataset health through the canonical focused execution path."""
+    from framevitals.focused import health as _health
+
+    return _health(data)
 
 
 def ml_readiness(data: DataInput) -> dict[str, Any]:
-    """Calculate ML-readiness diagnostics only."""
-    dataframe, source_name = _load_input(data, label="Dataset")
-    dataset_profile = build_profile(dataframe)
-    payload = calculate_ml_readiness(dataframe, profile=dataset_profile)
-    return _with_dataset_name(payload, source_name)
+    """Calculate ML readiness through the canonical focused execution path."""
+    from framevitals.focused import ml_readiness as _ml_readiness
+
+    return _ml_readiness(data)
 
 
 def quality(
@@ -108,30 +59,27 @@ def quality(
     max_columns: int = 100,
     max_missingness_columns: int = 25,
 ) -> dict[str, Any]:
-    """Run practical deterministic data-quality diagnostics only."""
-    dataframe, source_name = _load_input(data, label="Dataset")
-    dataset_profile = build_profile(dataframe)
-    column_roles = infer_column_roles(dataframe)
-    payload = run_quality_diagnostics(
-        dataframe,
-        profile=dataset_profile,
-        column_roles=column_roles,
+    """Run deterministic quality diagnostics through the focused engine."""
+    from framevitals.focused import quality as _quality
+
+    return _quality(
+        data,
         max_sample_rows=max_sample_rows,
         max_columns=max_columns,
         max_missingness_columns=max_missingness_columns,
     )
-    return _with_dataset_name(payload, source_name)
 
 
 def statistics(
     data: DataInput,
     *,
     max_pairs: int = 20,
+    mode: str = "standard",
 ) -> dict[str, Any]:
-    """Run the deep statistical diagnostics layer only."""
-    dataframe, source_name = _load_input(data, label="Dataset")
-    payload = run_deep_statistics_v2(dataframe, max_pairs=max_pairs)
-    return _with_dataset_name(payload, source_name)
+    """Run bounded deep statistics through the focused engine."""
+    from framevitals.focused import statistics as _statistics
+
+    return _statistics(data, max_pairs=max_pairs, mode=mode)
 
 
 def anomalies(
@@ -141,35 +89,48 @@ def anomalies(
     threshold: float = 0.6,
     max_columns: int = 30,
     top_k: int = 25,
+    mode: str = "standard",
 ) -> dict[str, Any]:
-    """Run the tabular anomaly ensemble only."""
-    dataframe, source_name = _load_input(data, label="Dataset")
-    payload = detect_anomalies_ensemble(
-        dataframe,
+    """Run bounded anomaly diagnostics through the focused engine."""
+    from framevitals.focused import anomalies as _anomalies
+
+    return _anomalies(
+        data,
         contamination=contamination,
         threshold=threshold,
         max_columns=max_columns,
         top_k=top_k,
+        mode=mode,
     )
-    return _with_dataset_name(payload, source_name)
 
 
-def target_analysis(
+def relationships(
     data: DataInput,
     *,
-    target: str,
+    max_sample_rows: int = 512,
+    projections: int = 64,
+    min_abs_correlation: float = 0.80,
+    max_candidate_pairs: int = 250_000,
+    max_edges_returned: int = 5_000,
 ) -> dict[str, Any]:
-    """Run target-quality, leakage, association, and split diagnostics only."""
-    dataframe, source_name = _load_input(data, label="Dataset")
-    if target not in dataframe.columns:
-        raise ValueError(f"Target column not found: {target}")
-    column_roles = infer_column_roles(dataframe)
-    payload = run_target_intelligence(
-        dataframe,
-        target_column=target,
-        column_roles=column_roles,
+    """Discover strong numeric relationships through the focused engine."""
+    from framevitals.focused import relationships as _relationships
+
+    return _relationships(
+        data,
+        max_sample_rows=max_sample_rows,
+        projections=projections,
+        min_abs_correlation=min_abs_correlation,
+        max_candidate_pairs=max_candidate_pairs,
+        max_edges_returned=max_edges_returned,
     )
-    return _with_dataset_name(payload, source_name)
+
+
+def target_analysis(data: DataInput, *, target: str) -> dict[str, Any]:
+    """Run target diagnostics through the focused source-aware engine."""
+    from framevitals.focused import target_analysis as _target_analysis
+
+    return _target_analysis(data, target=target)
 
 
 def analyze(
@@ -180,53 +141,22 @@ def analyze(
     artifacts: bool | None = None,
     workers: int | None = None,
     preset: str | None = None,
-    config: ConfigInput = None,
+    config: Any = None,
     disabled_modules: list[str] | tuple[str, ...] | None = None,
 ) -> AnalysisResult:
-    """Analyze a tabular dataset with the complete configured FrameVitals pipeline."""
-    resolved = resolve_config(
-        config,
-        preset=preset,
-        mode=mode,
+    """Analyze a dataset through the canonical source-aware dispatcher."""
+    from framevitals.analysis_api import analyze as _analyze
+
+    return _analyze(
+        data,
         target=target,
+        mode=mode,
         artifacts=artifacts,
         workers=workers,
+        preset=preset,
+        config=config,
         disabled_modules=disabled_modules,
     )
-    dataset_id = f"fv_{uuid4().hex[:12]}"
-
-    pipeline_kwargs = {
-        "dataset_id": dataset_id,
-        "original_filename": "<dataframe>",
-        "analysis_mode": resolved.mode,
-        "target_column": resolved.target,
-        "parallel_workers": resolved.workers,
-        "skip_ai": True,
-        "write_artifacts": resolved.artifacts,
-        "disabled_modules": resolved.disabled_modules,
-    }
-
-    if isinstance(data, pd.DataFrame):
-        if data.empty:
-            raise ValueError("Dataset DataFrame is empty.")
-        payload = run_full_analysis(
-            dataframe=data,
-            **pipeline_kwargs,
-        )
-    elif isinstance(data, (str, Path)):
-        path = _validated_path(data)
-        pipeline_kwargs["original_filename"] = path.name
-        payload = run_full_analysis(
-            file_path=path,
-            **pipeline_kwargs,
-        )
-    else:
-        raise TypeError(
-            "data must be a pandas DataFrame or a path to a supported dataset."
-        )
-
-    payload["config"] = resolved.to_dict()
-    return AnalysisResult(payload)
 
 
 def plan(
@@ -236,64 +166,28 @@ def plan(
     mode: str | None = None,
     workers: int | None = None,
     preset: str | None = None,
-    config: ConfigInput = None,
+    config: Any = None,
     disabled_modules: list[str] | tuple[str, ...] | None = None,
 ) -> AnalysisPlan:
-    """Preview which analyses FrameVitals considers applicable.
+    """Preview analysis execution through the canonical planning API."""
+    from framevitals.planning_api import plan as _plan
 
-    Planning performs loading, profiling, role inference, signal detection, and
-    selector evaluation only. It does not run the heavier model/statistics,
-    cleaning, chart, or AI stages of :func:`analyze`.
-    """
-    resolved = resolve_config(
-        config,
-        preset=preset,
-        mode=mode,
+    return _plan(
+        data,
         target=target,
+        mode=mode,
         workers=workers,
-        artifacts=False,
+        preset=preset,
+        config=config,
         disabled_modules=disabled_modules,
     )
-    dataframe, source_name = _load_input(data, label="Dataset")
-    dataset_profile = build_profile(dataframe)
-    column_roles = infer_column_roles(dataframe)
-    dataset_signals = detect_dataset_signals(
-        dataframe,
-        dataset_profile,
-        column_roles=column_roles,
-    )
-    selection = select_analyses(
-        signals=dataset_signals,
-        analysis_mode=resolved.mode,
-        target_column=resolved.target,
-    )
-    disabled = set(resolved.disabled_modules)
-    selection["execution_modules"] = {
-        "disabled": sorted(disabled),
-        "enabled": sorted(VALID_MODULES - disabled),
-    }
-
-    public_signals = {
-        key: value
-        for key, value in dataset_signals.items()
-        if key != "column_roles"
-    }
-    return AnalysisPlan({
-        "dataset_name": source_name,
-        "analysis_mode": resolved.mode,
-        "target": resolved.target,
-        "shape": dict(dataset_profile.get("shape", {})),
-        "config": resolved.to_dict(),
-        "signals": public_signals,
-        "selection": selection,
-    })
 
 
 def plan_cleaning(data: DataInput) -> CleaningPlan:
-    """Infer a conservative cleaning plan without modifying the input data."""
-    dataframe, _ = _load_input(data, label="Dataset")
-    dataset_profile = build_profile(dataframe)
-    return infer_cleaning_plan(dataframe, profile=dataset_profile)
+    """Infer a conservative cleaning plan through the operations layer."""
+    from framevitals.operations import plan_cleaning as _plan_cleaning
+
+    return _plan_cleaning(data)
 
 
 def clean(
@@ -301,14 +195,10 @@ def clean(
     *,
     plan: Mapping[str, Any] | None = None,
 ) -> pd.DataFrame:
-    """Return an explicitly cleaned copy of a dataset.
+    """Return an explicitly cleaned copy through the operations layer."""
+    from framevitals.operations import clean as _clean
 
-    If ``plan`` is omitted FrameVitals infers its conservative default plan.
-    The original DataFrame or source file is never modified in place.
-    """
-    dataframe, _ = _load_input(data, label="Dataset")
-    resolved_plan = plan if plan is not None else infer_cleaning_plan(dataframe)
-    return apply_cleaning_plan(dataframe, resolved_plan, copy=True)
+    return _clean(data, plan=plan)
 
 
 def compare(
@@ -318,22 +208,15 @@ def compare(
     columns: list[str] | None = None,
     max_columns: int = 30,
 ) -> DriftResult:
-    """Compare reference and current datasets for distribution and schema drift."""
-    if max_columns < 1:
-        raise ValueError("max_columns must be at least 1.")
+    """Compare reference/current data through the source-aware drift path."""
+    from framevitals.operations import compare as _compare
 
-    ref_df, ref_name = _load_input(reference, label="Reference")
-    cur_df, cur_name = _load_input(current, label="Current")
-
-    payload = compare_datasets(
-        ref_df,
-        cur_df,
+    return _compare(
+        reference,
+        current,
         columns=columns,
         max_columns=max_columns,
     )
-    payload["reference_name"] = ref_name
-    payload["current_name"] = cur_name
-    return DriftResult(payload)
 
 
 def infer_contract(
@@ -346,10 +229,11 @@ def infer_contract(
     min_unique_rows: int = 20,
     allow_extra_columns: bool = False,
 ) -> dict[str, Any]:
-    """Infer a JSON-serializable data contract from a reference dataset."""
-    dataframe, source_name = _load_input(data, label="Reference")
-    contract = _infer_contract(
-        dataframe,
+    """Infer a reusable data contract through the operations layer."""
+    from framevitals.operations import infer_contract as _infer_contract
+
+    return _infer_contract(
+        data,
         numeric_tolerance=numeric_tolerance,
         max_categories=max_categories,
         null_fraction_tolerance=null_fraction_tolerance,
@@ -357,19 +241,13 @@ def infer_contract(
         min_unique_rows=min_unique_rows,
         allow_extra_columns=allow_extra_columns,
     )
-    contract["reference_name"] = source_name
-    return contract
 
 
-def validate(
-    data: DataInput,
-    contract: Mapping[str, Any],
-) -> ValidationResult:
-    """Validate a dataset against an inferred or explicit data contract."""
-    dataframe, source_name = _load_input(data, label="Dataset")
-    payload = validate_contract(dataframe, contract)
-    payload["dataset_name"] = source_name
-    return ValidationResult(payload)
+def validate(data: DataInput, contract: Mapping[str, Any]) -> ValidationResult:
+    """Validate a dataset exactly through the operations layer."""
+    from framevitals.operations import validate as _validate
+
+    return _validate(data, contract)
 
 
 def gate(
@@ -383,115 +261,37 @@ def gate(
     drift_fail_on: str = "severe",
     fail_on_validation_warning: bool = False,
 ) -> GateResult:
-    """Run lightweight validation/drift checks and return one quality verdict.
+    """Run the canonical CI-friendly contract/drift quality gate."""
+    from framevitals.operations import gate as _gate
 
-    At least one of ``reference`` or ``contract`` must be supplied. The current
-    dataset is loaded only once, and no full EDA/model pipeline is executed.
-    Validation failures always fail the gate. Warning-only validation results
-    warn by default and can be promoted to failures. Drift uses independent
-    warning/failure thresholds.
-    """
-    if reference is None and contract is None:
-        raise ValueError("gate requires at least one of reference= or contract=.")
-    if drift_warn_on not in _DRIFT_SEVERITY_RANK:
-        raise ValueError("drift_warn_on must be one of: stable, minor, moderate, severe.")
-    if drift_fail_on not in _DRIFT_SEVERITY_RANK:
-        raise ValueError("drift_fail_on must be one of: stable, minor, moderate, severe.")
-    if _DRIFT_SEVERITY_RANK[drift_warn_on] > _DRIFT_SEVERITY_RANK[drift_fail_on]:
-        raise ValueError("drift_warn_on cannot be more severe than drift_fail_on.")
-    if max_columns < 1:
-        raise ValueError("max_columns must be at least 1.")
+    return _gate(
+        current,
+        reference=reference,
+        contract=contract,
+        columns=columns,
+        max_columns=max_columns,
+        drift_warn_on=drift_warn_on,
+        drift_fail_on=drift_fail_on,
+        fail_on_validation_warning=fail_on_validation_warning,
+    )
 
-    current_df, current_name = _load_input(current, label="Current")
-    checks: dict[str, Any] = {}
-    reasons: list[str] = []
-    status = "pass"
 
-    def warn() -> None:
-        nonlocal status
-        if status == "pass":
-            status = "warn"
-
-    def fail() -> None:
-        nonlocal status
-        status = "fail"
-
-    if contract is not None:
-        validation = validate_contract(current_df, contract)
-        validation["dataset_name"] = current_name
-        checks["validation"] = validation
-
-        validation_status = validation.get("status")
-        if validation_status == "fail":
-            fail()
-            error_count = validation.get("summary", {}).get("errors", 0)
-            reasons.append(f"Contract validation failed with {error_count} error(s).")
-        elif validation_status == "warn":
-            warning_count = validation.get("summary", {}).get("warnings", 0)
-            if fail_on_validation_warning:
-                fail()
-                reasons.append(
-                    f"Contract validation produced {warning_count} warning(s), promoted to failure."
-                )
-            else:
-                warn()
-                reasons.append(f"Contract validation produced {warning_count} warning(s).")
-
-    if reference is not None:
-        reference_df, reference_name = _load_input(reference, label="Reference")
-        drift_payload = compare_datasets(
-            reference_df,
-            current_df,
-            columns=columns,
-            max_columns=max_columns,
-        )
-        drift_payload["reference_name"] = reference_name
-        drift_payload["current_name"] = current_name
-        checks["drift"] = drift_payload
-
-        if not drift_payload.get("available"):
-            fail()
-            reasons.append(
-                "Drift comparison was requested but could not produce a comparable result: "
-                f"{drift_payload.get('reason', 'unknown reason')}."
-            )
-        else:
-            drift_severity = str(
-                drift_payload.get("gate", {}).get("severity", "unknown")
-            )
-            if drift_severity not in _DRIFT_SEVERITY_RANK:
-                fail()
-                reasons.append(
-                    "Drift comparison did not produce a recognized severity verdict."
-                )
-            elif severity_at_least(drift_severity, drift_fail_on):
-                fail()
-                reasons.append(
-                    f"Drift severity {drift_severity} reached fail threshold {drift_fail_on}."
-                )
-            elif severity_at_least(drift_severity, drift_warn_on):
-                warn()
-                reasons.append(
-                    f"Drift severity {drift_severity} reached warning threshold {drift_warn_on}."
-                )
-
-            drift_reasons = drift_payload.get("gate", {}).get("reasons", [])
-            if isinstance(drift_reasons, list):
-                for reason in drift_reasons[:10]:
-                    text = str(reason)
-                    if text and text not in reasons:
-                        reasons.append(text)
-
-    return GateResult({
-        "status": status,
-        "passed": status != "fail",
-        "current_name": current_name,
-        "checks_run": list(checks),
-        "thresholds": {
-            "drift_warn_on": drift_warn_on,
-            "drift_fail_on": drift_fail_on,
-            "fail_on_validation_warning": bool(fail_on_validation_warning),
-        },
-        "reasons": reasons,
-        "checks": checks,
-    })
+__all__ = [
+    "profile",
+    "roles",
+    "health",
+    "ml_readiness",
+    "quality",
+    "statistics",
+    "anomalies",
+    "relationships",
+    "target_analysis",
+    "analyze",
+    "plan",
+    "plan_cleaning",
+    "clean",
+    "compare",
+    "infer_contract",
+    "validate",
+    "gate",
+]
