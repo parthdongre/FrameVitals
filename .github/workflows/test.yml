@@ -107,10 +107,10 @@ jobs:
         run: cargo fmt --manifest-path rust/Cargo.toml --all -- --check
 
       - name: Test Rust workspace
-        run: cargo test --manifest-path rust/Cargo.toml --workspace --all-targets
+        run: cargo test --manifest-path rust/Cargo.toml --workspace --all-targets --all-features
 
       - name: Lint Rust workspace
-        run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
+        run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --all-features -- -D warnings
 
   optional-features:
     name: optional features (Python 3.12)
