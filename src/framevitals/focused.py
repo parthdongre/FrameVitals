@@ -395,10 +395,18 @@ def target_analysis(
     *,
     target: str,
 ) -> dict[str, Any]:
+    source = resolve_source(data)
+    metadata = source.inspect()
+    if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
+        from framevitals.streaming_target import run_streaming_target_analysis
+
+        payload = run_streaming_target_analysis(source, target=target)
+        return _named(payload, metadata.name)
+
     from framevitals.column_roles import infer_column_roles
     from framevitals.target_intelligence import run_target_intelligence
 
-    dataframe, source_name = _load(data)
+    dataframe = source.load()
     if target not in dataframe.columns:
         raise ValueError(f"Target column not found: {target}")
     column_roles = infer_column_roles(dataframe)
@@ -407,4 +415,4 @@ def target_analysis(
         target_column=target,
         column_roles=column_roles,
     )
-    return _named(payload, source_name)
+    return _named(payload, metadata.name)
