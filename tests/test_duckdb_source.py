@@ -49,6 +49,9 @@ def test_duckdb_relation_source_exposes_exact_metadata_projection_and_batches():
         assert metadata.supports_streaming is True
         assert source.schema().names == ["value", "other", "grp"]
 
+        public_info = framevitals.inspect_source(relation)
+        assert public_info == metadata.to_dict()
+
         batches = list(source.iter_batches(batch_size=700, columns=["value", "grp"]))
         assert sum(batch.num_rows for batch in batches) == 4_000
         assert max(batch.num_rows for batch in batches) <= 700
