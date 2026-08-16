@@ -338,7 +338,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "analyze":
-        from framevitals.api import analyze
+        from framevitals.analysis_api import analyze
 
         report = analyze(
             args.file,
@@ -378,7 +378,7 @@ def main() -> int:
         return 0
 
     if args.command == "plan":
-        from framevitals.api import plan
+        from framevitals.planning_api import plan
 
         result = plan(
             args.file,
@@ -403,7 +403,7 @@ def main() -> int:
         return 0
 
     if args.command == "clean":
-        from framevitals.api import clean, plan_cleaning
+        from framevitals.operations import clean, plan_cleaning
         from framevitals.security import sanitize_csv_value
 
         cleaning_plan = plan_cleaning(args.file)
@@ -427,8 +427,8 @@ def main() -> int:
         return 0
 
     if args.command == "compare":
-        from framevitals.api import compare
         from framevitals.drift_analysis import severity_at_least
+        from framevitals.operations import compare
 
         columns = None
         if args.columns:
@@ -459,7 +459,7 @@ def main() -> int:
         return 0
 
     if args.command == "infer-contract":
-        from framevitals.api import infer_contract
+        from framevitals.operations import infer_contract
 
         report = infer_contract(
             args.file,
@@ -474,7 +474,7 @@ def main() -> int:
         return 0
 
     if args.command == "validate":
-        from framevitals.api import validate
+        from framevitals.operations import validate
 
         report = validate(
             args.file,
