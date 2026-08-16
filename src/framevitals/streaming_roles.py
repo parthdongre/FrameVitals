@@ -1,8 +1,9 @@
 """Column-role inference for streaming dataset sources.
 
 Semantic/value-pattern inference remains bounded, while full-source profile facts
-(missingness and categorical cardinality when available) correct the sample
-roles. Every column records the scope of its cardinality evidence.
+correct the sample roles where the streaming profiler has authoritative or
+full-stream sketch evidence. Every column records the scope of its cardinality
+evidence.
 """
 
 from __future__ import annotations
@@ -46,18 +47,38 @@ _DERIVED_ROLES = {
 def _categorical_cardinality(
     profile: Mapping[str, Any],
     column: str,
-) -> tuple[int | None, str, bool]:
+    *,
+    sampled: bool,
+) -> tuple[int | None, str, str, bool]:
     summaries = profile.get("categorical_summary", {})
     if not isinstance(summaries, Mapping):
-        return None, "unavailable", True
+        return None, "unavailable", "unavailable", True
     raw = summaries.get(column)
     if not isinstance(raw, Mapping) or "unique_values" not in raw:
-        return None, "unavailable", True
+        return None, "unavailable", "unavailable", True
+
+    metadata = profile.get("categorical_summary_metadata", {})
+    if not isinstance(metadata, Mapping):
+        metadata = {}
+    native_columns = set(metadata.get("native_full_stream_columns", []) or [])
+    fallback_columns = set(metadata.get("sample_fallback_columns", []) or [])
 
     unique_count = int(raw.get("unique_values", 0) or 0)
     approximate = bool(raw.get("approximate", False))
-    method = str(raw.get("unique_values_method") or "streaming_profile")
-    return unique_count, method, approximate
+    method = str(raw.get("unique_values_method") or metadata.get("method") or "streaming_profile")
+
+    if column in native_columns:
+        return unique_count, "full_stream_approximate", method, True
+    if column in fallback_columns:
+        scope = "bounded_row_sample" if sampled else "full_source"
+        fallback_method = "evenly_spaced_row_sample" if sampled else "exact_full_source_sample"
+        return unique_count, scope, fallback_method, sampled
+
+    # A categorical result without explicit fallback metadata is exact only when
+    # the retained sample covers the entire source. Otherwise keep it scoped as
+    # approximate instead of silently promoting a sample statistic.
+    scope = "bounded_row_sample" if sampled else "full_source"
+    return unique_count, scope, method, approximate or sampled
 
 
 def _apply_cardinality_roles(
@@ -136,14 +157,15 @@ def infer_streaming_column_roles(
         missing_percent = round(missing_count / max(source_rows, 1) * 100, 2)
         roles.add(_classify_missingness(missing_percent))
 
-        categorical_unique, categorical_method, categorical_approximate = (
-            _categorical_cardinality(profile, column)
-        )
+        (
+            categorical_unique,
+            categorical_scope,
+            categorical_method,
+            categorical_approximate,
+        ) = _categorical_cardinality(profile, column, sampled=sampled)
         if categorical_unique is not None:
             unique_count = categorical_unique
-            cardinality_scope = (
-                "full_stream_approximate" if categorical_approximate else "full_stream_exact"
-            )
+            cardinality_scope = categorical_scope
             cardinality_method = categorical_method
             cardinality_approximate = categorical_approximate
         else:
@@ -195,7 +217,11 @@ def infer_streaming_column_roles(
             "source_rows": source_rows,
             "sample_rows": sample_rows,
             "sampled": sampled,
-            "full_source_inputs": ["missingness", "categorical_cardinality"],
-            "sample_inputs": ["semantic_patterns", "numeric_cardinality_when_needed"],
+            "full_source_inputs": ["missingness", "native_categorical_sketches"],
+            "sample_inputs": [
+                "semantic_patterns",
+                "numeric_cardinality",
+                "categorical_cardinality_without_native_sketch",
+            ],
         },
     }
