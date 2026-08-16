@@ -15,6 +15,7 @@ from framevitals.anomaly_ensemble import detect_anomalies_ensemble
 from framevitals.deep_statistics_v2 import run_deep_statistics_v2
 from framevitals.deep_triage import triage_deep_columns
 from framevitals.execution import ExecutionBudget, deterministic_sample_frame
+from framevitals.neural_anomaly import neural_reconstruction_anomalies
 from framevitals.provenance import normalize_execution
 from framevitals.time_series import detect_and_analyze_time_series
 
@@ -67,8 +68,6 @@ def run_budgeted_deep_statistics(
     if selected_columns:
         diagnostic_view = work.loc[:, selected_columns]
     else:
-        # Preserve a stable empty-result path without passing unrelated datetime
-        # or unsupported extension columns into the legacy statistical battery.
         diagnostic_view = pd.DataFrame(index=work.index)
 
     pair_budget = (
@@ -111,7 +110,7 @@ def run_budgeted_anomalies(
     max_columns: int = 30,
     top_k: int = 25,
 ) -> dict[str, Any]:
-    """Run the anomaly ensemble on a bounded representative frame when needed."""
+    """Run bounded anomaly diagnostics, with a neural view in research mode."""
     sample_limit = max(20, min(budget.anomaly_sample_rows, max(len(dataframe), 1)))
     work, sampling = deterministic_sample_frame(dataframe, sample_limit)
     payload = detect_anomalies_ensemble(
@@ -121,15 +120,37 @@ def run_budgeted_anomalies(
         max_columns=max_columns,
         top_k=top_k,
     )
+
+    if budget.mode == "research":
+        try:
+            payload["neural_reconstruction"] = neural_reconstruction_anomalies(
+                work,
+                max_rows=min(3_000, max(len(work), 20)),
+                max_columns=min(max_columns, 24),
+                max_iter=35,
+                top_k=top_k,
+            )
+        except Exception as exc:  # neural diagnostics must fail soft
+            payload["neural_reconstruction"] = {
+                "available": False,
+                "reason": f"{type(exc).__name__}: {exc}",
+            }
+
     sampling = {
         **sampling,
         "reason": (
-            "Expensive neighbor/covariance detectors are bounded until the native "
-            "candidate-filtering anomaly engine is available."
-            if sampling["sampled"]
-            else "Full input fits within the anomaly execution budget."
+            "Expensive anomaly detectors run on a bounded representative view; "
+            "research mode additionally includes a small neural reconstruction detector."
+            if budget.mode == "research"
+            else (
+                "Expensive neighbor/covariance detectors are bounded until the native "
+                "candidate-filtering anomaly engine is available."
+                if sampling["sampled"]
+                else "Full input fits within the anomaly execution budget."
+            )
         ),
         "coverage": "sample" if sampling["sampled"] else "full",
+        "neural_reconstruction_enabled": budget.mode == "research",
     }
     return _attach_execution(
         payload,
