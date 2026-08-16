@@ -174,7 +174,41 @@ def relationships(
 ) -> dict[str, Any]:
     from framevitals.relationship_graph import build_numeric_relationship_graph
 
-    dataframe, source_name = _load(data)
+    source = resolve_source(data)
+    metadata = source.inspect()
+    if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
+        from framevitals.streaming_profile import (
+            numeric_columns_for_streaming_source,
+            sample_streaming_source,
+        )
+
+        numeric_columns = numeric_columns_for_streaming_source(source)
+        dataframe = sample_streaming_source(
+            source,
+            sample_rows=max_sample_rows,
+            columns=numeric_columns,
+        )
+        payload = build_numeric_relationship_graph(
+            dataframe,
+            max_sample_rows=max_sample_rows,
+            projections=projections,
+            min_abs_correlation=min_abs_correlation,
+            max_candidate_pairs=max_candidate_pairs,
+            max_edges_returned=max_edges_returned,
+        )
+        if payload.get("available"):
+            sample = payload.setdefault("sample", {})
+            sample.update({
+                "source_rows": int(metadata.rows or len(dataframe)),
+                "sample_rows": int(len(dataframe)),
+                "sampled": int(metadata.rows or len(dataframe)) > len(dataframe),
+                "strategy": "streaming_evenly_spaced_global_rows",
+                "full_materialization": False,
+            })
+            payload["source"] = metadata.to_dict()
+        return _named(payload, metadata.name)
+
+    dataframe = source.load()
     payload = build_numeric_relationship_graph(
         dataframe,
         max_sample_rows=max_sample_rows,
@@ -183,7 +217,7 @@ def relationships(
         max_candidate_pairs=max_candidate_pairs,
         max_edges_returned=max_edges_returned,
     )
-    return _named(payload, source_name)
+    return _named(payload, metadata.name)
 
 
 def target_analysis(
