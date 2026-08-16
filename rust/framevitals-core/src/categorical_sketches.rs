@@ -114,7 +114,10 @@ impl StringHeavyHittersSketch {
 
     #[must_use]
     pub fn merge(mut self, other: Self) -> Self {
-        assert_eq!(self.capacity, other.capacity, "heavy-hitter capacity mismatch");
+        assert_eq!(
+            self.capacity, other.capacity,
+            "heavy-hitter capacity mismatch"
+        );
         assert_eq!(
             self.max_label_bytes, other.max_label_bytes,
             "heavy-hitter label limit mismatch"
@@ -246,7 +249,11 @@ mod tests {
         assert_eq!(state.missing, 1);
         assert!((state.cardinality.estimate() - 3.0).abs() < 1.0);
         assert_eq!(
-            state.heavy_hitters.candidates().first().map(|item| item.0.as_str()),
+            state
+                .heavy_hitters
+                .candidates()
+                .first()
+                .map(|item| item.0.as_str()),
             Some("pune")
         );
     }
@@ -269,7 +276,11 @@ mod tests {
         assert_eq!(merged.count, 142);
         assert_eq!(merged.missing, 1);
         assert_eq!(
-            merged.heavy_hitters.candidates().first().map(|item| item.0.as_str()),
+            merged
+                .heavy_hitters
+                .candidates()
+                .first()
+                .map(|item| item.0.as_str()),
             Some("alpha")
         );
     }
