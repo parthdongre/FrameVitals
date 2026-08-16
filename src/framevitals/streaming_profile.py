@@ -7,6 +7,7 @@ relationships (categorical top values, duplicate estimation, and correlation).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import asdict
 from typing import Any
 
@@ -70,6 +71,15 @@ def _column_groups(schema) -> tuple[list[str], list[str], list[str]]:
     return numeric, categorical, dates
 
 
+def numeric_columns_for_streaming_source(source: StreamingDatasetSource) -> list[str]:
+    """Return Arrow numeric column names without reading row data."""
+    schema_method = getattr(source, "schema", None)
+    if not callable(schema_method):
+        raise TypeError("Streaming profile sources must expose an Arrow schema().")
+    numeric, _, _ = _column_groups(schema_method())
+    return numeric
+
+
 def _arrow_numeric_to_float64(array) -> np.ndarray:
     """Convert one bounded Arrow numeric array to a contiguous float64 buffer."""
     try:
@@ -131,7 +141,8 @@ def _summary_from_python_state(
     sample: pd.Series,
 ) -> dict[str, Any]:
     finite_sample = pd.to_numeric(sample, errors="coerce")
-    finite_sample = finite_sample[np.isfinite(finite_sample.to_numpy(dtype="float64", na_value=np.nan))]
+    finite_values = finite_sample.to_numpy(dtype="float64", na_value=np.nan)
+    finite_sample = finite_sample[np.isfinite(finite_values)]
     quantiles = finite_sample.quantile([0.25, 0.5, 0.75]) if len(finite_sample) else pd.Series()
     return {
         "count": state.count,
@@ -164,6 +175,46 @@ def _sample_batch(batch, positions: np.ndarray, offset: int):
         return None
     local = positions[left:right] - offset
     return batch.take(pa.array(local, type=pa.int64())).to_pandas()
+
+
+def sample_streaming_source(
+    source: StreamingDatasetSource,
+    *,
+    sample_rows: int,
+    batch_size: int = STREAM_BATCH_SIZE,
+    columns: Sequence[str] | None = None,
+) -> pd.DataFrame:
+    """Return an evenly spaced bounded row sample without full materialization."""
+    if sample_rows < 1:
+        raise ValueError("sample_rows must be at least 1.")
+    if batch_size < 1:
+        raise ValueError("batch_size must be at least 1.")
+
+    metadata = source.inspect()
+    rows = metadata.rows
+    if rows is None:
+        raise ValueError("Streaming sampling requires a source row count.")
+    if rows < 1:
+        raise ValueError(f"Dataset is empty: {metadata.name}")
+
+    positions = _sample_positions(int(rows), int(sample_rows))
+    frames: list[pd.DataFrame] = []
+    offset = 0
+    for batch in source.iter_batches(batch_size=batch_size, columns=columns):
+        sampled = _sample_batch(batch, positions, offset)
+        if sampled is not None and not sampled.empty:
+            frames.append(sampled)
+        offset += int(batch.num_rows)
+
+    if offset != rows:
+        raise ValueError(
+            f"Streaming source metadata reported {rows} rows but yielded {offset}."
+        )
+
+    if frames:
+        sample = pd.concat(frames, ignore_index=True)
+        return sample.head(len(positions))
+    return pd.DataFrame(columns=list(columns or ()))
 
 
 def _duplicate_summary(sample: pd.DataFrame, rows: int) -> tuple[int, dict[str, Any]]:
@@ -212,8 +263,14 @@ def build_streaming_profile(
     *,
     batch_size: int = STREAM_BATCH_SIZE,
     sample_rows: int = STREAM_SAMPLE_ROWS,
-) -> dict[str, Any]:
-    """Profile a streaming Arrow source without materializing all rows."""
+    return_sample: bool = False,
+) -> dict[str, Any] | tuple[dict[str, Any], pd.DataFrame]:
+    """Profile a streaming Arrow source without materializing all rows.
+
+    ``return_sample=True`` lets planning/orchestration reuse the bounded row
+    sample generated during the same full-file scan instead of reading the
+    source a second time.
+    """
     if batch_size < 1:
         raise ValueError("batch_size must be at least 1.")
     if sample_rows < 1:
@@ -361,7 +418,7 @@ def build_streaming_profile(
     preview = preview_object.where(preview_object.notna(), None).to_dict(orient="records")
 
     source_metadata = metadata.to_dict() if hasattr(metadata, "to_dict") else asdict(metadata)
-    return {
+    payload = {
         "shape": {"rows": int(rows), "columns": len(columns)},
         "columns": columns,
         "dtypes": dtypes,
@@ -393,3 +450,6 @@ def build_streaming_profile(
             "numeric_backend": selected_backend,
         },
     }
+    if return_sample:
+        return payload, sample
+    return payload
