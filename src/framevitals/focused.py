@@ -8,15 +8,19 @@ so a profile-only call does not load sklearn/statsmodels/deep-stat modules.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from framevitals.provenance import (
+    execution_provenance,
+    load_fully_materializes,
+    normalize_execution,
+)
 from framevitals.sources import StreamingDatasetSource, resolve_source
 
 
-DataInput = str | Path | pd.DataFrame
+DataInput = Any
 
 
 def _load(data: DataInput, *, label: str = "Dataset") -> tuple[pd.DataFrame, str]:
@@ -198,7 +202,7 @@ def statistics(
             budget=budget,
             max_pairs=max_pairs,
         )
-        execution = payload.setdefault("execution", {})
+        execution = dict(payload.get("execution", {}))
         sampled = len(sample) < source_rows
         execution.update({
             "sampled": sampled,
@@ -218,6 +222,12 @@ def statistics(
                 else "The streaming source fits within the deep-statistics execution budget."
             ),
         })
+        payload["execution"] = normalize_execution(
+            execution,
+            method="bounded_deep_statistics",
+            full_materialization=False,
+            source=metadata.to_dict(),
+        )
         payload["source"] = metadata.to_dict()
         return _named(payload, metadata.name)
 
@@ -232,6 +242,13 @@ def statistics(
         budget=budget,
         max_pairs=max_pairs,
     )
+    payload["execution"] = normalize_execution(
+        payload.get("execution", {}),
+        method="bounded_deep_statistics",
+        full_materialization=load_fully_materializes(metadata),
+        source=metadata.to_dict(),
+    )
+    payload["source"] = metadata.to_dict()
     return _named(payload, metadata.name)
 
 
@@ -263,17 +280,22 @@ def anomalies(
         budget = derive_execution_budget(source_rows, source_columns, mode=mode)
         numeric_columns = numeric_columns_for_streaming_source(source)
         if not numeric_columns:
+            execution = execution_provenance(
+                "bounded_anomaly_detection",
+                full_materialization=False,
+                source=metadata.to_dict(),
+                sampled=False,
+                source_rows=source_rows,
+                source_columns=source_columns,
+                sample_rows=0,
+                strategy="streaming_schema_only",
+                scope="bounded_anomaly_detection",
+                extra={"projected_columns": 0},
+            )
             return _named({
                 "available": False,
                 "reason": "No numeric columns available for anomaly analysis.",
-                "execution": {
-                    "sampled": False,
-                    "source_rows": source_rows,
-                    "source_columns": source_columns,
-                    "sample_rows": 0,
-                    "full_materialization": False,
-                    "strategy": "streaming_schema_only",
-                },
+                "execution": execution,
                 "source": metadata.to_dict(),
             }, metadata.name)
 
@@ -291,7 +313,7 @@ def anomalies(
             max_columns=max_columns,
             top_k=top_k,
         )
-        execution = payload.setdefault("execution", {})
+        execution = dict(payload.get("execution", {}))
         sampled = len(sample) < source_rows
         execution.update({
             "sampled": sampled,
@@ -312,6 +334,12 @@ def anomalies(
                 else "The streaming source fits within the anomaly execution budget."
             ),
         })
+        payload["execution"] = normalize_execution(
+            execution,
+            method="bounded_anomaly_detection",
+            full_materialization=False,
+            source=metadata.to_dict(),
+        )
         payload["source"] = metadata.to_dict()
         return _named(payload, metadata.name)
 
@@ -329,6 +357,13 @@ def anomalies(
         max_columns=max_columns,
         top_k=top_k,
     )
+    payload["execution"] = normalize_execution(
+        payload.get("execution", {}),
+        method="bounded_anomaly_detection",
+        full_materialization=load_fully_materializes(metadata),
+        source=metadata.to_dict(),
+    )
+    payload["source"] = metadata.to_dict()
     return _named(payload, metadata.name)
 
 
@@ -365,17 +400,37 @@ def relationships(
             max_candidate_pairs=max_candidate_pairs,
             max_edges_returned=max_edges_returned,
         )
+        source_rows = int(metadata.rows or len(sample))
+        source_columns = int(metadata.columns or len(sample.columns))
+        sampled = source_rows > len(sample)
         sample_metadata = payload.setdefault("sample", {})
         sample_metadata.update({
-            "source_rows": int(metadata.rows or len(sample)),
+            "source_rows": source_rows,
             "sample_rows": int(len(sample)),
-            "sampled": bool((metadata.rows or len(sample)) > len(sample)),
+            "sampled": sampled,
             "full_materialization": False,
             "strategy": "streaming_evenly_spaced_global_rows",
         })
         payload["source"] = metadata.to_dict()
         payload["streaming_source"] = True
         payload["full_materialization"] = False
+        payload["execution"] = execution_provenance(
+            "bounded_relationship_graph",
+            full_materialization=False,
+            source=metadata.to_dict(),
+            sampled=sampled,
+            source_rows=source_rows,
+            source_columns=source_columns,
+            sample_rows=int(len(sample)),
+            strategy="streaming_evenly_spaced_global_rows",
+            components={
+                "numeric_projection": "schema_exact",
+                "relationship_candidates": (
+                    "bounded_row_sample" if sampled else "full_input"
+                ),
+            },
+            extra={"projected_columns": int(len(numeric_columns))},
+        )
         return _named(payload, metadata.name)
 
     dataframe = source.load()
@@ -386,6 +441,27 @@ def relationships(
         min_abs_correlation=min_abs_correlation,
         max_candidate_pairs=max_candidate_pairs,
         max_edges_returned=max_edges_returned,
+    )
+    sample_metadata = payload.get("sample", {})
+    if not isinstance(sample_metadata, dict):
+        sample_metadata = {}
+    sampled = bool(sample_metadata.get("sampled", False))
+    sample_rows = int(sample_metadata.get("sample_rows", len(dataframe)))
+    strategy = str(sample_metadata.get("strategy", "full_input"))
+    payload["source"] = metadata.to_dict()
+    payload["full_materialization"] = load_fully_materializes(metadata)
+    payload["execution"] = execution_provenance(
+        "bounded_relationship_graph",
+        full_materialization=load_fully_materializes(metadata),
+        source=metadata.to_dict(),
+        sampled=sampled,
+        source_rows=int(len(dataframe)),
+        source_columns=int(len(dataframe.columns)),
+        sample_rows=sample_rows,
+        strategy=strategy,
+        components={
+            "relationship_candidates": "bounded_row_sample" if sampled else "full_input",
+        },
     )
     return _named(payload, metadata.name)
 
