@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
@@ -12,9 +10,11 @@ from framevitals.sources import FileSource, PandasSource, resolve_source
 
 
 def test_advanced_anomaly_scores_match_expected_iqr_density():
+    # Keep IQR non-zero so the existing rule is applicable; the final row is an
+    # obvious outlier in both columns and should therefore have density 1.0.
     frame = pd.DataFrame({
-        "a": [0, 0, 0, 0, 100],
-        "b": [1, 1, 1, 1, 50],
+        "a": [0, 1, 2, 3, 100],
+        "b": [1, 2, 3, 4, 50],
     })
 
     result = calculate_anomalies(frame)
