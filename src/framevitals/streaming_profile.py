@@ -2,7 +2,8 @@
 
 The streaming path keeps full-row work to mergeable column state and retains
 only a bounded, evenly spaced row sample for analyses that still require row
-relationships (categorical top values, duplicate estimation, and correlation).
+relationships (duplicate estimation and correlation). Native builds can also
+consume Arrow UTF-8 buffers directly for full-file categorical sketches.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import pandas as pd
 from framevitals.analysis_state import NumericColumnState
 from framevitals.backends import (
     create_numeric_accumulator,
+    create_string_accumulator,
     numeric_state,
     resolve_numeric_backend,
 )
@@ -71,6 +73,15 @@ def _column_groups(schema) -> tuple[list[str], list[str], list[str]]:
     return numeric, categorical, dates
 
 
+def _string_columns(schema) -> list[str]:
+    pa = _require_pyarrow()
+    return [
+        field.name
+        for field in schema
+        if pa.types.is_string(field.type) or pa.types.is_large_string(field.type)
+    ]
+
+
 def numeric_columns_for_streaming_source(source: StreamingDatasetSource) -> list[str]:
     """Return Arrow numeric column names without reading row data."""
     schema_method = getattr(source, "schema", None)
@@ -92,6 +103,41 @@ def _arrow_numeric_to_float64(array) -> np.ndarray:
             na_value=np.nan,
         )
     return np.ascontiguousarray(converted, dtype=np.float64)
+
+
+def _update_native_string_accumulator(accumulator, array) -> None:
+    """Feed Arrow UTF-8 buffers to Rust without constructing Python strings."""
+    pa = _require_pyarrow()
+    validity_buffer, offsets_buffer, data_buffer = array.buffers()
+    validity = (
+        np.frombuffer(validity_buffer, dtype=np.uint8)
+        if validity_buffer is not None
+        else None
+    )
+    data = (
+        np.frombuffer(data_buffer, dtype=np.uint8)
+        if data_buffer is not None
+        else np.empty(0, dtype=np.uint8)
+    )
+
+    if pa.types.is_large_string(array.type):
+        offsets = np.frombuffer(offsets_buffer, dtype=np.int64)
+        accumulator.update_large_utf8(
+            data,
+            offsets,
+            len(array),
+            validity,
+            int(array.offset),
+        )
+    else:
+        offsets = np.frombuffer(offsets_buffer, dtype=np.int32)
+        accumulator.update_utf8(
+            data,
+            offsets,
+            len(array),
+            validity,
+            int(array.offset),
+        )
 
 
 def _state_from_payload(payload: dict[str, Any]) -> NumericColumnState:
@@ -265,12 +311,7 @@ def build_streaming_profile(
     sample_rows: int = STREAM_SAMPLE_ROWS,
     return_sample: bool = False,
 ) -> dict[str, Any] | tuple[dict[str, Any], pd.DataFrame]:
-    """Profile a streaming Arrow source without materializing all rows.
-
-    ``return_sample=True`` lets planning/orchestration reuse the bounded row
-    sample generated during the same full-file scan instead of reading the
-    source a second time.
-    """
+    """Profile a streaming Arrow source without materializing all rows."""
     if batch_size < 1:
         raise ValueError("batch_size must be at least 1.")
     if sample_rows < 1:
@@ -289,6 +330,7 @@ def build_streaming_profile(
     schema = schema_method()
     columns = [field.name for field in schema]
     numeric_cols, categorical_cols, date_cols = _column_groups(schema)
+    string_cols = _string_columns(schema)
     dtypes = {field.name: str(field.type) for field in schema}
 
     positions = _sample_positions(int(rows), int(sample_rows))
@@ -298,11 +340,17 @@ def build_streaming_profile(
     selected_backend = resolve_numeric_backend()
 
     native_accumulators: dict[str, Any] = {}
+    native_string_accumulators: dict[str, Any] = {}
     python_states = {column: NumericColumnState() for column in numeric_cols}
     if selected_backend == "rust":
         native_accumulators = {
             column: create_numeric_accumulator(stream_id=index)
             for index, column in enumerate(numeric_cols)
+        }
+        native_string_accumulators = {
+            column: accumulator
+            for column in string_cols
+            if (accumulator := create_string_accumulator()) is not None
         }
 
     offset = 0
@@ -320,6 +368,9 @@ def build_streaming_profile(
             array = batch.column(index)
             if column not in numeric_cols:
                 missing_counts[column] += int(array.null_count)
+                string_accumulator = native_string_accumulators.get(column)
+                if string_accumulator is not None:
+                    _update_native_string_accumulator(string_accumulator, array)
                 continue
 
             values = _arrow_numeric_to_float64(array)
@@ -327,9 +378,9 @@ def build_streaming_profile(
             if accumulator is not None:
                 accumulator.update_f64(values)
             else:
-                payload = numeric_state(values, backend="numpy")
+                numeric_payload = numeric_state(values, backend="numpy")
                 python_states[column] = python_states[column].merge(
-                    _state_from_payload(payload)
+                    _state_from_payload(numeric_payload)
                 )
 
         offset += int(batch.num_rows)
@@ -351,10 +402,10 @@ def build_streaming_profile(
     quantile_accuracy = None
     if selected_backend == "rust":
         for column in numeric_cols:
-            payload = dict(native_accumulators[column].snapshot())
-            numeric_summary[column] = _summary_from_native_snapshot(payload)
-            missing_counts[column] = int(payload["missing"])
-            quantile_accuracy = payload.get("quantiles", {}).get(
+            numeric_payload = dict(native_accumulators[column].snapshot())
+            numeric_summary[column] = _summary_from_native_snapshot(numeric_payload)
+            missing_counts[column] = int(numeric_payload["missing"])
+            quantile_accuracy = numeric_payload.get("quantiles", {}).get(
                 "relative_accuracy",
                 quantile_accuracy,
             )
@@ -385,24 +436,65 @@ def build_streaming_profile(
             "raw_observations_retained": False,
         }
 
-    missing_series = pd.Series(missing_counts, dtype="int64")
-    missing_percent = (missing_series / max(rows, 1) * 100).round(2)
-
-    categorical_summary = {}
+    categorical_summary: dict[str, dict[str, Any]] = {}
+    native_categorical_columns: list[str] = []
+    sample_categorical_columns: list[str] = []
     for column in categorical_cols:
+        string_accumulator = native_string_accumulators.get(column)
+        if string_accumulator is not None:
+            categorical_payload = dict(string_accumulator.snapshot())
+            missing_counts[column] = int(categorical_payload["missing"])
+            count = int(categorical_payload["count"])
+            estimate = min(int(categorical_payload["cardinality_estimate"]), count)
+            categorical_summary[column] = {
+                "unique_values": estimate,
+                "top_values": {
+                    str(label): int(candidate_count)
+                    for label, candidate_count in categorical_payload["heavy_hitters"][:10]
+                },
+                "approximate": True,
+                "unique_values_method": categorical_payload["cardinality_method"],
+                "top_values_method": categorical_payload["heavy_hitter_method"],
+                "top_values_count_semantics": categorical_payload[
+                    "heavy_hitter_count_semantics"
+                ],
+            }
+            native_categorical_columns.append(column)
+            continue
+
         if column not in sample:
             continue
         counts = sample[column].value_counts(dropna=False).head(10)
         categorical_summary[column] = {
             "unique_values": int(sample[column].nunique(dropna=True)),
             "top_values": {str(key): int(value) for key, value in counts.items()},
+            "approximate": len(sample) < rows,
         }
+        sample_categorical_columns.append(column)
+
+    if native_categorical_columns:
+        categorical_method = (
+            "native_full_stream_sketch"
+            if not sample_categorical_columns
+            else "native_full_stream_sketch_with_sample_fallback"
+        )
+    else:
+        categorical_method = "exact" if len(sample) == rows else "evenly_spaced_row_sample"
     categorical_metadata = {
-        "method": "exact" if len(sample) == rows else "evenly_spaced_row_sample",
-        "sampled": len(sample) < rows,
+        "method": categorical_method,
+        "sampled": bool(sample_categorical_columns and len(sample) < rows),
         "sample_rows": int(len(sample)),
         "source_rows": int(rows),
+        "native_full_stream_columns": native_categorical_columns,
+        "sample_fallback_columns": sample_categorical_columns,
+        "cardinality_method": "hyperloglog" if native_categorical_columns else None,
+        "top_values_count_semantics": (
+            "lower_bound_candidates" if native_categorical_columns else None
+        ),
     }
+
+    missing_series = pd.Series(missing_counts, dtype="int64")
+    missing_percent = (missing_series / max(rows, 1) * 100).round(2)
 
     duplicate_rows, duplicate_metadata = _duplicate_summary(sample, int(rows))
     correlations, correlation_metadata = _bounded_correlations(sample, numeric_cols)
@@ -448,6 +540,7 @@ def build_streaming_profile(
             "sample_rows": int(len(sample)),
             "sample_strategy": "evenly_spaced_global_rows",
             "numeric_backend": selected_backend,
+            "native_string_sketch_columns": native_categorical_columns,
         },
     }
     if return_sample:
