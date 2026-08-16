@@ -7,27 +7,6 @@ use pyo3::exceptions::PyBufferError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-fn contiguous_f64_slice<'py>(
-    py: Python<'py>,
-    values: &Bound<'py, PyAny>,
-) -> PyResult<(PyBuffer<f64>, &'py [pyo3::buffer::ReadOnlyCell<f64>])> {
-    let buffer = PyBuffer::<f64>::get(values)?;
-    if buffer.dimensions() != 1 {
-        return Err(PyBufferError::new_err(
-            "FrameVitals native numeric kernels require a 1D float64 buffer.",
-        ));
-    }
-    let slice = buffer.as_slice(py).ok_or_else(|| {
-        PyBufferError::new_err(
-            "FrameVitals native numeric kernels require a C-contiguous float64 buffer.",
-        )
-    })?;
-
-    // The slice lifetime is tied to both Python and the owned PyBuffer. Returning
-    // both keeps the exporter alive for the duration of the caller's scan.
-    Ok((buffer, slice))
-}
-
 fn exact_state_dict<'py>(
     py: Python<'py>,
     state: &NumericState,
@@ -47,9 +26,30 @@ fn exact_state_dict<'py>(
     Ok(payload)
 }
 
+fn checked_buffer<'py>(values: &Bound<'py, PyAny>) -> PyResult<PyBuffer<f64>> {
+    let buffer = PyBuffer::<f64>::get(values)?;
+    if buffer.dimensions() != 1 {
+        return Err(PyBufferError::new_err(
+            "FrameVitals native numeric kernels require a 1D float64 buffer.",
+        ));
+    }
+    if !buffer.is_c_contiguous() {
+        return Err(PyBufferError::new_err(
+            "FrameVitals native numeric kernels require a C-contiguous float64 buffer.",
+        ));
+    }
+    Ok(buffer)
+}
+
 #[pyfunction]
 fn numeric_state_f64(py: Python<'_>, values: &Bound<'_, PyAny>) -> PyResult<Py<PyDict>> {
-    let (buffer, slice) = contiguous_f64_slice(py, values)?;
+    let buffer = checked_buffer(values)?;
+    let slice = buffer.as_slice(py).ok_or_else(|| {
+        PyBufferError::new_err(
+            "FrameVitals could not borrow the supplied float64 buffer as a contiguous slice.",
+        )
+    })?;
+
     let mut state = NumericState::default();
     for value in slice {
         state.observe(Some(value.get()));
@@ -67,7 +67,13 @@ fn numeric_profile_f64(
     values: &Bound<'_, PyAny>,
     stream_id: u64,
 ) -> PyResult<Py<PyDict>> {
-    let (buffer, slice) = contiguous_f64_slice(py, values)?;
+    let buffer = checked_buffer(values)?;
+    let slice = buffer.as_slice(py).ok_or_else(|| {
+        PyBufferError::new_err(
+            "FrameVitals could not borrow the supplied float64 buffer as a contiguous slice.",
+        )
+    })?;
+
     let mut state = NumericState::default();
     let mut sketches = NumericSketchState::default();
 
