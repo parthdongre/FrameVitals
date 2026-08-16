@@ -11,10 +11,6 @@ name = "_native"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = []
-extension-module = ["pyo3/extension-module"]
-
 [dependencies]
 framevitals-core = { path = "../framevitals-core" }
 pyo3 = { version = "0.29", features = ["abi3-py311"] }
