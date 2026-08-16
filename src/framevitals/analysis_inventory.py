@@ -92,11 +92,11 @@ ANALYSIS_INVENTORY = [
      "requires": {}, "requires_user_target": True, "outputs": ["target_candidates", "task_type"]},
 
     {"id": "feature_importance", "name": "Feature Importance Analysis", "category": "Machine Learning",
-     "modes": ["deep", "research"], "priority": "high",
+     "modes": ["research"], "priority": "high",
      "requires": {"has_numeric_columns": True}, "requires_user_target": True, "outputs": ["ranking", "chart"]},
 
     {"id": "baseline_model", "name": "Baseline Model Analysis", "category": "Machine Learning",
-     "modes": ["deep", "research"], "priority": "high",
+     "modes": ["research"], "priority": "high",
      "requires": {"has_numeric_columns": True}, "requires_user_target": True, "outputs": ["metrics"]},
 
     {"id": "anomaly_detection", "name": "Anomaly Detection", "category": "Anomaly",
