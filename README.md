@@ -80,17 +80,19 @@ FrameVitals supports **Python 3.11, 3.12, and 3.13**. The current public release
 pip install framevitals
 ```
 
-Optional capabilities are installed as extras:
+Optional capabilities are installed as extras so the base data-health engine does not need to import every integration stack:
 
 ```bash
 pip install "framevitals[arrow]"  # bounded Parquet / compatible CSV / TSV streaming
+pip install "framevitals[excel]"  # XLS/XLSX readers
+pip install "framevitals[plot]"   # Matplotlib/Seaborn chart and PDF plotting support
 pip install "framevitals[ml]"     # XGBoost, LightGBM, PyOD, SHAP
-pip install "framevitals[ai]"     # Ollama-backed AI features
+pip install "framevitals[ai]"     # Ollama-backed agentic AI features
 pip install "framevitals[web]"    # Flask web runtime
 pip install "framevitals[all]"    # all optional runtime capabilities
 ```
 
-Parquet streaming requires the `arrow` extra. With Arrow installed, compatible CSV and TSV inputs can also use the source-aware streaming engine; without Arrow they retain the normal pandas-backed file path.
+Parquet streaming requires the `arrow` extra. With Arrow installed, compatible CSV and TSV inputs can also use the source-aware streaming engine; without Arrow they retain the normal pandas-backed file path. Excel readers are optional through `excel`. Plotting is optional through `plot`, and structured explainability can still fall back to non-plotting importance results when chart support is unavailable.
 
 ## Quick start
 
@@ -205,6 +207,27 @@ fv.gate(current, reference=reference, contract=contract)
 ```
 
 Contract validation remains exact. Drift can use bounded source-aware sampling where a streaming input supports it, and the returned `execution` block records that distinction.
+
+### GitHub Actions
+
+The repository also ships a reusable composite action at the repository root. Once using a release/tag that contains the action, a workflow can gate a dataset without writing custom installation or exit-code glue:
+
+```yaml
+- uses: parthdongre/FrameVitals@main
+  id: framevitals
+  with:
+    current: data/production.parquet
+    reference: data/training.parquet
+    contract: data/contract.json
+    drift-warn-on: moderate
+    drift-fail-on: severe
+    output: framevitals-gate.json
+
+- name: Show verdict
+  run: echo "FrameVitals status: ${{ steps.framevitals.outputs.status }}"
+```
+
+For production workflows, pin the action to a released tag or commit rather than a moving branch. The action installs the matching FrameVitals source plus the Arrow capability and exposes `status`, `passed`, and `result-path` outputs.
 
 ## Snapshots
 
@@ -413,21 +436,33 @@ report.snapshot("snapshot.json")
 
 Drift, validation and gate workflows similarly return dict-compatible `DriftResult`, `ValidationResult` and `GateResult` objects with convenience properties while preserving JSON-friendly mapping behavior during the `0.x` series.
 
-## Optional ML and AI features
+## Optional capabilities
 
-The default package contains the core data-health engine. Additional integrations are separated into extras.
+The default package contains the core data-health engine. Additional integrations are separated into extras and are imported only when their feature is requested.
 
 ```bash
 pip install "framevitals[ml]"
 ```
 
-Adds integrations including XGBoost, LightGBM, PyOD and SHAP.
+Adds heavier model integrations including XGBoost, LightGBM, PyOD and SHAP.
 
 ```bash
 pip install "framevitals[ai]"
 ```
 
-Adds Ollama-backed interpretation and question-answering features. AI is treated as an optional explanation layer; computed diagnostics remain usable without a reachable model.
+Adds Ollama-backed agentic interpretation and question-answering features. AI remains an optional explanation layer; computed diagnostics remain usable without it.
+
+```bash
+pip install "framevitals[plot]"
+```
+
+Adds Matplotlib/Seaborn-backed chart rendering and PDF/report plotting. Structured diagnostics do not require this extra.
+
+```bash
+pip install "framevitals[excel]"
+```
+
+Adds XLS/XLSX reader engines. CSV/TSV/JSON workflows remain available without them.
 
 ## Web dashboard
 
@@ -445,6 +480,8 @@ cd frontend
 npm ci
 npm run dev
 ```
+
+The `web` extra contains the server runtime only. Install `plot` as well for server-side chart/PDF artifacts and `ai` for the agentic Q&A path. Missing optional AI/report capabilities are loaded lazily instead of preventing the web server from starting.
 
 Typical local endpoints:
 
@@ -465,7 +502,7 @@ FrameVitals is being built around a few constraints that are easy to lose in ana
 - **Exact where correctness requires it** — contract constraints are not silently weakened to sampled checks.
 - **Safe defaults** — no unexpected artifact writes and graceful optional-feature fallbacks.
 - **Small workflow surface** — make analyze → compare → validate → gate obvious while keeping focused diagnostics available.
-- **Optional integrations** — ML, AI, Arrow and web capabilities can be installed independently.
+- **Optional integrations** — Arrow, Excel, plotting, ML, AI, and web capabilities can be installed independently.
 
 ## Project layout
 
@@ -478,9 +515,10 @@ FrameVitals is being built around a few constraints that are easy to lose in ana
 ├── frontend/                 # optional React + TypeScript dashboard
 ├── templates/                # Flask report pages
 ├── static/                   # web/report assets
+├── action.yml                # reusable GitHub Actions quality gate
 ├── app.py                    # optional Flask API/server
 ├── pyproject.toml            # package metadata and dependency groups
-└── .github/workflows/        # CI, package validation and publishing
+└── .github/workflows/        # CI, package, action, benchmark and publishing workflows
 ```
 
 New reusable Python code belongs in `src/framevitals/` and should import through the `framevitals.*` namespace.
@@ -508,7 +546,7 @@ On Windows PowerShell:
 .venv\Scripts\Activate.ps1
 ```
 
-CI validates the core package across Python 3.11–3.13, Arrow streaming paths, optional features, the Rust workspace/native bridge, React build, wheel contents, distribution metadata, and a clean-wheel install.
+CI validates the core package across Python 3.11–3.13, Arrow streaming paths, optional dependency boundaries, the reusable Gate Action, the Rust workspace/native bridge, React build, wheel contents, distribution metadata, release-version consistency, and a clean-wheel install. A separate benchmark workflow records reproducible profile time and peak-RSS measurements on `main` or when manually dispatched.
 
 Development is integrated through `dev`; `main` is kept release-ready.
 
