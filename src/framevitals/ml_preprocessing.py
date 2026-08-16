@@ -1,9 +1,14 @@
+"""Unified ML preprocessing used by every FrameVitals model workflow.
+
+The module deliberately keeps feature selection conservative: obvious IDs,
+unsupported temporal columns, constants, and dangerously high-cardinality
+categoricals are excluded before sklearn preprocessing. Numeric infinities are
+converted to missing values so the standard median imputer can handle them.
 """
-Unified ML Preprocessing
-=========================
-Single source of truth for preparing features and target.
-ALL ML modules MUST call prepare_ml_matrix() instead of their own prepare_xy().
-"""
+
+from __future__ import annotations
+
+import re
 
 import numpy as np
 import pandas as pd
@@ -12,25 +17,79 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
-_ID_KEYWORDS = [
-    "id", "uuid", "hash", "key", "identifier", "index",
-    "roll", "roll_number", "rollno", "roll number",
-    "application", "registration", "serial", "ticket",
-    "account", "customer_id", "order_id", "transaction_id",
-    "userid", "studentid", "student_id", "user_id",
-]
-
-_TIME_KEYWORDS = [
-    "time", "date", "timestamp", "created", "updated",
-    "datetime", "ts", "event",
-]
 
 _CATEGORICAL_DTYPES = ["object", "string", "category", "bool"]
+_IDENTIFIER_TOKENS = {"id", "uuid", "hash", "identifier", "index"}
+_IDENTIFIER_EXACT = {
+    "key",
+    "roll",
+    "roll_number",
+    "rollno",
+    "application",
+    "registration",
+    "serial",
+    "ticket",
+    "account",
+    "userid",
+    "studentid",
+}
+_TIME_TOKENS = {"time", "date", "timestamp", "datetime"}
 
 
-def prepare_ml_matrix(df, target, drop_high_unique_ratio=0.95, min_non_missing=5):
-    """Prepare a clean feature matrix and target vector for ML."""
-    warnings = []
+def _normalise_column_name(name: object) -> tuple[str, set[str]]:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(name).strip().lower()).strip("_")
+    tokens = {token for token in normalized.split("_") if token}
+    return normalized, tokens
+
+
+def _looks_like_identifier_name(name: object) -> bool:
+    """Detect identifier-like names without unsafe substring matching.
+
+    The old ``"id" in column_name`` approach incorrectly classified ordinary
+    names such as ``paid_amount``. Token/boundary matching keeps common ID
+    conventions while avoiding those false positives.
+    """
+    normalized, tokens = _normalise_column_name(name)
+    if normalized in _IDENTIFIER_EXACT:
+        return True
+    if tokens & _IDENTIFIER_TOKENS:
+        return True
+    if normalized.endswith("_key") or normalized.endswith("_number"):
+        prefix = normalized.rsplit("_", 1)[0]
+        if prefix in {"account", "serial", "ticket", "roll", "registration"}:
+            return True
+    return False
+
+
+def _looks_like_time_name(name: object) -> bool:
+    normalized, tokens = _normalise_column_name(name)
+    if tokens & _TIME_TOKENS:
+        return True
+    if normalized in {"created", "updated", "created_at", "updated_at"}:
+        return True
+    if normalized.endswith("_at") and tokens & {"created", "updated"}:
+        return True
+    return False
+
+
+def _is_categorical_dtype(series: pd.Series) -> bool:
+    return bool(
+        pd.api.types.is_object_dtype(series)
+        or pd.api.types.is_string_dtype(series.dtype)
+        or isinstance(series.dtype, pd.CategoricalDtype)
+        or pd.api.types.is_bool_dtype(series)
+    )
+
+
+def prepare_ml_matrix(
+    df,
+    target,
+    drop_high_unique_ratio=0.95,
+    min_non_missing=5,
+    max_categorical_levels=200,
+):
+    """Prepare a conservative feature matrix and target vector for ML."""
+    warnings: list[str] = []
 
     if target not in df.columns:
         return {
@@ -40,49 +99,108 @@ def prepare_ml_matrix(df, target, drop_high_unique_ratio=0.95, min_non_missing=5
             "categorical_features": [],
             "dropped_columns": [],
             "warnings": [f"Target '{target}' not found."],
+            "infinite_values_replaced": {},
             "usable": False,
         }
 
-    data = df.dropna(subset=[target]).copy()
+    if not 0 < drop_high_unique_ratio <= 1:
+        raise ValueError("drop_high_unique_ratio must be in (0, 1].")
+    if min_non_missing < 1:
+        raise ValueError("min_non_missing must be at least 1.")
+    if max_categorical_levels < 2:
+        raise ValueError("max_categorical_levels must be at least 2.")
+
+    data = df.copy()
+
+    target_infinite_count = 0
+    if pd.api.types.is_numeric_dtype(data[target]):
+        target_values = pd.to_numeric(data[target], errors="coerce")
+        target_array = target_values.to_numpy(dtype="float64", na_value=np.nan)
+        target_infinite_count = int(np.isinf(target_array).sum())
+        if target_infinite_count:
+            data[target] = target_values.replace([np.inf, -np.inf], np.nan)
+            warnings.append(
+                f"Treated {target_infinite_count} infinite target values as missing."
+            )
+
+    data = data.dropna(subset=[target]).copy()
     rows_dropped = len(df) - len(data)
     if rows_dropped > 0:
-        warnings.append(f"Dropped {rows_dropped} rows with missing target values.")
+        warnings.append(f"Dropped {rows_dropped} rows with missing/invalid target values.")
 
     y = data[target]
-    X = data.drop(columns=[target])
+    X = data.drop(columns=[target]).copy()
 
-    dropped = []
-    rows = max(len(X), 1)
+    dropped: list[dict[str, str]] = []
+    dropped_names: set[str] = set()
+    infinite_values_replaced: dict[str, int] = {}
 
-    for col in list(X.columns):
-        non_missing = int(X[col].notna().sum())
-        unique_count = X[col].nunique(dropna=True)
-        unique_ratio = unique_count / rows
-        lower = col.lower().replace("-", "_")
+    def drop(column: str, reason: str) -> None:
+        if column not in dropped_names:
+            dropped.append({"column": column, "reason": reason})
+            dropped_names.add(column)
+
+    for column in list(X.columns):
+        series = X[column]
+        if pd.api.types.is_numeric_dtype(series):
+            numeric = pd.to_numeric(series, errors="coerce")
+            values = numeric.to_numpy(dtype="float64", na_value=np.nan)
+            inf_count = int(np.isinf(values).sum())
+            if inf_count:
+                X[column] = numeric.replace([np.inf, -np.inf], np.nan)
+                infinite_values_replaced[column] = inf_count
+                warnings.append(
+                    f"Replaced {inf_count} infinite values in '{column}' with missing values for imputation."
+                )
+
+    for column in list(X.columns):
+        series = X[column]
+        non_missing = int(series.notna().sum())
+        unique_count = int(series.nunique(dropna=True))
+        unique_ratio = unique_count / max(non_missing, 1)
 
         if non_missing < min_non_missing:
-            dropped.append({"column": col, "reason": "insufficient_non_missing"})
+            drop(column, "insufficient_non_missing")
             continue
         if unique_count <= 1:
-            dropped.append({"column": col, "reason": "constant"})
+            drop(column, "constant")
             continue
-        if any(kw in lower for kw in _ID_KEYWORDS):
-            dropped.append({"column": col, "reason": "id_like_keyword"})
+        if _looks_like_identifier_name(column):
+            drop(column, "id_like_name")
             continue
-        if any(kw in lower for kw in _TIME_KEYWORDS) and not pd.api.types.is_numeric_dtype(
-            X[col]
-        ):
-            dropped.append({"column": col, "reason": "time_like_text"})
-            continue
-        if unique_ratio > drop_high_unique_ratio and not pd.api.types.is_numeric_dtype(X[col]):
-            dropped.append({"column": col, "reason": "high_unique_non_numeric"})
+        if _looks_like_time_name(column) and not pd.api.types.is_numeric_dtype(series):
+            drop(column, "time_like_non_numeric")
             continue
 
-    drop_cols = [d["column"] for d in dropped]
-    X = X.drop(columns=drop_cols, errors="ignore")
+        if _is_categorical_dtype(series):
+            if unique_count > max_categorical_levels:
+                drop(column, "high_cardinality_categorical")
+                continue
+            if unique_ratio > drop_high_unique_ratio:
+                drop(column, "high_unique_non_numeric")
+                continue
+
+        if (
+            not pd.api.types.is_numeric_dtype(series)
+            and not _is_categorical_dtype(series)
+        ):
+            drop(column, "unsupported_dtype")
+
+    X = X.drop(columns=list(dropped_names), errors="ignore")
 
     numeric_features = X.select_dtypes(include=[np.number]).columns.tolist()
-    categorical_features = X.select_dtypes(include=_CATEGORICAL_DTYPES).columns.tolist()
+    categorical_features = [
+        column
+        for column in X.columns
+        if _is_categorical_dtype(X[column])
+    ]
+
+    used_features = set(numeric_features) | set(categorical_features)
+    unused_columns = [column for column in X.columns if column not in used_features]
+    for column in unused_columns:
+        drop(column, "unsupported_dtype")
+    if unused_columns:
+        X = X.drop(columns=unused_columns, errors="ignore")
 
     total_features = len(numeric_features) + len(categorical_features)
     usable = total_features > 0 and len(y) >= 20
@@ -99,6 +217,9 @@ def prepare_ml_matrix(df, target, drop_high_unique_ratio=0.95, min_non_missing=5
         "categorical_features": categorical_features,
         "dropped_columns": dropped,
         "warnings": warnings,
+        "infinite_values_replaced": infinite_values_replaced,
+        "target_infinite_values_dropped": target_infinite_count,
+        "max_categorical_levels": int(max_categorical_levels),
         "usable": usable,
     }
 
