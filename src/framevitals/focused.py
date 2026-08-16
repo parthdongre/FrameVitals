@@ -52,12 +52,26 @@ def profile(data: DataInput) -> dict[str, Any]:
 
 
 def roles(data: DataInput) -> dict[str, Any]:
+    source = resolve_source(data)
+    metadata = source.inspect()
+    if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
+        from framevitals.streaming_profile import build_streaming_profile
+        from framevitals.streaming_roles import infer_streaming_column_roles
+
+        dataset_profile, sample = build_streaming_profile(
+            source,
+            sample_rows=5_000,
+            return_sample=True,
+        )
+        payload = infer_streaming_column_roles(sample, profile=dataset_profile)
+        return _named(payload, metadata.name)
+
     from framevitals.column_roles import infer_column_roles, summarize_roles
 
-    dataframe, source_name = _load(data)
+    dataframe = source.load()
     column_roles = infer_column_roles(dataframe)
     return {
-        "dataset_name": source_name,
+        "dataset_name": metadata.name,
         "columns": column_roles,
         "summary": summarize_roles(column_roles),
     }
