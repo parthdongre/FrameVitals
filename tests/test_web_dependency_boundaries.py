@@ -3,6 +3,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("flask")
+
 
 def test_web_app_does_not_eagerly_import_optional_ai_or_report_stack():
     repo_root = Path(__file__).resolve().parents[1]
