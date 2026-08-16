@@ -17,10 +17,8 @@ from framevitals.analysis_selector import select_analyses
                 "anomaly_detection",
                 "time_series",
                 "text_profile",
-                "target_intelligence",
                 "modeling",
                 "explainability",
-                "cleaning",
             },
         ),
         (
@@ -50,6 +48,38 @@ def test_effective_mode_policy_preserves_explicit_user_disables():
     }
 
 
+def test_quick_keeps_target_intelligence_and_cleaning_available(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_run_full_analysis(**kwargs):
+        captured.update(kwargs)
+        return {
+            "filename": "<dataframe>",
+            "profile": {"shape": {"rows": 3, "columns": 2}},
+            "execution": {},
+        }
+
+    monkeypatch.setattr(analysis_api, "run_full_analysis", fake_run_full_analysis)
+    result = analysis_api.analyze(
+        pd.DataFrame({"x": [1, 2, 3], "target": [0, 1, 0]}),
+        mode="quick",
+        target="target",
+        artifacts=True,
+    )
+
+    disabled = set(captured["disabled_modules"])
+    assert "target_intelligence" not in disabled
+    assert "cleaning" not in disabled
+    assert {"deep_statistics", "anomaly_detection", "time_series", "text_profile", "modeling", "explainability"} <= disabled
+    assert result["config"] == {
+        "mode": "quick",
+        "target": "target",
+        "artifacts": True,
+        "workers": result["config"]["workers"],
+        "disabled_modules": (),
+    }
+
+
 def test_standard_public_analysis_does_not_schedule_deep_only_modules(monkeypatch):
     captured: dict[str, object] = {}
 
@@ -74,12 +104,8 @@ def test_standard_public_analysis_does_not_schedule_deep_only_modules(monkeypatc
     assert "anomaly_detection" not in disabled
     assert "time_series" not in disabled
     assert "target_intelligence" not in disabled
-    assert set(result["config"]["mode_disabled_modules"]) == {
-        "deep_statistics",
-        "text_profile",
-        "modeling",
-        "explainability",
-    }
+    assert result["config"]["mode"] == "standard"
+    assert result["config"]["disabled_modules"] == ()
 
 
 def test_deep_public_analysis_keeps_deep_modules_enabled(monkeypatch):
