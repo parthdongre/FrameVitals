@@ -37,28 +37,28 @@ def __getattr__(name: str):
 
 def profile(data: Any) -> dict[str, Any]:
     """Profile shape, dtypes, missingness, cardinality, and basic summaries."""
-    from framevitals.api import profile as _profile
+    from framevitals.focused import profile as _profile
 
     return _profile(data)
 
 
 def roles(data: Any) -> dict[str, Any]:
     """Infer semantic and structural roles for dataset columns."""
-    from framevitals.api import roles as _roles
+    from framevitals.focused import roles as _roles
 
     return _roles(data)
 
 
 def health(data: Any) -> dict[str, Any]:
     """Calculate only the FrameVitals data-health score."""
-    from framevitals.api import health as _health
+    from framevitals.focused import health as _health
 
     return _health(data)
 
 
 def ml_readiness(data: Any) -> dict[str, Any]:
     """Calculate only ML-readiness diagnostics."""
-    from framevitals.api import ml_readiness as _ml_readiness
+    from framevitals.focused import ml_readiness as _ml_readiness
 
     return _ml_readiness(data)
 
@@ -71,7 +71,7 @@ def quality(
     max_missingness_columns: int = 25,
 ) -> dict[str, Any]:
     """Run practical deterministic data-quality diagnostics only."""
-    from framevitals.api import quality as _quality
+    from framevitals.focused import quality as _quality
 
     return _quality(
         data,
@@ -81,11 +81,16 @@ def quality(
     )
 
 
-def statistics(data: Any, *, max_pairs: int = 20) -> dict[str, Any]:
-    """Run the deep statistical diagnostics layer only."""
-    from framevitals.api import statistics as _statistics
+def statistics(
+    data: Any,
+    *,
+    max_pairs: int = 20,
+    mode: str = "standard",
+) -> dict[str, Any]:
+    """Run the deep statistical diagnostics layer with adaptive row budgets."""
+    from framevitals.focused import statistics as _statistics
 
-    return _statistics(data, max_pairs=max_pairs)
+    return _statistics(data, max_pairs=max_pairs, mode=mode)
 
 
 def anomalies(
@@ -95,9 +100,10 @@ def anomalies(
     threshold: float = 0.6,
     max_columns: int = 30,
     top_k: int = 25,
+    mode: str = "standard",
 ) -> dict[str, Any]:
-    """Run only the FrameVitals tabular anomaly ensemble."""
-    from framevitals.api import anomalies as _anomalies
+    """Run only the bounded FrameVitals tabular anomaly ensemble."""
+    from framevitals.focused import anomalies as _anomalies
 
     return _anomalies(
         data,
@@ -105,6 +111,7 @@ def anomalies(
         threshold=threshold,
         max_columns=max_columns,
         top_k=top_k,
+        mode=mode,
     )
 
 
@@ -118,24 +125,16 @@ def relationships(
     max_edges_returned: int = 5_000,
 ) -> dict[str, Any]:
     """Discover strong numeric relationships without a dense correlation matrix."""
-    from framevitals.relationship_graph import build_numeric_relationship_graph
-    from framevitals.sources import resolve_source
+    from framevitals.focused import relationships as _relationships
 
-    source = resolve_source(data)
-    metadata = source.inspect()
-    dataframe = source.load()
-    payload = build_numeric_relationship_graph(
-        dataframe,
+    return _relationships(
+        data,
         max_sample_rows=max_sample_rows,
         projections=projections,
         min_abs_correlation=min_abs_correlation,
         max_candidate_pairs=max_candidate_pairs,
         max_edges_returned=max_edges_returned,
     )
-    return {
-        "dataset_name": metadata.name,
-        **payload,
-    }
 
 
 def system_info(*, probe_gpu: bool = True) -> dict[str, Any]:
@@ -147,7 +146,7 @@ def system_info(*, probe_gpu: bool = True) -> dict[str, Any]:
 
 def target_analysis(data: Any, *, target: str) -> dict[str, Any]:
     """Run target quality, leakage, association, and split diagnostics only."""
-    from framevitals.api import target_analysis as _target_analysis
+    from framevitals.focused import target_analysis as _target_analysis
 
     return _target_analysis(data, target=target)
 
