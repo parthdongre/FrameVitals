@@ -3,8 +3,8 @@
 Runs the analytics stack in phases and parallelizes independent analyses where
 safe. Optional failures are converted into structured error payloads so a
 single diagnostic does not sink the whole report. Expensive modules can be
-explicitly disabled through ``AnalysisConfig`` while defaults preserve the
-historical execution path.
+explicitly disabled through ``AnalysisConfig`` while adaptive execution budgets
+bound dangerous work on large or wide datasets.
 """
 
 from __future__ import annotations
@@ -20,12 +20,16 @@ import pandas as pd
 from framevitals.advanced_indicators import calculate_advanced_indicators
 from framevitals.ai_insights import generate_ai_report
 from framevitals.analysis_selector import select_analyses
-from framevitals.anomaly_ensemble import detect_anomalies_ensemble
+from framevitals.budgeted_analysis import (
+    run_budgeted_anomalies,
+    run_budgeted_deep_statistics,
+    run_budgeted_time_series,
+)
 from framevitals.cleaner import create_cleaned_dataset
 from framevitals.column_roles import infer_column_roles, summarize_roles
 from framevitals.config import VALID_MODULES
 from framevitals.dataset_signals import detect_dataset_signals
-from framevitals.deep_statistics_v2 import run_deep_statistics_v2
+from framevitals.execution import derive_execution_budget
 from framevitals.explainability import explain_winner
 from framevitals.health_score import calculate_health_score
 from framevitals.loader import load_dataset
@@ -36,7 +40,6 @@ from framevitals.quality_diagnostics import run_quality_diagnostics
 from framevitals.signal_engine import build_signals
 from framevitals.target_intelligence import run_target_intelligence
 from framevitals.text_profile import profile_text_columns
-from framevitals.time_series import detect_and_analyze_time_series
 from framevitals.visualizer import generate_charts
 
 
@@ -119,6 +122,12 @@ def run_full_analysis(
     if target_column is not None and target_column not in df.columns:
         raise ValueError(f"Target column not found: {target_column}")
 
+    execution_budget = derive_execution_budget(
+        len(df),
+        len(df.columns),
+        mode=analysis_mode,
+    )
+
     t0 = time.perf_counter()
     profile = build_profile(df)
     timings_ms["profile"] = (time.perf_counter() - t0) * 1000
@@ -146,6 +155,7 @@ def run_full_analysis(
         "disabled": sorted(disabled),
         "enabled": sorted(VALID_MODULES - disabled),
     }
+    analysis_selection["execution_budget"] = execution_budget.to_dict()
     timings_ms["analysis_selection"] = (time.perf_counter() - t0) * 1000
 
     # Phase 2: core quality/readiness plus bounded practical diagnostics.
@@ -162,14 +172,13 @@ def run_full_analysis(
     timings_ms["advanced"] = (time.perf_counter() - t0) * 1000
 
     if module_enabled("quality_diagnostics"):
-        max_sample_rows = 1_000 if analysis_mode == "quick" else 5_000
         _, quality_diagnostics, quality_elapsed = _safe_call(
             "quality_diagnostics",
             lambda: run_quality_diagnostics(
                 df,
                 profile=profile,
                 column_roles=column_roles,
-                max_sample_rows=max_sample_rows,
+                max_sample_rows=max(execution_budget.quality_sample_rows, 10),
             ),
         )
         timings_ms["quality_diagnostics"] = quality_elapsed
@@ -179,20 +188,30 @@ def run_full_analysis(
         timings_ms["quality_diagnostics"] = 0.0
         module_status["quality_diagnostics"] = "disabled"
 
-    # Phase 3: independent heavier analyses.
+    # Phase 3: independent heavier analyses. Legacy algorithms are routed
+    # through bounded adapters until their streaming/native replacements land.
     deep_statistics_v2 = None
     anomalies_v2 = None
     time_series_analysis = None
     text_profile = None
 
     phase3_modules: list[tuple[str, str, Callable[[], Any]]] = [
-        ("deep_statistics", "deep_statistics_v2", lambda: run_deep_statistics_v2(df)),
-        ("anomaly_detection", "anomalies_v2", lambda: detect_anomalies_ensemble(df)),
+        (
+            "deep_statistics",
+            "deep_statistics_v2",
+            lambda: run_budgeted_deep_statistics(df, budget=execution_budget),
+        ),
+        (
+            "anomaly_detection",
+            "anomalies_v2",
+            lambda: run_budgeted_anomalies(df, budget=execution_budget),
+        ),
         (
             "time_series",
             "time_series",
-            lambda: detect_and_analyze_time_series(
+            lambda: run_budgeted_time_series(
                 df,
+                budget=execution_budget,
                 target_column=target_column,
             ),
         ),
@@ -200,6 +219,10 @@ def run_full_analysis(
     ]
 
     phase3_results: dict[str, Any] = {}
+    phase3_worker_limit = min(
+        parallel_workers,
+        execution_budget.max_memory_heavy_parallelism,
+    )
     if analysis_mode in {"standard", "deep", "research"}:
         tasks: list[tuple[str, str, Callable[[], Any]]] = []
         for module, result_key, fn in phase3_modules:
@@ -213,7 +236,7 @@ def run_full_analysis(
         per_task_ms: dict[str, float] = {}
         if tasks:
             phase3_start = time.perf_counter()
-            with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            with ThreadPoolExecutor(max_workers=phase3_worker_limit) as executor:
                 futures = {
                     executor.submit(_safe_call, result_key, fn): (module, result_key)
                     for module, result_key, fn in tasks
@@ -433,6 +456,8 @@ def run_full_analysis(
         "execution": {
             "disabled_modules": sorted(disabled),
             "module_status": module_status,
+            "budget": execution_budget.to_dict(),
+            "phase3_worker_limit": int(phase3_worker_limit),
         },
         "profile": profile,
         "column_roles": column_roles,
