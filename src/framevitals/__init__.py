@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from framevitals.cleaning_plan import CleaningPlan
 from framevitals.config import AnalysisConfig
 from framevitals.planning import AnalysisPlan
 from framevitals.result import AnalysisResult, ColumnResult
@@ -63,6 +64,20 @@ def plan(
     )
 
 
+def plan_cleaning(data: Any) -> CleaningPlan:
+    """Infer a conservative cleaning plan without changing the input data."""
+    from framevitals.api import plan_cleaning as _plan_cleaning
+
+    return _plan_cleaning(data)
+
+
+def clean(data: Any, *, plan: Any = None):
+    """Return an explicitly cleaned copy using a supplied or inferred plan."""
+    from framevitals.api import clean as _clean
+
+    return _clean(data, plan=plan)
+
+
 def compare(
     reference: Any,
     current: Any,
@@ -100,9 +115,12 @@ __all__ = [
     "AnalysisPlan",
     "AnalysisResult",
     "AnalysisSnapshot",
+    "CleaningPlan",
     "ColumnResult",
     "analyze",
     "plan",
+    "plan_cleaning",
+    "clean",
     "compare",
     "infer_contract",
     "validate",
