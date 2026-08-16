@@ -10,6 +10,7 @@ from typing import Any, Literal, cast
 import numpy as np
 import pandas as pd
 
+from framevitals.provenance import execution_provenance, load_fully_materializes
 from framevitals.quality_results import CheckResult
 from framevitals.sources import resolve_source
 
@@ -28,11 +29,6 @@ def _validate_severity(value: str) -> CheckSeverity:
     if value not in {"warning", "error"}:
         raise ValueError("check severity must be 'warning' or 'error'.")
     return cast(CheckSeverity, value)
-
-
-def _load_fully_materializes_source(metadata) -> bool:
-    """Whether exact custom checks create a complete pandas representation."""
-    return not (metadata.kind == "memory" and metadata.format == "pandas")
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +185,19 @@ def run_checks(
         for result in failures
     ]
 
+    execution = execution_provenance(
+        "exact_custom_checks",
+        full_materialization=load_fully_materializes(metadata),
+        source=metadata.to_dict(),
+        sampled=False,
+        source_rows=metadata.rows,
+        source_columns=metadata.columns,
+        reason=(
+            "Arbitrary custom Python checks run on the complete DataFrame; "
+            "FrameVitals does not silently sample user-defined invariants."
+        ),
+    )
+
     return CheckResult({
         "status": status,
         "passed": status != "fail",
@@ -200,13 +209,5 @@ def run_checks(
             "warnings": len(warning_failures),
             "errors": len(error_failures),
         },
-        "execution": {
-            "method": "exact_custom_checks",
-            "full_materialization": _load_fully_materializes_source(metadata),
-            "source": metadata.to_dict(),
-            "reason": (
-                "Arbitrary custom Python checks run on the complete DataFrame; "
-                "FrameVitals does not silently sample user-defined invariants."
-            ),
-        },
+        "execution": execution,
     })
