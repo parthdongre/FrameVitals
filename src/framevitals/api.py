@@ -250,24 +250,45 @@ def validate(data: DataInput, contract: Mapping[str, Any]) -> ValidationResult:
     return _validate(data, contract)
 
 
+def check(
+    name: str | None = None,
+    *,
+    severity: str = "error",
+    description: str | None = None,
+):
+    """Decorate a predicate as a reusable custom data check."""
+    from framevitals.checks import check as _check
+
+    return _check(name, severity=severity, description=description)
+
+
+def run_checks(data: DataInput, checks: Any) -> dict[str, Any]:
+    """Run exact custom checks through the canonical check engine."""
+    from framevitals.checks import run_checks as _run_checks
+
+    return _run_checks(data, checks)
+
+
 def gate(
     current: DataInput,
     *,
     reference: DataInput | None = None,
     contract: Mapping[str, Any] | None = None,
+    custom_checks: Any = None,
     columns: list[str] | None = None,
     max_columns: int = 30,
     drift_warn_on: str = "moderate",
     drift_fail_on: str = "severe",
     fail_on_validation_warning: bool = False,
 ) -> GateResult:
-    """Run the canonical CI-friendly contract/drift quality gate."""
+    """Run the canonical contract/custom/drift quality gate."""
     from framevitals.operations import gate as _gate
 
     return _gate(
         current,
         reference=reference,
         contract=contract,
+        custom_checks=custom_checks,
         columns=columns,
         max_columns=max_columns,
         drift_warn_on=drift_warn_on,
@@ -293,5 +314,7 @@ __all__ = [
     "compare",
     "infer_contract",
     "validate",
+    "check",
+    "run_checks",
     "gate",
 ]
