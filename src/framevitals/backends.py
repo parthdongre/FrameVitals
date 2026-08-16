@@ -1,8 +1,8 @@
-"""Backend routing for FrameVitals numeric kernels.
+"""Backend routing for FrameVitals native and NumPy kernels.
 
 The router keeps optional native/GPU dependencies behind lazy imports. Normal
 installations remain NumPy-first, while a compiled ``framevitals._native``
-extension can transparently accelerate compatible numeric scans.
+extension can transparently accelerate compatible streaming scans.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ def native_available() -> bool:
 
 
 def resolve_numeric_backend(requested: str | None = None) -> Literal["numpy", "rust"]:
-    """Resolve the backend for exact/streaming numeric primitives.
+    """Resolve the backend for exact/streaming primitives.
 
     ``FRAMEVITALS_BACKEND`` may set ``auto``, ``numpy`` or ``rust``. Explicit
     function arguments take precedence. Requesting Rust without the extension
@@ -117,12 +117,7 @@ def numeric_profile(
     backend: BackendName | str | None = None,
     stream_id: int = 0,
 ) -> dict[str, Any]:
-    """Run the fused native profile when available.
-
-    The NumPy fallback intentionally returns only exact state for now rather
-    than pretending to reproduce native approximate sketches with a different
-    algorithm. ``sketches_available`` makes that distinction explicit.
-    """
+    """Run the fused native numeric profile when available."""
     array = _float64_array(values)
     selected = resolve_numeric_backend(backend)
     if selected == "rust":
@@ -137,16 +132,20 @@ def numeric_profile(
 
 
 def create_numeric_accumulator(*, stream_id: int = 0):
-    """Create a persistent native accumulator for multi-batch scans.
-
-    Returns ``None`` when the active backend is NumPy. This keeps callers free
-    to implement a mergeable Python fallback without importing the native
-    extension unless it is actually selected.
-    """
+    """Create a persistent native numeric accumulator for multi-batch scans."""
     if resolve_numeric_backend() != "rust":
         return None
     native = import_module("framevitals._native")
     return native.NumericAccumulator(stream_id=int(stream_id))
+
+
+def create_string_accumulator():
+    """Create a persistent native UTF-8 sketch accumulator when available."""
+    if resolve_numeric_backend() != "rust":
+        return None
+    native = import_module("framevitals._native")
+    accumulator = getattr(native, "StringAccumulator", None)
+    return accumulator() if accumulator is not None else None
 
 
 def backend_status() -> dict[str, Any]:
