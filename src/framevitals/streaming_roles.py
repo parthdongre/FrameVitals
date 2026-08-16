@@ -20,6 +20,7 @@ from framevitals.column_roles import (
     infer_column_roles,
     summarize_roles,
 )
+from framevitals.provenance import normalize_execution
 
 
 _CARDINALITY_ROLES = {
@@ -208,10 +209,8 @@ def infer_streaming_column_roles(
         })
         columns[str(column)] = info
 
-    return {
-        "columns": columns,
-        "summary": summarize_roles(columns),
-        "execution": {
+    execution = normalize_execution(
+        {
             "method": "streaming_profile_with_bounded_semantic_sample",
             "full_materialization": False,
             "source_rows": source_rows,
@@ -224,4 +223,11 @@ def infer_streaming_column_roles(
                 "categorical_cardinality_without_native_sketch",
             ],
         },
+        method="streaming_profile_with_bounded_semantic_sample",
+        full_materialization=False,
+    )
+    return {
+        "columns": columns,
+        "summary": summarize_roles(columns),
+        "execution": execution,
     }
