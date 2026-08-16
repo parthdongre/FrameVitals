@@ -1,8 +1,8 @@
 """Public result objects for FrameVitals.
 
-``AnalysisResult`` intentionally subclasses :class:`dict` during the 0.x series.
-That preserves existing mapping behaviour and JSON compatibility while adding a
-more discoverable object-oriented API for notebooks, applications, and reports.
+FrameVitals result objects intentionally subclass :class:`dict` during the 0.x
+series. That preserves existing mapping behaviour and JSON compatibility while
+adding discoverable helpers for notebooks, applications, reports, and CI.
 """
 
 from __future__ import annotations
@@ -29,6 +29,123 @@ class ColumnResult(dict):
             return self[name]
         except KeyError as exc:
             raise AttributeError(name) from exc
+
+
+class DiagnosticResult(dict):
+    """Dict-compatible result returned by focused diagnostic APIs.
+
+    The diagnostic name is stored as Python-side metadata rather than inserted
+    into the mapping, so wrapping an existing focused payload does not mutate its
+    JSON schema during the 0.x compatibility window.
+    """
+
+    def __init__(
+        self,
+        *args,
+        diagnostic: str = "diagnostic",
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._diagnostic = str(diagnostic or "diagnostic")
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+    @property
+    def diagnostic(self) -> str:
+        return self._diagnostic
+
+    @property
+    def dataset_name(self) -> str | None:
+        value = self.get("dataset_name")
+        return str(value) if value is not None else None
+
+    @property
+    def execution(self) -> dict[str, Any]:
+        value = self.get("execution", {})
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def source(self) -> dict[str, Any]:
+        value = self.get("source")
+        if not isinstance(value, dict):
+            value = self.execution.get("source")
+        if not isinstance(value, dict):
+            value = self.get("source_metadata")
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def available(self) -> bool:
+        value = self.get("available")
+        return True if value is None else bool(value)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a detached plain dictionary without Python-side metadata."""
+        return deepcopy(dict(self))
+
+    def to_json(
+        self,
+        destination: str | Path | None = None,
+        *,
+        indent: int = 2,
+    ) -> str | Path:
+        """Serialize the complete diagnostic result or write it to a file."""
+        rendered = json.dumps(self.to_dict(), indent=indent, default=str)
+        if destination is None:
+            return rendered
+        path = Path(destination)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(rendered + "\n", encoding="utf-8")
+        return path
+
+    def summary(self) -> dict[str, Any]:
+        """Return a compact operation-agnostic execution summary."""
+        execution = self.execution
+        shape = self.get("shape")
+        if not isinstance(shape, dict):
+            shape = {}
+        source = self.source
+        return {
+            "diagnostic": self.diagnostic,
+            "dataset_name": self.dataset_name,
+            "available": self.available,
+            "shape": dict(shape),
+            "method": execution.get("method"),
+            "full_materialization": execution.get("full_materialization"),
+            "sampled": execution.get("sampled"),
+            "source_rows": execution.get("source_rows", source.get("rows")),
+            "source_columns": execution.get("source_columns", source.get("columns")),
+            "sample_rows": execution.get("sample_rows"),
+            "execution_schema_version": execution.get("execution_schema_version"),
+        }
+
+    def summary_text(self) -> str:
+        """Render a compact terminal-friendly focused-diagnostic summary."""
+        summary = self.summary()
+        lines = [
+            f"FrameVitals {self.diagnostic}",
+            f"Dataset         {summary.get('dataset_name') or 'unknown'}",
+            f"Available       {'yes' if summary.get('available') else 'no'}",
+        ]
+        if summary.get("method") is not None:
+            lines.append(f"Method          {summary['method']}")
+        if summary.get("source_rows") is not None:
+            lines.append(f"Source rows     {summary['source_rows']}")
+        if summary.get("sample_rows") is not None:
+            lines.append(f"Sample rows     {summary['sample_rows']}")
+        if summary.get("sampled") is not None:
+            lines.append(
+                f"Sampled         {'yes' if summary.get('sampled') else 'no'}"
+            )
+        if summary.get("full_materialization") is not None:
+            lines.append(
+                "Materialized    "
+                f"{'yes' if summary.get('full_materialization') else 'no'}"
+            )
+        return "\n".join(lines)
 
 
 class AnalysisResult(dict):
