@@ -118,8 +118,10 @@ def _coerce_disabled_modules(value: Any) -> tuple[str, ...]:
     return tuple(str(item) for item in value)
 
 
-def _extract_values(mapping: Mapping[str, Any]) -> tuple[str | None, dict[str, Any]]:
-    """Extract supported values from nested or flat configuration mappings."""
+def _extract_values(
+    mapping: Mapping[str, Any],
+) -> tuple[str | None, dict[str, Any], dict[str, bool]]:
+    """Extract scalar values and module overrides from config mappings."""
     analysis = mapping.get("analysis", {})
     resources = mapping.get("resources", {})
     modules = mapping.get("modules", {})
@@ -145,26 +147,24 @@ def _extract_values(mapping: Mapping[str, Any]) -> tuple[str | None, dict[str, A
     elif "workers" in mapping:
         values["workers"] = mapping["workers"]
 
-    raw_disabled = analysis.get(
-        "disabled_modules",
-        mapping.get("disabled_modules", ()),
-    )
-    disabled = list(_coerce_disabled_modules(raw_disabled))
+    if "disabled_modules" in analysis:
+        values["disabled_modules"] = _coerce_disabled_modules(
+            analysis["disabled_modules"]
+        )
+    elif "disabled_modules" in mapping:
+        values["disabled_modules"] = _coerce_disabled_modules(
+            mapping["disabled_modules"]
+        )
 
+    module_overrides: dict[str, bool] = {}
     for name, enabled in modules.items():
         if name not in VALID_MODULES:
             raise ValueError(f"Unknown FrameVitals module in [modules]: {name}")
         if not isinstance(enabled, bool):
             raise ValueError(f"[modules].{name} must be true or false.")
-        if enabled:
-            disabled = [item for item in disabled if item != name]
-        elif name not in disabled:
-            disabled.append(name)
+        module_overrides[name] = enabled
 
-    if disabled:
-        values["disabled_modules"] = tuple(disabled)
-
-    return str(preset) if preset is not None else None, values
+    return str(preset) if preset is not None else None, values, module_overrides
 
 
 def _preset_values(name: str | None) -> dict[str, Any]:
@@ -176,6 +176,19 @@ def _preset_values(name: str | None) -> dict[str, Any]:
             f"Choose from: {', '.join(available_presets())}"
         )
     return dict(PRESETS[name])
+
+
+def _apply_module_overrides(
+    values: dict[str, Any],
+    overrides: Mapping[str, bool],
+) -> None:
+    disabled = list(_coerce_disabled_modules(values.get("disabled_modules", ())))
+    for name, enabled in overrides.items():
+        if enabled:
+            disabled = [item for item in disabled if item != name]
+        elif name not in disabled:
+            disabled.append(name)
+    values["disabled_modules"] = tuple(disabled)
 
 
 def resolve_config(
@@ -194,7 +207,7 @@ def resolve_config(
 
     1. FrameVitals defaults
     2. explicit ``preset=`` argument
-    3. configuration file/mapping/object
+    3. configuration file/mapping/object (including ``[modules]`` booleans)
     4. explicit function/CLI arguments
     """
     values: dict[str, Any] = AnalysisConfig().to_dict()
@@ -203,15 +216,19 @@ def resolve_config(
     if isinstance(config, AnalysisConfig):
         values.update(config.to_dict())
     elif isinstance(config, (str, Path)):
-        config_preset, config_values = _extract_values(_read_toml(config))
+        config_preset, config_values, module_overrides = _extract_values(
+            _read_toml(config)
+        )
         if config_preset is not None:
             values.update(_preset_values(config_preset))
         values.update(config_values)
+        _apply_module_overrides(values, module_overrides)
     elif isinstance(config, Mapping):
-        config_preset, config_values = _extract_values(config)
+        config_preset, config_values, module_overrides = _extract_values(config)
         if config_preset is not None:
             values.update(_preset_values(config_preset))
         values.update(config_values)
+        _apply_module_overrides(values, module_overrides)
     elif config is not None:
         raise TypeError(
             "config must be an AnalysisConfig, mapping, TOML path, or None."
