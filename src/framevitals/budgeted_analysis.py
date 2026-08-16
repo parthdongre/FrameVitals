@@ -18,6 +18,7 @@ from framevitals.execution import ExecutionBudget, deterministic_sample_frame
 from framevitals.fast_anomaly import fast_anomaly_scan
 from framevitals.neural_anomaly import neural_reconstruction_anomalies
 from framevitals.provenance import normalize_execution
+from framevitals.stream_change import scan_ordered_mean_shift
 from framevitals.time_series import detect_and_analyze_time_series
 
 
@@ -163,13 +164,44 @@ def run_budgeted_anomalies(
     )
 
 
+def _attach_time_series_change_scan(
+    payload: dict[str, Any],
+    work: pd.DataFrame,
+) -> bool:
+    """Attach a cheap ordered mean-shift scan when time-series detection succeeded."""
+    if not payload.get("available"):
+        return False
+    date_column = payload.get("detected_date_column")
+    numeric_column = payload.get("numeric_column")
+    if not isinstance(date_column, str) or not isinstance(numeric_column, str):
+        return False
+    if date_column not in work.columns or numeric_column not in work.columns:
+        return False
+
+    parsed_dates = pd.to_datetime(work[date_column], errors="coerce", format="mixed")
+    ordered = pd.DataFrame({
+        "date": parsed_dates,
+        "value": pd.to_numeric(work[numeric_column], errors="coerce"),
+    }).dropna()
+    if ordered.empty:
+        return False
+    ordered = ordered.sort_values("date")
+    payload["mean_shift"] = scan_ordered_mean_shift(
+        ordered["value"],
+        windows=24,
+        threshold=8.0,
+        min_updates=8,
+    )
+    return True
+
+
 def run_budgeted_time_series(
     dataframe: pd.DataFrame,
     *,
     budget: ExecutionBudget,
     target_column: str | None = None,
 ) -> dict[str, Any]:
-    """Run time-series discovery/diagnostics on an order-preserving bounded frame."""
+    """Run bounded ordered time-series diagnostics plus change detection."""
     sample_limit = max(30, min(budget.time_series_sample_rows, max(len(dataframe), 1)))
     work, sampling = deterministic_sample_frame(
         dataframe,
@@ -177,19 +209,25 @@ def run_budgeted_time_series(
         preserve_order=True,
     )
     payload = detect_and_analyze_time_series(work, target_column=target_column)
+    change_detection_enabled = _attach_time_series_change_scan(payload, work)
     sampling = {
         **sampling,
         "reason": (
             "Time-series diagnostics use an order-preserving bounded view to avoid "
-            "unbounded date parsing, stationarity, PACF, STL, and forecasting work."
+            "unbounded date parsing, stationarity, PACF, STL, and forecasting work. "
+            "Detected numeric series also receive a bounded Page-Hinkley mean-shift scan."
             if sampling["sampled"]
-            else "Full input fits within the time-series execution budget."
+            else (
+                "Full input fits within the time-series execution budget; detected numeric "
+                "series also receive a bounded Page-Hinkley mean-shift scan."
+            )
         ),
         "temporal_order_preserved": True,
+        "mean_shift_detection_enabled": bool(change_detection_enabled),
     }
     return _attach_execution(
         payload,
         budget=budget,
         sampling=sampling,
-        scope="bounded_time_series",
+        scope="adaptive_time_series",
     )
