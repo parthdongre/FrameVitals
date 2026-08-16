@@ -34,7 +34,10 @@ pub struct HyperLogLog {
 
 impl HyperLogLog {
     pub fn new(precision: u8) -> Self {
-        assert!((4..=16).contains(&precision), "HLL precision must be 4..=16");
+        assert!(
+            (4..=16).contains(&precision),
+            "HLL precision must be 4..=16"
+        );
         Self {
             precision,
             registers: vec![0; 1usize << precision],
@@ -273,7 +276,10 @@ impl HeavyHittersSketch {
 
     #[must_use]
     pub fn merge(mut self, other: Self) -> Self {
-        assert_eq!(self.capacity, other.capacity, "heavy-hitter capacity mismatch");
+        assert_eq!(
+            self.capacity, other.capacity,
+            "heavy-hitter capacity mismatch"
+        );
         for (key, count) in other.counters {
             self.observe_weighted(key, count);
         }
@@ -423,8 +429,7 @@ impl NumericSketchState {
 #[cfg(test)]
 mod tests {
     use super::{
-        HeavyHittersSketch, HyperLogLog, LogQuantileSketch, NumericSketchState,
-        PriorityReservoir,
+        HeavyHittersSketch, HyperLogLog, LogQuantileSketch, NumericSketchState, PriorityReservoir,
     };
 
     #[test]
