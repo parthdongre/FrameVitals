@@ -14,6 +14,8 @@ Development continues on the development branches. Changes intended for the next
 - Structured exact contract validation through `framevitals.validate()`
 - `framevitals.gate()` for one CI-friendly pass/warn/fail verdict combining validation and drift
 - `framevitals gate` CLI command with configurable drift warning/failure thresholds, optional contract enforcement, JSON output, and CI exit codes
+- Reusable root `action.yml` GitHub Action for running FrameVitals quality gates with status/result outputs
+- Path-scoped smoke CI for the reusable Gate Action
 - `framevitals plan` for previewing applicable modules, execution budgets, and source planning without running the heavy pipeline
 - Compact versioned analysis snapshots with deterministic fingerprints, JSON persistence, and snapshot-to-snapshot schema/health/ML-readiness/finding diffs
 - Dict-compatible result objects including `AnalysisResult`, `DriftResult`, `ValidationResult`, `GateResult`, and per-column result views
@@ -24,14 +26,17 @@ Development continues on the development branches. Changes intended for the next
 - Execution provenance that distinguishes exact full-stream metrics, bounded row samples, estimates, and full materialization
 - Optional Rust native core and Python bridge for accelerated streaming numeric state, cardinality/quantile sketches, and backend routing
 - Dedicated Arrow/NumPy-fallback and Rust/native CI coverage
-- Benchmark harnesses for scale-sensitive profiling behavior
+- Reproducible performance benchmark workflow with time/RSS summaries and retained JSON artifacts
 - PEP 561 `py.typed` marker for downstream type-checking support
 - Optional `excel` dependency group for XLS/XLSX readers
+- Optional `plot` dependency group for Matplotlib/Seaborn chart and PDF/report support
+- Contributor architecture guidance covering canonical layers, streaming provenance, optional-dependency boundaries, and performance-sensitive changes
 
 ### Changed
 
 - Full `framevitals.analyze()` now dispatches streaming-capable sources through a bounded source-aware pipeline when artifacts do not require materialization
 - Drift comparison now preserves exact source shape metadata while bounding value-distribution work for streaming sources
+- Flask `/api/compare` now routes through the same canonical source-aware drift engine as Python and CLI callers
 - `framevitals.gate()` reuses the same canonical drift and validation engines instead of maintaining separate data-loading logic
 - Contract validation explicitly remains exact for uniqueness, allowed-value, nullability, and bound constraints rather than silently weakening them to sampled checks
 - `framevitals.api` is now a lazy compatibility facade over the canonical focused, analysis, planning, and operations engines instead of a second eager implementation
@@ -39,9 +44,14 @@ Development continues on the development branches. Changes intended for the next
 - CLI `--version` works from a no-dependencies wheel smoke install without importing the analytics stack
 - The `all` extra now actually includes the Arrow capability
 - Excel engines moved out of the default dependency set into `framevitals[excel]`; AI-only Pydantic moved into `framevitals[ai]`
+- Matplotlib and Seaborn moved out of the default dependency set into `framevitals[plot]`
+- Explainability no longer requires Matplotlib at module import time; structured importance can run without plotting and SHAP chart rendering is optional
+- Flask startup no longer eagerly imports the agentic AI or PDF/report stacks; those capabilities load only when their endpoints are used
 - Excel loading now reports a FrameVitals-specific install hint when the optional reader capability is missing
-- README and roadmap now describe the source-aware analyze → compare → validate → gate → monitor direction and document actual CLI exit semantics
+- README and roadmap now describe the source-aware analyze → compare → validate → gate → monitor direction, optional capability groups, reusable Gate Action, and actual CLI exit semantics
 - Package CI now requires the `py.typed` marker to be present in built wheels
+- Test and package workflows now use read-only default permissions and cancel stale runs on the same branch
+- Release publishing now verifies that the GitHub release tag, `pyproject.toml` version, and `framevitals.__version__` match before building/publishing
 
 ### Fixed
 
@@ -50,6 +60,8 @@ Development continues on the development branches. Changes intended for the next
 - Streaming column-role cardinality metadata distinguishes bounded-sample cardinality from full-stream native estimates
 - CSV/TSV streaming sources preserve `FileSource` compatibility for existing callers and tests
 - Dedicated Arrow CI now exercises streaming statistics, drift, CSV/TSV sources, and the quality-gate CLI
+- Web runtime dependency boundaries no longer force AI/report/plot packages to import during Flask startup
+- Reusable Gate Action setup no longer relies on an invalid absolute `setup-python` cache dependency path
 
 ## 0.1.0 - 2026-08-15
 
