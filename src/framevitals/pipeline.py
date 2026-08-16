@@ -30,7 +30,6 @@ from framevitals.column_roles import infer_column_roles, summarize_roles
 from framevitals.config import VALID_MODULES
 from framevitals.dataset_signals import detect_dataset_signals
 from framevitals.execution import derive_execution_budget
-from framevitals.explainability import explain_winner
 from framevitals.health_score import calculate_health_score
 from framevitals.loader import load_dataset
 from framevitals.ml_readiness import calculate_ml_readiness
@@ -40,7 +39,6 @@ from framevitals.quality_diagnostics import run_quality_diagnostics
 from framevitals.signal_engine import build_signals
 from framevitals.target_intelligence import run_target_intelligence
 from framevitals.text_profile import profile_text_columns
-from framevitals.visualizer import generate_charts
 
 
 logger = logging.getLogger("framevitals.pipeline")
@@ -313,14 +311,20 @@ def run_full_analysis(
     if winner_available:
         if module_enabled("explainability"):
             t0 = time.perf_counter()
-            _, explainability, _ = _safe_call(
-                "explainability",
-                lambda: explain_winner(
+
+            def run_explainability():
+                from framevitals.explainability import explain_winner
+
+                return explain_winner(
                     df,
                     target_column=target_column,
                     leaderboard_result=model_leaderboard,
                     dataset_id=dataset_id,
-                ),
+                )
+
+            _, explainability, _ = _safe_call(
+                "explainability",
+                run_explainability,
             )
             timings_ms["explainability"] = (time.perf_counter() - t0) * 1000
             module_status["explainability"] = _result_status(explainability)
@@ -375,20 +379,31 @@ def run_full_analysis(
     charts_applicable = write_artifacts and analysis_mode in {"standard", "deep", "research"}
     if charts_applicable and module_enabled("charts"):
         t0 = time.perf_counter()
-        charts = generate_charts(
-            dataset_id,
-            df,
-            health,
-            advanced,
-            cleaning,
-            target_column=target_column,
-            model_leaderboard=model_leaderboard,
-            explainability=explainability,
-            time_series=time_series_analysis,
-            deep_statistics_v2=deep_statistics_v2,
-        )
-        timings_ms["charts"] = (time.perf_counter() - t0) * 1000
-        module_status["charts"] = "ran"
+
+        def render_charts():
+            from framevitals.visualizer import generate_charts
+
+            return generate_charts(
+                dataset_id,
+                df,
+                health,
+                advanced,
+                cleaning,
+                target_column=target_column,
+                model_leaderboard=model_leaderboard,
+                explainability=explainability,
+                time_series=time_series_analysis,
+                deep_statistics_v2=deep_statistics_v2,
+            )
+
+        _, rendered_charts, chart_elapsed = _safe_call("charts", render_charts)
+        timings_ms["charts"] = chart_elapsed
+        if isinstance(rendered_charts, list):
+            charts = rendered_charts
+            module_status["charts"] = "ran"
+        else:
+            charts = []
+            module_status["charts"] = _result_status(rendered_charts)
     elif not module_enabled("charts"):
         timings_ms["charts"] = 0.0
         module_status["charts"] = "disabled"
