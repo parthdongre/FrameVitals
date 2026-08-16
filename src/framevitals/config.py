@@ -16,6 +16,7 @@ import tomllib
 
 VALID_MODES = {"quick", "standard", "deep", "research"}
 VALID_MODULES = {
+    "quality_diagnostics",
     "deep_statistics",
     "anomaly_detection",
     "time_series",
