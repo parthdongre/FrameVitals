@@ -88,7 +88,7 @@ ANALYSIS_INVENTORY = [
      "requires": {}, "outputs": ["warnings", "severity"]},
 
     {"id": "target_analysis", "name": "Target Column Analysis", "category": "Machine Learning",
-     "modes": ["deep", "research"], "priority": "high",
+     "modes": ["standard", "deep", "research"], "priority": "high",
      "requires": {}, "requires_user_target": True, "outputs": ["target_candidates", "task_type"]},
 
     {"id": "feature_importance", "name": "Feature Importance Analysis", "category": "Machine Learning",
@@ -113,7 +113,7 @@ ANALYSIS_INVENTORY = [
      "outputs": ["privacy_score", "pii_warning"]},
 
     {"id": "time_series_signal", "name": "Time Series Structure Signal", "category": "Temporal",
-     "modes": ["deep", "research"], "priority": "medium",
+     "modes": ["standard", "deep", "research"], "priority": "medium",
      "requires": {"has_time_series_structure": True}, "outputs": ["warning", "recommendation"]},
 
     {"id": "ai_summary", "name": "AI Insight Generation", "category": "AI",
