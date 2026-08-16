@@ -1,5 +1,11 @@
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
+MAX_CORRELATION_COLUMNS = 100
+MAX_EXACT_DUPLICATE_CELLS = 50_000_000
+DUPLICATE_SAMPLE_ROWS = 50_000
 
 
 def clean_value(value):
@@ -36,13 +42,91 @@ def detect_column_types(df):
     return numeric_cols, categorical_cols, date_cols
 
 
+def _missing_counts(df: pd.DataFrame) -> pd.Series:
+    """Count missing values without materializing a frame-sized boolean table."""
+    return pd.Series(
+        {column: int(df[column].isna().sum()) for column in df.columns},
+        dtype="int64",
+    )
+
+
+def _duplicate_profile(df: pd.DataFrame) -> tuple[int, dict]:
+    """Return duplicate estimate plus explicit execution metadata."""
+    rows, columns = df.shape
+    cells = rows * columns
+    if cells <= MAX_EXACT_DUPLICATE_CELLS:
+        count = int(df.duplicated().sum())
+        return count, {
+            "method": "exact",
+            "sampled": False,
+            "sample_rows": rows,
+        }
+
+    sample_rows = min(rows, DUPLICATE_SAMPLE_ROWS)
+    positions = np.linspace(0, rows - 1, num=sample_rows, dtype=np.int64)
+    sample = df.iloc[np.unique(positions)]
+    sample_duplicates = int(sample.duplicated().sum())
+    rate = sample_duplicates / max(len(sample), 1)
+    estimate = int(round(rate * rows))
+    return estimate, {
+        "method": "sample_estimate",
+        "sampled": True,
+        "sample_rows": int(len(sample)),
+        "source_rows": int(rows),
+        "estimated_duplicate_rate": round(float(rate), 6),
+    }
+
+
+def _bounded_correlations(
+    df: pd.DataFrame,
+    numeric_cols: list[str],
+) -> tuple[dict, dict]:
+    if len(numeric_cols) < 2:
+        return {}, {
+            "method": "not_applicable",
+            "columns_used": len(numeric_cols),
+            "columns_available": len(numeric_cols),
+            "truncated": False,
+        }
+
+    selected = numeric_cols
+    truncated = len(selected) > MAX_CORRELATION_COLUMNS
+    if truncated:
+        # Prefer columns with the most usable observations. This is a safe
+        # compatibility fallback; the sparse relationship graph will replace
+        # dense truncation for ultra-wide datasets.
+        non_missing = {
+            column: int(df[column].notna().sum())
+            for column in numeric_cols
+        }
+        selected = sorted(
+            numeric_cols,
+            key=lambda column: (-non_missing[column], str(column)),
+        )[:MAX_CORRELATION_COLUMNS]
+
+    correlations = (
+        df[selected]
+        .corr(numeric_only=True)
+        .round(3)
+        .replace({np.nan: None})
+        .to_dict()
+    )
+    return correlations, {
+        "method": "dense_bounded" if truncated else "dense_exact_columns",
+        "columns_used": len(selected),
+        "columns_available": len(numeric_cols),
+        "truncated": truncated,
+        "max_columns": MAX_CORRELATION_COLUMNS,
+    }
+
+
 def build_profile(df):
     rows, columns = df.shape
     numeric_cols, categorical_cols, date_cols = detect_column_types(df)
 
-    missing_counts = df.isna().sum()
+    missing_counts = _missing_counts(df)
     missing_percent = (missing_counts / max(rows, 1) * 100).round(2)
-    duplicate_rows = int(df.duplicated().sum())
+    duplicate_rows, duplicate_metadata = _duplicate_profile(df)
 
     numeric_summary = {}
     if numeric_cols:
@@ -63,17 +147,9 @@ def build_profile(df):
             "top_values": {str(k): int(v) for k, v in counts.items()},
         }
 
-    correlations = {}
-    if len(numeric_cols) >= 2:
-        correlations = (
-            df[numeric_cols]
-            .corr(numeric_only=True)
-            .round(3)
-            .replace({np.nan: None})
-            .to_dict()
-        )
+    correlations, correlation_metadata = _bounded_correlations(df, numeric_cols)
 
-    preview = df.head(15).where(df.notna(), None).to_dict(orient="records")
+    preview = df.head(15).where(df.head(15).notna(), None).to_dict(orient="records")
 
     return {
         "shape": {"rows": rows, "columns": columns},
@@ -86,9 +162,11 @@ def build_profile(df):
         "missing_percent": series_to_dict(missing_percent),
         "duplicate_rows": duplicate_rows,
         "duplicate_percent": round(duplicate_rows / max(rows, 1) * 100, 2),
+        "duplicate_metadata": duplicate_metadata,
         "memory_usage_mb": round(df.memory_usage(deep=True).sum() / (1024 * 1024), 3),
         "numeric_summary": numeric_summary,
         "categorical_summary": categorical_summary,
         "correlations": correlations,
+        "correlation_metadata": correlation_metadata,
         "preview": preview,
     }
