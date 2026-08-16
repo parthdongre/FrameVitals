@@ -5,6 +5,11 @@ Assigns semantic roles to each column based on name keywords, dtype, unique
 ratio, missingness, statistical properties, and bounded value-pattern samples.
 """
 
+from __future__ import annotations
+
+import re
+
+import numpy as np
 import pandas as pd
 
 from framevitals.semantic_types import infer_semantic_types
@@ -66,9 +71,43 @@ SEMANTIC_ROLE_MAP = {
 }
 
 
+def _normalise_name(value: object) -> tuple[str, tuple[str, ...]]:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower()).strip("_")
+    return normalized, tuple(token for token in normalized.split("_") if token)
+
+
 def _name_matches(column_name: str, keywords: list) -> bool:
-    lower = column_name.lower().replace("-", "_")
-    return any(kw in lower for kw in keywords)
+    """Match keyword tokens/phrases without unsafe substring collisions.
+
+    This prevents names such as ``paid_amount`` from matching ``id`` and
+    ``average_score`` from matching ``age`` while retaining conventional names
+    such as ``customer_id``, ``created_at``, and ``roll_number``.
+    """
+    normalized, tokens = _normalise_name(column_name)
+    token_set = set(tokens)
+
+    for keyword in keywords:
+        keyword_normalized, keyword_tokens = _normalise_name(keyword)
+        if not keyword_normalized:
+            continue
+        if normalized == keyword_normalized:
+            return True
+        if len(keyword_tokens) == 1 and keyword_tokens[0] in token_set:
+            return True
+        if len(keyword_tokens) > 1:
+            width = len(keyword_tokens)
+            for start in range(0, len(tokens) - width + 1):
+                if tokens[start : start + width] == keyword_tokens:
+                    return True
+    return False
+
+
+def _bounded_text_sample(series: pd.Series, max_rows: int = 500) -> pd.Series:
+    clean = series.dropna()
+    if len(clean) <= max_rows:
+        return clean.astype(str)
+    positions = np.linspace(0, len(clean) - 1, num=max_rows, dtype=np.int64)
+    return clean.iloc[np.unique(positions)].astype(str)
 
 
 def _classify_missingness(missing_percent: float) -> str:
@@ -153,15 +192,16 @@ def _infer_single_column_roles(column: str, series: pd.Series, rows: int) -> dic
         roles.add("price_like")
 
     if not is_numeric and not is_bool:
-        sample = series.dropna().astype(str).head(30)
+        sample = _bounded_text_sample(series, 30)
         if len(sample) > 0:
             parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
             if parsed.notna().mean() >= 0.7:
                 roles.add("time_like")
 
     if is_text:
-        lengths = series.dropna().astype(str).str.len()
-        if len(lengths) > 0:
+        sample = _bounded_text_sample(series, 500)
+        if len(sample) > 0:
+            lengths = sample.str.len()
             avg_len = float(lengths.mean())
             max_len = int(lengths.max())
             if avg_len > 50 or max_len > 200:
