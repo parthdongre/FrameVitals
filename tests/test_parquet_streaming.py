@@ -108,6 +108,26 @@ def test_public_health_streams_parquet_without_calling_load(tmp_path, monkeypatc
     )
 
 
+def test_public_ml_readiness_streams_parquet_without_calling_load(tmp_path, monkeypatch):
+    path = tmp_path / "ml-readiness.parquet"
+    frame = _write_parquet(path, rows=12_000)
+
+    def fail_load(self):
+        raise AssertionError("ML readiness must not materialize the complete Parquet file")
+
+    monkeypatch.setattr(ParquetSource, "load", fail_load)
+    result = framevitals.ml_readiness(path)
+
+    assert result["dataset_name"] == "ml-readiness.parquet"
+    assert result["numeric_columns"] == ["value", "other"]
+    assert result["categorical_columns"] == ["group"]
+    expected_missing = int(frame["value"].isna().sum()) / (len(frame) * 4) * 100
+    assert result["issues"]["missing_percent"] == pytest.approx(
+        round(expected_missing, 2)
+    )
+    assert 0 <= result["score"] <= 100
+
+
 def test_large_public_health_discloses_bounded_outlier_estimate(tmp_path, monkeypatch):
     path = tmp_path / "large-health.parquet"
     frame = _write_parquet(path, rows=60_000)
