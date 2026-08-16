@@ -1,0 +1,35 @@
+minimum_pre_commit_version: "4.0.0"
+
+default_install_hook_types:
+  - pre-commit
+  - pre-push
+
+repos:
+  - repo: local
+    hooks:
+      - id: framevitals-critical-ruff
+        name: FrameVitals critical Python lint
+        entry: python -m ruff check --select E9,F821,F822,F823 src/framevitals tests
+        language: system
+        pass_filenames: false
+        files: ^(src/framevitals|tests)/.*\.py$
+
+      - id: framevitals-compile
+        name: FrameVitals Python compile check
+        entry: python -m compileall -q src/framevitals
+        language: system
+        pass_filenames: false
+        files: ^src/framevitals/.*\.py$
+
+      - id: framevitals-public-contracts
+        name: FrameVitals public contract tests
+        entry: >-
+          python -m pytest -q
+          tests/test_public_surface_contract.py
+          tests/test_provenance.py
+          tests/test_source_inspection.py
+          tests/test_check_plugins.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
