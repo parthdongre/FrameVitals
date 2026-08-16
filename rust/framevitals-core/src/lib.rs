@@ -7,6 +7,8 @@
 
 #[cfg(feature = "arrow")]
 pub mod arrow_scan;
+#[cfg(feature = "arrow")]
+pub mod fused_profile;
 pub mod sketches;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
