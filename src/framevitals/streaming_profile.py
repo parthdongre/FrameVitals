@@ -28,6 +28,25 @@ from framevitals.sources import StreamingDatasetSource
 
 STREAM_BATCH_SIZE = 65_536
 STREAM_SAMPLE_ROWS = 50_000
+STREAM_BATCH_CELL_BUDGET = 32_000_000
+STREAM_SAMPLE_CELL_BUDGET = 6_000_000
+
+
+def _width_aware_row_limit(
+    requested_rows: int,
+    column_count: int,
+    *,
+    cell_budget: int,
+) -> int:
+    """Clamp a row budget so rows * columns stays within a bounded cell budget."""
+    if requested_rows < 1:
+        raise ValueError("requested_rows must be at least 1.")
+    if cell_budget < 1:
+        raise ValueError("cell_budget must be at least 1.")
+
+    width = max(int(column_count), 1)
+    width_limited_rows = max(int(cell_budget) // width, 1)
+    return max(1, min(int(requested_rows), width_limited_rows))
 
 
 def _require_pyarrow():
@@ -243,10 +262,22 @@ def sample_streaming_source(
     if rows < 1:
         raise ValueError(f"Dataset is empty: {metadata.name}")
 
-    positions = _sample_positions(int(rows), int(sample_rows))
+    projected_width = len(columns) if columns is not None else int(metadata.columns or 1)
+    effective_batch_size = _width_aware_row_limit(
+        int(batch_size),
+        projected_width,
+        cell_budget=STREAM_BATCH_CELL_BUDGET,
+    )
+    effective_sample_rows = _width_aware_row_limit(
+        int(sample_rows),
+        projected_width,
+        cell_budget=STREAM_SAMPLE_CELL_BUDGET,
+    )
+
+    positions = _sample_positions(int(rows), effective_sample_rows)
     frames: list[pd.DataFrame] = []
     offset = 0
-    for batch in source.iter_batches(batch_size=batch_size, columns=columns):
+    for batch in source.iter_batches(batch_size=effective_batch_size, columns=columns):
         sampled = _sample_batch(batch, positions, offset)
         if sampled is not None and not sampled.empty:
             frames.append(sampled)
@@ -330,10 +361,22 @@ def build_streaming_profile(
     schema = schema_method()
     columns = [field.name for field in schema]
     numeric_cols, categorical_cols, date_cols = _column_groups(schema)
+    numeric_col_set = set(numeric_cols)
     string_cols = _string_columns(schema)
     dtypes = {field.name: str(field.type) for field in schema}
 
-    positions = _sample_positions(int(rows), int(sample_rows))
+    width = max(len(columns), 1)
+    effective_batch_size = _width_aware_row_limit(
+        int(batch_size),
+        width,
+        cell_budget=STREAM_BATCH_CELL_BUDGET,
+    )
+    effective_sample_rows = _width_aware_row_limit(
+        int(sample_rows),
+        width,
+        cell_budget=STREAM_SAMPLE_CELL_BUDGET,
+    )
+    positions = _sample_positions(int(rows), effective_sample_rows)
     sample_frames: list[pd.DataFrame] = []
     preview_frame: pd.DataFrame | None = None
     missing_counts = {column: 0 for column in columns}
@@ -355,7 +398,7 @@ def build_streaming_profile(
 
     offset = 0
     batches_scanned = 0
-    for batch in source.iter_batches(batch_size=batch_size):
+    for batch in source.iter_batches(batch_size=effective_batch_size):
         batches_scanned += 1
         if preview_frame is None:
             preview_frame = batch.slice(0, min(15, batch.num_rows)).to_pandas()
@@ -366,7 +409,7 @@ def build_streaming_profile(
 
         for index, column in enumerate(columns):
             array = batch.column(index)
-            if column not in numeric_cols:
+            if column not in numeric_col_set:
                 missing_counts[column] += int(array.null_count)
                 string_accumulator = native_string_accumulators.get(column)
                 if string_accumulator is not None:
@@ -535,9 +578,20 @@ def build_streaming_profile(
         "streaming_metadata": {
             "enabled": True,
             "full_materialization": False,
-            "batch_size": int(batch_size),
+            "batch_size": int(effective_batch_size),
+            "requested_batch_size": int(batch_size),
+            "batch_cell_budget": int(STREAM_BATCH_CELL_BUDGET),
             "batches_scanned": int(batches_scanned),
             "sample_rows": int(len(sample)),
+            "sample_row_limit": int(effective_sample_rows),
+            "requested_sample_rows": int(sample_rows),
+            "sample_cell_budget": int(STREAM_SAMPLE_CELL_BUDGET),
+            "sample_cells_retained": int(len(sample) * len(columns)),
+            "source_columns": int(len(columns)),
+            "width_limited": bool(
+                effective_batch_size < int(batch_size)
+                or effective_sample_rows < int(sample_rows)
+            ),
             "sample_strategy": "evenly_spaced_global_rows",
             "numeric_backend": selected_backend,
             "native_string_sketch_columns": native_categorical_columns,
