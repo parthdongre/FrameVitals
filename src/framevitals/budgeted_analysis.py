@@ -15,6 +15,7 @@ from framevitals.anomaly_ensemble import detect_anomalies_ensemble
 from framevitals.deep_statistics_v2 import run_deep_statistics_v2
 from framevitals.deep_triage import triage_deep_columns
 from framevitals.execution import ExecutionBudget, deterministic_sample_frame
+from framevitals.fast_anomaly import fast_anomaly_scan
 from framevitals.neural_anomaly import neural_reconstruction_anomalies
 from framevitals.provenance import normalize_execution
 from framevitals.time_series import detect_and_analyze_time_series
@@ -46,13 +47,7 @@ def run_budgeted_deep_statistics(
     budget: ExecutionBudget,
     max_pairs: int | None = None,
 ) -> dict[str, Any]:
-    """Run deep statistics on a bounded, adaptively selected diagnostic view.
-
-    Every candidate column is first ranked with cheap vectorized signals. Only a
-    mode-dependent subset is sent through bootstrap, distribution fitting and
-    bivariate statistical tests. The ordinary profile still describes every
-    source column, while deep analysis spends compute where it is most useful.
-    """
+    """Run deep statistics on a bounded, adaptively selected diagnostic view."""
     sample_limit = max(
         20,
         min(
@@ -65,10 +60,11 @@ def run_budgeted_deep_statistics(
 
     triage = triage_deep_columns(work, mode=budget.mode)
     selected_columns = list(triage.selected_columns)
-    if selected_columns:
-        diagnostic_view = work.loc[:, selected_columns]
-    else:
-        diagnostic_view = pd.DataFrame(index=work.index)
+    diagnostic_view = (
+        work.loc[:, selected_columns]
+        if selected_columns
+        else pd.DataFrame(index=work.index)
+    )
 
     pair_budget = (
         budget.relationship_pair_budget
@@ -110,18 +106,19 @@ def run_budgeted_anomalies(
     max_columns: int = 30,
     top_k: int = 25,
 ) -> dict[str, Any]:
-    """Run bounded anomaly diagnostics, with a neural view in research mode."""
+    """Run fast screening in standard/deep and full confirmation in research."""
     sample_limit = max(20, min(budget.anomaly_sample_rows, max(len(dataframe), 1)))
     work, sampling = deterministic_sample_frame(dataframe, sample_limit)
-    payload = detect_anomalies_ensemble(
-        work,
-        contamination=contamination,
-        threshold=threshold,
-        max_columns=max_columns,
-        top_k=top_k,
-    )
 
     if budget.mode == "research":
+        payload = detect_anomalies_ensemble(
+            work,
+            contamination=contamination,
+            threshold=threshold,
+            max_columns=max_columns,
+            top_k=top_k,
+        )
+        anomaly_strategy = "classical_ensemble_plus_neural_reconstruction"
         try:
             payload["neural_reconstruction"] = neural_reconstruction_anomalies(
                 work,
@@ -135,28 +132,34 @@ def run_budgeted_anomalies(
                 "available": False,
                 "reason": f"{type(exc).__name__}: {exc}",
             }
+    else:
+        payload = fast_anomaly_scan(
+            work,
+            contamination=contamination,
+            threshold=threshold,
+            max_columns=min(max_columns, 24),
+            projections=12,
+            top_k=top_k,
+        )
+        anomaly_strategy = "fast_robust_random_projection"
 
     sampling = {
         **sampling,
         "reason": (
-            "Expensive anomaly detectors run on a bounded representative view; "
-            "research mode additionally includes a small neural reconstruction detector."
+            "Research mode confirms anomalies with the heavier classical ensemble and "
+            "a bounded neural reconstruction detector."
             if budget.mode == "research"
-            else (
-                "Expensive neighbor/covariance detectors are bounded until the native "
-                "candidate-filtering anomaly engine is available."
-                if sampling["sampled"]
-                else "Full input fits within the anomaly execution budget."
-            )
+            else "Standard/deep modes use vectorized robust and random-projection anomaly screening."
         ),
         "coverage": "sample" if sampling["sampled"] else "full",
+        "anomaly_strategy": anomaly_strategy,
         "neural_reconstruction_enabled": budget.mode == "research",
     }
     return _attach_execution(
         payload,
         budget=budget,
         sampling=sampling,
-        scope="bounded_anomaly_detection",
+        scope="adaptive_anomaly_detection",
     )
 
 
