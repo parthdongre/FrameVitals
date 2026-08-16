@@ -13,7 +13,7 @@ from typing import Any
 
 import pandas as pd
 
-from framevitals.sources import resolve_source
+from framevitals.sources import StreamingDatasetSource, resolve_source
 
 
 DataInput = str | Path | pd.DataFrame
@@ -37,10 +37,18 @@ def _named(payload: dict[str, Any], source_name: str) -> dict[str, Any]:
 
 
 def profile(data: DataInput) -> dict[str, Any]:
+    """Profile a dataset, streaming Arrow-capable file sources when available."""
+    source = resolve_source(data)
+    metadata = source.inspect()
+    if metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
+        from framevitals.streaming_profile import build_streaming_profile
+
+        return _named(build_streaming_profile(source), metadata.name)
+
     from framevitals.profiler import build_profile
 
-    dataframe, source_name = _load(data)
-    return _named(build_profile(dataframe), source_name)
+    dataframe = source.load()
+    return _named(build_profile(dataframe), metadata.name)
 
 
 def roles(data: DataInput) -> dict[str, Any]:
