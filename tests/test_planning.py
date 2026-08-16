@@ -27,14 +27,20 @@ def test_public_plan_returns_explainable_dict_compatible_plan():
     assert "preview only" in result.explain_text().lower()
 
 
-def test_deep_plan_with_target_selects_target_aware_work():
-    result = framevitals.plan(_dataset(), mode="deep", target="churn")
-    selected_ids = {item["id"] for item in result.selected}
+def test_deep_plan_keeps_target_analysis_and_reserves_modeling_for_research():
+    deep = framevitals.plan(_dataset(), mode="deep", target="churn")
+    deep_ids = {item["id"] for item in deep.selected}
 
-    assert "target_analysis" in selected_ids
-    assert "baseline_model" in selected_ids
-    assert "feature_importance" in selected_ids
-    assert result["config"]["target"] == "churn"
+    assert "target_analysis" in deep_ids
+    assert "baseline_model" not in deep_ids
+    assert "feature_importance" not in deep_ids
+    assert deep["config"]["target"] == "churn"
+
+    research = framevitals.plan(_dataset(), mode="research", target="churn")
+    research_ids = {item["id"] for item in research.selected}
+
+    assert {"target_analysis", "baseline_model", "feature_importance"} <= research_ids
+    assert research["config"]["target"] == "churn"
 
 
 def test_plan_uses_config_without_writing_artifacts(tmp_path, monkeypatch):
