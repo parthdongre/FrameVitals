@@ -5,6 +5,9 @@
 //! sketch, graph, and Python bindings can build on these primitives without
 //! coupling the analysis engine to pandas.
 
+#[cfg(feature = "arrow")]
+pub mod arrow_scan;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NumericState {
     pub count: u64,
