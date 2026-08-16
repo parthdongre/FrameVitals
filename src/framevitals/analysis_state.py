@@ -1,8 +1,8 @@
 """Mergeable analysis-state primitives.
 
-These classes are the reference semantics for FrameVitals' future Rust/Arrow
-streaming engine. A partition can be summarized independently and merged with
-another partition without concatenating raw rows.
+These classes are the reference semantics for FrameVitals' Rust/Arrow streaming
+engine. A partition can be summarized independently and merged with another
+partition without concatenating raw rows.
 """
 
 from __future__ import annotations
@@ -13,6 +13,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
+from framevitals.backends import numeric_state
 
 
 @dataclass(slots=True)
@@ -29,26 +31,25 @@ class NumericColumnState:
 
     @classmethod
     def from_series(cls, series: pd.Series) -> "NumericColumnState":
-        values = pd.to_numeric(series, errors="coerce").to_numpy(
-            dtype="float64",
-            na_value=np.nan,
-        )
-        missing = int(np.isnan(values).sum())
-        infinite = int(np.isinf(values).sum())
-        finite = values[np.isfinite(values)]
-        if finite.size == 0:
-            return cls(missing=missing, infinite=infinite)
-
-        mean = float(finite.mean())
-        centered = finite - mean
+        payload = numeric_state(series)
+        count = int(payload["count"])
+        variance = payload.get("variance")
         return cls(
-            count=int(finite.size),
-            missing=missing,
-            mean=mean,
-            m2=float(np.dot(centered, centered)),
-            minimum=float(finite.min()),
-            maximum=float(finite.max()),
-            infinite=infinite,
+            count=count,
+            missing=int(payload["missing"]),
+            mean=float(payload["mean"]) if count else 0.0,
+            m2=(float(variance) * (count - 1) if variance is not None and count >= 2 else 0.0),
+            minimum=(
+                float(payload["minimum"])
+                if payload.get("minimum") is not None
+                else None
+            ),
+            maximum=(
+                float(payload["maximum"])
+                if payload.get("maximum") is not None
+                else None
+            ),
+            infinite=int(payload["infinite"]),
         )
 
     def merge(self, other: "NumericColumnState") -> "NumericColumnState":
@@ -77,11 +78,7 @@ class NumericColumnState:
         total = self.count + other.count
         delta = other.mean - self.mean
         mean = self.mean + delta * other.count / total
-        m2 = (
-            self.m2
-            + other.m2
-            + delta * delta * self.count * other.count / total
-        )
+        m2 = self.m2 + other.m2 + delta * delta * self.count * other.count / total
         minimum = min(
             value for value in (self.minimum, other.minimum) if value is not None
         )
