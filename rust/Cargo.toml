@@ -1,3 +1,3 @@
 [workspace]
-members = ["framevitals-core"]
+members = ["framevitals-core", "framevitals-py"]
 resolver = "2"
