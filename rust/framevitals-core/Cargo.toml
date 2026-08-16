@@ -1,0 +1,11 @@
+[package]
+name = "framevitals-core"
+version = "0.1.0"
+edition = "2021"
+description = "Native streaming kernels for FrameVitals"
+license = "MIT"
+publish = false
+
+[lib]
+name = "framevitals_core"
+path = "src/lib.rs"
