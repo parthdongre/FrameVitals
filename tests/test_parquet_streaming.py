@@ -84,6 +84,48 @@ def test_large_parquet_retains_only_bounded_row_sample(tmp_path):
     assert result["missing_counts"]["value"] == int(frame["value"].isna().sum())
 
 
+def test_public_health_streams_parquet_without_calling_load(tmp_path, monkeypatch):
+    path = tmp_path / "health.parquet"
+    frame = _write_parquet(path, rows=12_000)
+
+    def fail_load(self):
+        raise AssertionError("health must not materialize the complete Parquet file")
+
+    monkeypatch.setattr(ParquetSource, "load", fail_load)
+    result = framevitals.health(path)
+
+    assert result["dataset_name"] == "health.parquet"
+    assert 0 <= result["overall_score"] <= 100
+    assert result["execution"]["method"] == "streaming_profile_with_bounded_row_sample"
+    assert result["execution"]["full_materialization"] is False
+    assert result["execution"]["source_rows"] == len(frame)
+    assert result["execution"]["sample_rows"] == len(frame)
+    assert result["execution"]["components"]["completeness"] == "full_stream_exact"
+    assert result["execution"]["components"]["outlier_safety"] == "exact"
+    expected_missing = int(frame["value"].isna().sum()) / (len(frame) * 4) * 100
+    assert result["details"]["missing_percent"] == pytest.approx(
+        round(expected_missing, 2)
+    )
+
+
+def test_large_public_health_discloses_bounded_outlier_estimate(tmp_path, monkeypatch):
+    path = tmp_path / "large-health.parquet"
+    frame = _write_parquet(path, rows=60_000)
+
+    def fail_load(self):
+        raise AssertionError("large health must stay on the streaming path")
+
+    monkeypatch.setattr(ParquetSource, "load", fail_load)
+    result = framevitals.health(path)
+
+    execution = result["execution"]
+    assert execution["full_materialization"] is False
+    assert execution["source_rows"] == len(frame)
+    assert execution["sample_rows"] == 50_000
+    assert execution["components"]["outlier_safety"] == "bounded_row_sample_estimate"
+    assert execution["components"]["uniqueness"] == "full_stream_sample_estimate"
+
+
 def test_plan_reads_only_bounded_parquet_sample_and_uses_true_shape(tmp_path, monkeypatch):
     path = tmp_path / "plan.parquet"
     frame = _write_parquet(path, rows=12_000)
