@@ -108,6 +108,36 @@ def anomalies(
     )
 
 
+def relationships(
+    data: Any,
+    *,
+    max_sample_rows: int = 512,
+    projections: int = 64,
+    min_abs_correlation: float = 0.80,
+    max_candidate_pairs: int = 250_000,
+    max_edges_returned: int = 5_000,
+) -> dict[str, Any]:
+    """Discover strong numeric relationships without a dense correlation matrix."""
+    from framevitals.relationship_graph import build_numeric_relationship_graph
+    from framevitals.sources import resolve_source
+
+    source = resolve_source(data)
+    metadata = source.inspect()
+    dataframe = source.load()
+    payload = build_numeric_relationship_graph(
+        dataframe,
+        max_sample_rows=max_sample_rows,
+        projections=projections,
+        min_abs_correlation=min_abs_correlation,
+        max_candidate_pairs=max_candidate_pairs,
+        max_edges_returned=max_edges_returned,
+    )
+    return {
+        "dataset_name": metadata.name,
+        **payload,
+    }
+
+
 def target_analysis(data: Any, *, target: str) -> dict[str, Any]:
     """Run target quality, leakage, association, and split diagnostics only."""
     from framevitals.api import target_analysis as _target_analysis
@@ -271,6 +301,7 @@ __all__ = [
     "quality",
     "statistics",
     "anomalies",
+    "relationships",
     "target_analysis",
     "analyze",
     "plan",
