@@ -5,6 +5,8 @@ from typing import Any, Mapping
 import numpy as np
 import pandas as pd
 
+from framevitals.provenance import normalize_execution
+
 
 def calculate_outlier_percent(df: pd.DataFrame):
     numeric_cols = df.select_dtypes(include=[np.number]).columns
@@ -173,18 +175,13 @@ def calculate_health_score_from_profile_sample(
         isinstance(duplicate_metadata, Mapping) and duplicate_metadata.get("sampled")
     )
 
-    return _score_payload(
-        missing_percent=missing_percent,
-        duplicate_percent=duplicate_percent,
-        outlier_percent=outlier_percent,
-        constant_columns=constant_columns,
-        high_cardinality_columns=high_cardinality_columns,
-        columns=columns,
-        outlier_details=outlier_details,
-        execution={
+    execution = normalize_execution(
+        {
             "method": "streaming_profile_with_bounded_row_sample",
             "source_rows": rows,
+            "source_columns": columns,
             "sample_rows": sample_rows,
+            "sampled": sample_rows < rows,
             "full_materialization": False,
             "components": {
                 "completeness": "full_stream_exact",
@@ -197,6 +194,18 @@ def calculate_health_score_from_profile_sample(
                 ),
             },
         },
+        method="streaming_profile_with_bounded_row_sample",
+        full_materialization=False,
+    )
+    return _score_payload(
+        missing_percent=missing_percent,
+        duplicate_percent=duplicate_percent,
+        outlier_percent=outlier_percent,
+        constant_columns=constant_columns,
+        high_cardinality_columns=high_cardinality_columns,
+        columns=columns,
+        outlier_details=outlier_details,
+        execution=execution,
     )
 
 
