@@ -1,6 +1,9 @@
 import numpy as np
+import pandas as pd
 
-from framevitals.stream_change import PageHinkleyMeanShift
+from framevitals.budgeted_analysis import run_budgeted_time_series
+from framevitals.execution import derive_execution_budget
+from framevitals.stream_change import PageHinkleyMeanShift, scan_ordered_mean_shift
 
 
 def test_page_hinkley_detects_sustained_batch_mean_shift():
@@ -42,3 +45,50 @@ def test_page_hinkley_ignores_nonfinite_observations():
 
     assert detector.count == 0
     assert detector.snapshot()["sufficient_batches"] is False
+
+
+def test_ordered_mean_shift_scan_detects_series_regime_change():
+    rng = np.random.default_rng(123)
+    series = pd.Series(np.concatenate([
+        rng.normal(0.0, 0.1, size=600),
+        rng.normal(3.0, 0.1, size=600),
+    ]))
+
+    result = scan_ordered_mean_shift(series, windows=24)
+
+    assert result["available"] is True
+    assert result["detected"] is True
+    assert result["direction"] == "up"
+    assert result["windows"] == 24
+
+
+def test_budgeted_time_series_attaches_mean_shift_when_series_is_detected(monkeypatch):
+    rows = 1_200
+    rng = np.random.default_rng(5)
+    values = np.concatenate([
+        rng.normal(0.0, 0.1, size=600),
+        rng.normal(2.5, 0.1, size=600),
+    ])
+    frame = pd.DataFrame({
+        "event_time": pd.date_range("2025-01-01", periods=rows, freq="h"),
+        "value": values,
+    })
+
+    def fake_time_series(work, target_column=None):
+        return {
+            "available": True,
+            "detected_date_column": "event_time",
+            "numeric_column": "value",
+        }
+
+    monkeypatch.setattr(
+        "framevitals.budgeted_analysis.detect_and_analyze_time_series",
+        fake_time_series,
+    )
+    budget = derive_execution_budget(rows, 2, mode="standard")
+    result = run_budgeted_time_series(frame, budget=budget)
+
+    assert result["mean_shift"]["available"] is True
+    assert result["mean_shift"]["detected"] is True
+    assert result["execution"]["mean_shift_detection_enabled"] is True
+    assert result["execution"]["method"] == "adaptive_time_series"
