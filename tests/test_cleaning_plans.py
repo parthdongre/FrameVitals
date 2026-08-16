@@ -25,12 +25,13 @@ def test_cleaning_plan_is_explicit_and_does_not_mutate_input():
 
     pd.testing.assert_frame_equal(df, original)
     assert plan["schema_version"] == "1"
-    assert plan.summary()["action_count"] == 2
+    assert plan.summary()["action_count"] == 3
     assert plan["duplicates_to_remove"] == 1
     assert plan["missing_values_to_fill"] == 2
     assert [action["type"] for action in plan.actions] == [
         "remove_duplicates",
         "fill_numeric_missing",
+        "fill_categorical_missing",
     ]
 
 
@@ -44,7 +45,7 @@ def test_apply_cleaning_plan_returns_clean_copy():
     assert len(cleaned) == 3
     assert int(cleaned.isna().sum().sum()) == 0
     assert cleaned.loc[1, "age"] == 25.0
-    assert cleaned.loc[2, "city"] == "Pune"
+    assert cleaned.loc[2, "city"] == "Mumbai"
     assert pd.isna(df.loc[1, "age"])
 
 
@@ -83,6 +84,11 @@ def test_internal_cleaner_preserves_legacy_payload_and_adds_structured_plan():
             "details": "Filled 1 missing values in 'age' using median.",
             "risk": "Medium",
         },
+        {
+            "action": "Fill categorical missing values",
+            "details": "Filled 1 missing values in 'city' using mode.",
+            "risk": "Medium",
+        },
     ]
     assert result["missing_before"] == 3
     assert result["missing_after"] == 0
@@ -105,7 +111,7 @@ def test_public_cleaning_api_supports_dataframe_and_file(tmp_path):
     file_plan = framevitals.plan_cleaning(path)
     file_cleaned = framevitals.clean(path, plan=file_plan)
 
-    assert file_plan.summary()["action_count"] == 2
+    assert file_plan.summary()["action_count"] == 3
     assert len(file_cleaned) == 3
     assert file_cleaned.isna().sum().sum() == 0
 
