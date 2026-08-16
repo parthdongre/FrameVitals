@@ -95,6 +95,10 @@ package-dir = {"" = "src"}
 where = ["src"]
 include = ["framevitals*"]
 
+[tool.maturin]
+python-source = "src"
+module-name = "framevitals._native"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
