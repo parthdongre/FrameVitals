@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from framevitals import __version__
+from framevitals.config import available_presets
 
 
 def _add_output_argument(parser: argparse.ArgumentParser) -> None:
@@ -56,18 +57,37 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument(
         "--target",
         default=None,
-        help="Optional target column.",
+        help="Optional target column. Overrides config values.",
     )
     analyze_parser.add_argument(
         "--mode",
         choices=["quick", "standard", "deep", "research"],
-        default="standard",
-        help="Analysis depth.",
+        default=None,
+        help="Analysis depth. Overrides preset/config values.",
+    )
+    analyze_parser.add_argument(
+        "--preset",
+        choices=list(available_presets()),
+        default=None,
+        help="Built-in runtime preset.",
+    )
+    analyze_parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Optional FrameVitals TOML config path.",
+    )
+    analyze_parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Parallel worker count. Overrides config values.",
     )
     analyze_parser.add_argument(
         "--artifacts",
-        action="store_true",
-        help="Persist cleaned CSV/chart artifacts.",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable/disable cleaned CSV and chart artifacts.",
     )
     analyze_parser.add_argument(
         "--format",
@@ -138,6 +158,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_output_argument(validate_parser)
 
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Resolve and inspect FrameVitals runtime configuration.",
+    )
+    config_parser.add_argument(
+        "--file",
+        type=Path,
+        default=None,
+        help="Optional TOML config file.",
+    )
+    config_parser.add_argument(
+        "--preset",
+        choices=list(available_presets()),
+        default=None,
+        help="Optional built-in preset to resolve before the config file.",
+    )
+
     return parser
 
 
@@ -161,6 +198,9 @@ def main() -> int:
             target=args.target,
             mode=args.mode,
             artifacts=args.artifacts,
+            workers=args.workers,
+            preset=args.preset,
+            config=args.config,
         )
 
         if args.output is not None:
@@ -172,6 +212,14 @@ def main() -> int:
             print(report.to_json())
         else:
             print(report.summary_text())
+            resolved = report.get("config", {})
+            if resolved:
+                print(
+                    "Config        "
+                    f"mode={resolved.get('mode')} "
+                    f"workers={resolved.get('workers')} "
+                    f"artifacts={resolved.get('artifacts')}"
+                )
             if args.output is not None:
                 print(f"Full JSON     {args.output}")
             if args.html_report is not None:
@@ -214,6 +262,13 @@ def main() -> int:
         )
         _emit(report, args.output)
         return 0 if report["valid"] else 1
+
+    if args.command == "config":
+        from framevitals.config import resolve_config
+
+        resolved = resolve_config(args.file, preset=args.preset)
+        print(json.dumps(resolved.to_dict(), indent=2))
+        return 0
 
     parser.print_help()
     return 0
