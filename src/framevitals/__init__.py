@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from framevitals.config import AnalysisConfig, available_modules
 from framevitals.planning import AnalysisPlan
-from framevitals.quality_results import DriftResult, ValidationResult
+from framevitals.quality_results import DriftResult, GateResult, ValidationResult
 from framevitals.result import AnalysisResult, ColumnResult
 from framevitals.snapshots import (
     AnalysisSnapshot,
@@ -228,6 +228,32 @@ def validate(data: Any, contract: dict[str, Any]) -> ValidationResult:
     return _validate(data, contract)
 
 
+def gate(
+    current: Any,
+    *,
+    reference: Any = None,
+    contract: Any = None,
+    columns: list[str] | None = None,
+    max_columns: int = 30,
+    drift_warn_on: str = "moderate",
+    drift_fail_on: str = "severe",
+    fail_on_validation_warning: bool = False,
+) -> GateResult:
+    """Run contract/drift checks and return one CI-friendly quality verdict."""
+    from framevitals.api import gate as _gate
+
+    return _gate(
+        current,
+        reference=reference,
+        contract=contract,
+        columns=columns,
+        max_columns=max_columns,
+        drift_warn_on=drift_warn_on,
+        drift_fail_on=drift_fail_on,
+        fail_on_validation_warning=fail_on_validation_warning,
+    )
+
+
 __all__ = [
     "AnalysisConfig",
     "AnalysisPlan",
@@ -236,6 +262,7 @@ __all__ = [
     "CleaningPlan",
     "ColumnResult",
     "DriftResult",
+    "GateResult",
     "ValidationResult",
     "profile",
     "roles",
@@ -252,6 +279,7 @@ __all__ = [
     "compare",
     "infer_contract",
     "validate",
+    "gate",
     "available_modules",
     "create_snapshot",
     "load_snapshot",
