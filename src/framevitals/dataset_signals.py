@@ -45,14 +45,24 @@ def detect_dataset_signals(
     df,
     profile: dict,
     column_roles: dict | None = None,
+    source_shape: tuple[int, int] | None = None,
 ) -> dict:
     """Produce structural signals, reusing cached pipeline metadata when supplied.
 
     ``column_roles`` is optional for backward compatibility. The main analysis
     pipeline passes its already-computed role map so this stage does not repeat
     per-column semantic scans.
+
+    ``source_shape`` lets streaming/planning callers infer value-based roles on
+    a bounded row sample while preserving true full-dataset row/column counts
+    for scale signals and missingness percentages.
     """
-    rows, cols = df.shape
+    if source_shape is None:
+        rows, cols = df.shape
+    else:
+        rows, cols = (int(source_shape[0]), int(source_shape[1]))
+        if rows < 0 or cols < 0:
+            raise ValueError("source_shape values must be non-negative.")
 
     numeric_cols = profile.get("numeric_columns", [])
     categorical_cols = profile.get("categorical_columns", [])
@@ -87,7 +97,6 @@ def detect_dataset_signals(
     target_candidates = get_columns_with_role(column_roles, "target_candidate")
     long_text = get_columns_with_role(column_roles, "long_text")
 
-    # Semantic/value-pattern roles are already computed during role inference.
     email_like = get_columns_with_role(column_roles, "email_like")
     url_like = get_columns_with_role(column_roles, "url_like")
     uuid_like = get_columns_with_role(column_roles, "uuid_like")
@@ -103,7 +112,8 @@ def detect_dataset_signals(
         column_roles,
     )
 
-    lower_map = {str(c).lower(): c for c in df.columns}
+    source_columns = profile.get("columns", list(df.columns))
+    lower_map = {str(column).lower(): column for column in source_columns}
     has_bid_ask = "bid" in lower_map and "ask" in lower_map
     has_time_series = len(time_like) > 0 and len(numeric_cols) >= 1 and rows >= 20
 
