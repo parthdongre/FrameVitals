@@ -20,10 +20,61 @@ from framevitals.dataset_signals import detect_dataset_signals
 from framevitals.execution import derive_execution_budget
 from framevitals.planning import AnalysisPlan
 from framevitals.profiler import build_profile
-from framevitals.sources import resolve_source
+from framevitals.sources import StreamingDatasetSource, resolve_source
 
 
 DataInput = str | Path | pd.DataFrame
+PLANNING_SAMPLE_ROWS = 5_000
+
+
+def _streaming_head_sample(
+    source: StreamingDatasetSource,
+    *,
+    max_rows: int = PLANNING_SAMPLE_ROWS,
+) -> pd.DataFrame:
+    """Read at most ``max_rows`` rows and stop; planning must not scan the file."""
+    frames: list[pd.DataFrame] = []
+    remaining = int(max_rows)
+    for batch in source.iter_batches(batch_size=max_rows):
+        if remaining <= 0:
+            break
+        take = min(remaining, int(batch.num_rows))
+        if take > 0:
+            frames.append(batch.slice(0, take).to_pandas())
+            remaining -= take
+        if remaining <= 0:
+            break
+    if not frames:
+        raise ValueError("Streaming dataset produced no rows for planning.")
+    return pd.concat(frames, ignore_index=True)
+
+
+def _project_sample_profile_to_source(
+    profile: dict[str, Any],
+    *,
+    source_rows: int,
+    source_columns: int,
+    sample_rows: int,
+) -> dict[str, Any]:
+    """Scale rate-based sample metrics to the true source shape for planning."""
+    projected = dict(profile)
+    factor = source_rows / max(sample_rows, 1)
+    projected["shape"] = {"rows": int(source_rows), "columns": int(source_columns)}
+    projected["missing_counts"] = {
+        column: int(round(float(value or 0) * factor))
+        for column, value in profile.get("missing_counts", {}).items()
+    }
+    sample_duplicate_rows = int(profile.get("duplicate_rows", 0) or 0)
+    projected["duplicate_rows"] = int(round(sample_duplicate_rows * factor))
+    projected["planning_sample_metadata"] = {
+        "sampled": sample_rows < source_rows,
+        "sample_rows": int(sample_rows),
+        "source_rows": int(source_rows),
+        "strategy": "bounded_head",
+        "full_scan": False,
+        "rate_metrics_projected": sample_rows < source_rows,
+    }
+    return projected
 
 
 def plan(
@@ -49,22 +100,54 @@ def plan(
 
     source = resolve_source(data)
     source_metadata = source.inspect()
-    dataframe = source.load()
 
-    if resolved.target is not None and resolved.target not in dataframe.columns:
+    if source_metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
+        dataframe = _streaming_head_sample(source)
+        source_rows = int(source_metadata.rows or len(dataframe))
+        source_columns = int(source_metadata.columns or len(dataframe.columns))
+        dataset_profile = _project_sample_profile_to_source(
+            build_profile(dataframe),
+            source_rows=source_rows,
+            source_columns=source_columns,
+            sample_rows=len(dataframe),
+        )
+        planning_data = {
+            "materialized_full_dataset": False,
+            "sampled": len(dataframe) < source_rows,
+            "sample_rows": int(len(dataframe)),
+            "source_rows": source_rows,
+            "strategy": "bounded_head",
+            "full_scan": False,
+        }
+    else:
+        dataframe = source.load()
+        source_rows = int(len(dataframe))
+        source_columns = int(len(dataframe.columns))
+        dataset_profile = build_profile(dataframe)
+        planning_data = {
+            "materialized_full_dataset": True,
+            "sampled": False,
+            "sample_rows": source_rows,
+            "source_rows": source_rows,
+            "strategy": "full_dataset",
+            "full_scan": True,
+        }
+
+    source_columns_list = list(dataset_profile.get("columns", dataframe.columns))
+    if resolved.target is not None and resolved.target not in source_columns_list:
         raise ValueError(f"Target column not found: {resolved.target}")
 
-    dataset_profile = build_profile(dataframe)
     column_roles = infer_column_roles(dataframe)
     dataset_signals = detect_dataset_signals(
         dataframe,
         dataset_profile,
         column_roles=column_roles,
+        source_shape=(source_rows, source_columns),
     )
 
     budget = derive_execution_budget(
-        len(dataframe),
-        len(dataframe.columns),
+        source_rows,
+        source_columns,
         mode=resolved.mode,
     )
 
@@ -89,6 +172,7 @@ def plan(
     return AnalysisPlan({
         "dataset_name": source_metadata.name,
         "source": source_metadata.to_dict(),
+        "planning_data": planning_data,
         "analysis_mode": resolved.mode,
         "target": resolved.target,
         "shape": dict(dataset_profile.get("shape", {})),
