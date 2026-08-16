@@ -14,6 +14,8 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -e ".[all,dev]"
+pre-commit install
+pre-commit install --hook-type pre-push
 ```
 
 On Windows PowerShell, activate the environment with:
@@ -22,7 +24,14 @@ On Windows PowerShell, activate the environment with:
 .venv\Scripts\Activate.ps1
 ```
 
-Run the test suite before making changes:
+Run the same fast local guardrails that CI enforces:
+
+```bash
+pre-commit run --all-files
+pre-commit run --all-files --hook-stage pre-push
+```
+
+Run the full test suite before opening a substantial pull request:
 
 ```bash
 pytest
@@ -78,12 +87,14 @@ The base package should not import optional stacks unless their feature is actua
 
 Current capability groups include:
 
-- `framevitals[arrow]` for Arrow-backed streaming;
+- `framevitals[arrow]` for Arrow-backed streaming and Arrow-compatible table producers;
+- `framevitals[duckdb]` for lazy DuckDB relations through Arrow transport;
 - `framevitals[excel]` for XLS/XLSX readers;
 - `framevitals[plot]` for chart/PDF plotting support;
 - `framevitals[ml]` for heavier model/explainability integrations;
 - `framevitals[ai]` for agentic AI integrations;
 - `framevitals[web]` for the Flask runtime;
+- `framevitals[docs]` for the MkDocs documentation toolchain;
 - `framevitals[all]` for all optional runtime capabilities.
 
 If a new optional dependency is introduced, prefer a lazy import plus a clear install hint. Add a dependency-boundary test when accidental eager imports would make the base install heavier or break another extra.
@@ -95,6 +106,7 @@ Useful checks include:
 ```bash
 pytest
 pytest tests/test_public_api.py
+pytest tests/test_public_surface_contract.py
 pytest tests/test_framevitals_pipeline.py
 pytest tests/test_optional_dependency_boundaries.py
 pytest tests/test_package_boundary.py
