@@ -16,11 +16,7 @@ from framevitals.findings import findings_from_signals, recommendations_from_fin
 
 
 class ColumnResult(dict):
-    """Structured view of one analyzed column.
-
-    The object is also a normal dictionary, making it easy to serialize or pass
-    to existing code while exposing common fields through attribute access.
-    """
+    """Structured view of one analyzed column."""
 
     def __getattr__(self, name: str) -> Any:
         try:
@@ -30,15 +26,7 @@ class ColumnResult(dict):
 
 
 class AnalysisResult(dict):
-    """Backward-compatible result returned by :func:`framevitals.analyze`.
-
-    Existing code can continue using dictionary access::
-
-        result["health"]["overall_score"]
-
-    while newer code can use helpers such as ``summary()``, ``column()``,
-    ``to_json()``, ``to_html()``, and ``summary_text()``.
-    """
+    """Backward-compatible result returned by :func:`framevitals.analyze`."""
 
     schema_version = "1"
 
@@ -122,13 +110,7 @@ class AnalysisResult(dict):
         }
 
     def column(self, name: str) -> ColumnResult:
-        """Return the combined profile/role view for a single column.
-
-        Raises
-        ------
-        KeyError
-            If the requested column was not part of the analyzed dataset.
-        """
+        """Return the combined profile/role view for a single column."""
         profile = self.get("profile", {})
         roles = self.get("column_roles", {})
         if not isinstance(profile, dict):
@@ -205,6 +187,15 @@ class AnalysisResult(dict):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(rendered, encoding="utf-8")
         return path
+
+    def snapshot(self, destination: str | Path | None = None):
+        """Create a compact versioned monitoring snapshot from this result."""
+        from framevitals.snapshots import create_snapshot
+
+        snapshot = create_snapshot(self)
+        if destination is not None:
+            snapshot.to_json(destination)
+        return snapshot
 
     def _repr_html_(self) -> str:
         """Provide a compact rich representation in Jupyter-compatible clients."""
