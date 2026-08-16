@@ -7,6 +7,7 @@
 
 #[cfg(feature = "arrow")]
 pub mod arrow_scan;
+pub mod categorical_sketches;
 #[cfg(feature = "arrow")]
 pub mod fused_profile;
 pub mod sketches;
