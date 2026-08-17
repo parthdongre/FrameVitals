@@ -1,0 +1,76 @@
+name: Gate Action Smoke Test
+
+on:
+  push:
+    branches: [main, dev, "develop/august"]
+    paths:
+      - action.yml
+      - pyproject.toml
+      - src/framevitals/cli.py
+      - src/framevitals/operations.py
+      - .github/workflows/action-smoke.yml
+  pull_request:
+    paths:
+      - action.yml
+      - pyproject.toml
+      - src/framevitals/cli.py
+      - src/framevitals/operations.py
+      - .github/workflows/action-smoke.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Create stable fixture datasets
+        shell: bash
+        run: |
+          cat > reference.csv <<'CSV'
+          age,income,segment
+          21,30000,basic
+          34,62000,pro
+          48,81000,pro
+          52,90000,enterprise
+          CSV
+          cp reference.csv current.csv
+
+      - name: Run local FrameVitals gate action
+        id: framevitals
+        uses: ./
+        with:
+          current: current.csv
+          reference: reference.csv
+          output: gate-result.json
+
+      - name: Verify action outputs
+        shell: bash
+        env:
+          STATUS: ${{ steps.framevitals.outputs.status }}
+          PASSED: ${{ steps.framevitals.outputs.passed }}
+          RESULT_PATH: ${{ steps.framevitals.outputs.result-path }}
+        run: |
+          test "$STATUS" = "pass"
+          test "$PASSED" = "true"
+          test "$RESULT_PATH" = "gate-result.json"
+          test -s gate-result.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("gate-result.json").read_text(encoding="utf-8"))
+          assert payload["status"] == "pass"
+          assert payload["passed"] is True
+          assert payload["checks_run"] == ["drift"]
+          PY

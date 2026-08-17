@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "framevitals"
-version = "0.1.0"
+version = "0.2.0"
 description = "Data quality, drift detection, anomaly analysis, and ML-readiness diagnostics for pandas and tabular data."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,21 +31,25 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Information Analysis",
+    "Typing :: Typed",
 ]
 dependencies = [
     "pandas>=2.2",
     "numpy>=1.26",
-    "matplotlib>=3.8",
-    "seaborn>=0.13",
-    "openpyxl>=3.1",
-    "xlrd>=2.0",
     "scipy>=1.13",
     "statsmodels>=0.14",
     "scikit-learn>=1.5",
-    "pydantic>=2.7",
 ]
 
 [project.optional-dependencies]
+excel = [
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
+]
+plot = [
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+]
 ml = [
     "xgboost>=2.0",
     "lightgbm>=4.3",
@@ -54,21 +58,40 @@ ml = [
 ]
 ai = [
     "ollama>=0.3",
+    "pydantic>=2.7",
 ]
 web = [
     "flask>=3.0",
     "gunicorn>=22.0",
     "werkzeug>=3.0",
 ]
+arrow = [
+    "pyarrow>=25.0,<26",
+]
+duckdb = [
+    "duckdb>=1.4",
+    "pyarrow>=25.0,<26",
+]
+docs = [
+    "mkdocs",
+    "mkdocs-material",
+]
 all = [
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
     "xgboost>=2.0",
     "lightgbm>=4.3",
     "pyod>=2.0",
     "shap>=0.45",
     "ollama>=0.3",
+    "pydantic>=2.7",
     "flask>=3.0",
     "gunicorn>=22.0",
     "werkzeug>=3.0",
+    "pyarrow>=25.0,<26",
+    "duckdb>=1.4",
 ]
 dev = [
     "pytest>=8.2",
@@ -77,13 +100,19 @@ dev = [
     "build>=1.2",
     "twine>=5.1",
     "ruff>=0.6",
+    "pre-commit>=4.0",
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "pydantic>=2.7",
 ]
 
 [project.scripts]
 framevitals = "framevitals.cli:main"
 
 [project.urls]
-Documentation = "https://github.com/parthdongre/FrameVitals#readme"
+Documentation = "https://github.com/parthdongre/FrameVitals/tree/main/docs"
 Repository = "https://github.com/parthdongre/FrameVitals"
 Issues = "https://github.com/parthdongre/FrameVitals/issues"
 Changelog = "https://github.com/parthdongre/FrameVitals/blob/main/CHANGELOG.md"
@@ -94,6 +123,13 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["framevitals*"]
+
+[tool.setuptools.package-data]
+framevitals = ["py.typed"]
+
+[tool.maturin]
+python-source = "src"
+module-name = "framevitals._native"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

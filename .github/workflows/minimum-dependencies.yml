@@ -1,0 +1,86 @@
+name: Minimum Dependencies
+
+on:
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "src/framevitals/**"
+      - "tests/**"
+      - ".github/workflows/minimum-dependencies.yml"
+  push:
+    branches: [main, dev, "develop/august"]
+    paths:
+      - "pyproject.toml"
+      - "src/framevitals/**"
+      - "tests/**"
+      - ".github/workflows/minimum-dependencies.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lower-bounds:
+    name: Python 3.11 lower bounds
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install declared minimum core dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            "numpy==1.26.0" \
+            "pandas==2.2.0" \
+            "scipy==1.13.0" \
+            "statsmodels==0.14.0" \
+            "scikit-learn==1.5.0" \
+            "pytest>=8.2" \
+            "hypothesis>=6.100"
+          pip install --no-deps -e .
+
+      - name: Verify dependency consistency
+        run: python -m pip check
+
+      - name: Verify installed lower bounds
+        run: |
+          python - <<'PY'
+          import numpy
+          import pandas
+          import scipy
+          import sklearn
+          import statsmodels
+
+          expected = {
+              "numpy": "1.26.0",
+              "pandas": "2.2.0",
+              "scipy": "1.13.0",
+              "sklearn": "1.5.0",
+              "statsmodels": "0.14.0",
+          }
+          observed = {
+              "numpy": numpy.__version__,
+              "pandas": pandas.__version__,
+              "scipy": scipy.__version__,
+              "sklearn": sklearn.__version__,
+              "statsmodels": statsmodels.__version__,
+          }
+          assert observed == expected, (observed, expected)
+          PY
+
+      - name: Run core test suite at lower bounds
+        run: pytest -q

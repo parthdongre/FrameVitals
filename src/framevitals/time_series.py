@@ -243,7 +243,6 @@ def _guess_period_via_fft(values: np.ndarray, freq_label: str) -> int | None:
 # ---------------------------------------------------------------------------
 
 def _stationarity(series: pd.Series) -> dict:
-    out: dict[str, Any] = {"available": False}
     s = series.dropna()
     if len(s) < 30:
         return {"available": False, "reason": "n<30"}

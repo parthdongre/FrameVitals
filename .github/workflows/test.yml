@@ -2,8 +2,15 @@ name: Tests
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, "develop/august"]
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   quality:
@@ -34,8 +41,7 @@ jobs:
       - name: Check undefined-name and scope errors
         run: ruff check src/framevitals tests --select F821,F822,F823
 
-      - name: Report broader dead-code lint debt
-        continue-on-error: true
+      - name: Check unused imports and assignments
         run: ruff check src/framevitals tests --select F401,F841
 
   core:
@@ -86,6 +92,152 @@ jobs:
       - name: Run tests
         run: pytest -v
 
+  native-core:
+    name: native core (Rust + Python bridge)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Configure Rust tooling
+        run: |
+          rustup default stable
+          rustup component add rustfmt clippy
+          rustc --version
+          cargo --version
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path rust/Cargo.toml --all -- --check
+
+      - name: Test Rust workspace
+        run: cargo test --manifest-path rust/Cargo.toml --workspace --all-targets --all-features
+
+      - name: Lint Rust workspace
+        run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+
+      - name: Install native build tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            "maturin>=1.14,<2" \
+            "numpy>=1.26" \
+            "pandas>=2.2" \
+            "pyarrow>=25.0,<26"
+
+      - name: Build native Python wheel
+        run: |
+          maturin build \
+            --release \
+            --manifest-path rust/framevitals-py/Cargo.toml \
+            --interpreter python \
+            --out dist-native
+
+      - name: Verify native Python bridge and streaming profiler routing
+        run: |
+          pip install --force-reinstall --no-deps dist-native/*.whl
+          FRAMEVITALS_BACKEND=rust python - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          import numpy as np
+          import pandas as pd
+          import pyarrow as pa
+          import pyarrow.parquet as pq
+
+          import framevitals
+          from framevitals import _native
+          from framevitals.profiler import build_profile
+
+          values = np.ascontiguousarray(
+              np.array([1.0, 2.0, np.nan, np.inf, 4.0, 4.0], dtype=np.float64)
+          )
+          state = _native.numeric_state_f64(values)
+          assert state["backend"] == "rust"
+          assert state["count"] == 4
+          assert state["missing"] == 1
+          assert state["infinite"] == 1
+          assert abs(state["mean"] - 2.75) < 1e-12
+
+          native_profile = _native.numeric_profile_f64(values, stream_id=17)
+          assert native_profile["cardinality_estimate"] >= 3
+          assert native_profile["quantiles"]["p50"] is not None
+          assert native_profile["reservoir"]
+
+          accumulator = _native.NumericAccumulator(stream_id=29)
+          accumulator.update_f64(values[:3])
+          accumulator.update_f64(values[3:])
+          accumulated = accumulator.snapshot()
+          assert accumulator.observations == len(values)
+          assert accumulated["count"] == state["count"]
+          assert accumulated["missing"] == state["missing"]
+          assert accumulated["infinite"] == state["infinite"]
+
+          public_profile = build_profile(pd.DataFrame({
+              "value": [1.0, 2.0, None, 4.0, 4.0],
+              "other": [10.0, 20.0, 30.0, 40.0, 50.0],
+          }))
+          assert public_profile["numeric_summary_metadata"]["backend"] == "rust"
+          assert public_profile["numeric_summary_metadata"]["approximate_quantiles"] is True
+          assert public_profile["missing_counts"]["value"] == 1
+          assert public_profile["numeric_summary"]["value"]["count"] == 4
+
+          with TemporaryDirectory() as directory:
+              path = Path(directory) / "native-stream.parquet"
+              frame = pd.DataFrame({
+                  "value": np.arange(20_000, dtype=np.float64),
+                  "other": np.arange(20_000, dtype=np.float64) * 3.0,
+                  "group": [f"g-{index % 5}" for index in range(20_000)],
+              })
+              frame.loc[::97, "value"] = np.nan
+              pq.write_table(pa.Table.from_pandas(frame, preserve_index=False), path, row_group_size=777)
+              streamed = framevitals.profile(path)
+              assert streamed["streaming_metadata"]["full_materialization"] is False
+              assert streamed["streaming_metadata"]["numeric_backend"] == "rust"
+              assert streamed["numeric_summary_metadata"]["backend"] == "rust"
+              assert streamed["missing_counts"]["value"] == int(frame["value"].isna().sum())
+              assert streamed["numeric_summary"]["value"]["count"] == int(frame["value"].notna().sum())
+
+          print(_native.backend_info())
+          PY
+
+  arrow-streaming:
+    name: Arrow streaming (Python 3.12, NumPy fallback)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install Arrow capability
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[arrow,dev]"
+
+      - name: Verify dependency consistency
+        run: python -m pip check
+
+      - name: Run streaming source tests without native extension
+        env:
+          FRAMEVITALS_BACKEND: numpy
+        run: pytest -v tests/test_parquet_streaming.py tests/test_statistics_streaming.py tests/test_streaming_drift.py tests/test_csv_streaming.py tests/test_arrow_memory.py tests/test_cli_gate_streaming.py
+
   optional-features:
     name: optional features (Python 3.12)
     runs-on: ubuntu-latest
@@ -116,9 +268,15 @@ jobs:
           python - <<'PY'
           import flask
           import lightgbm
+          import matplotlib
           import ollama
+          import openpyxl
+          import pydantic
+          import pyarrow
           import pyod
+          import seaborn
           import shap
+          import xlrd
           import xgboost
           print("Optional dependency smoke test passed")
           PY
@@ -128,7 +286,9 @@ jobs:
           pytest -v \
             tests/test_ai_agent.py \
             tests/test_ml_engine.py \
-            tests/test_model_diagnostics.py
+            tests/test_model_diagnostics.py \
+            tests/test_visualization_engine.py \
+            tests/test_web_dependency_boundaries.py
 
   frontend:
     name: frontend build

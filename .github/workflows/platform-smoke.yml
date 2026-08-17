@@ -1,0 +1,84 @@
+name: Platform Smoke
+
+on:
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "src/framevitals/**"
+      - "tests/test_public_api.py"
+      - "tests/test_public_surface_contract.py"
+      - "tests/test_source_inspection.py"
+      - "tests/test_diagnostic_results.py"
+      - "tests/test_snapshots.py"
+      - "tests/test_cli.py"
+      - "tests/test_cli_monitoring.py"
+      - "tests/test_cli_system_info.py"
+      - ".github/workflows/platform-smoke.yml"
+  push:
+    branches: [main, dev, "develop/august"]
+    paths:
+      - "pyproject.toml"
+      - "src/framevitals/**"
+      - "tests/test_public_api.py"
+      - "tests/test_public_surface_contract.py"
+      - "tests/test_source_inspection.py"
+      - "tests/test_diagnostic_results.py"
+      - "tests/test_snapshots.py"
+      - "tests/test_cli.py"
+      - "tests/test_cli_monitoring.py"
+      - "tests/test_cli_system_info.py"
+      - ".github/workflows/platform-smoke.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: ${{ matrix.os }} / Python 3.12
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install core package and test tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Verify dependency consistency
+        run: python -m pip check
+
+      - name: Verify CLI install
+        run: |
+          framevitals --version
+          framevitals --help
+
+      - name: Run cross-platform public smoke suite
+        run: >-
+          python -m pytest -q
+          tests/test_public_api.py
+          tests/test_public_surface_contract.py
+          tests/test_source_inspection.py
+          tests/test_diagnostic_results.py
+          tests/test_snapshots.py
+          tests/test_cli.py
+          tests/test_cli_monitoring.py
+          tests/test_cli_system_info.py

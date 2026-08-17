@@ -1,3 +1,5 @@
+from importlib.metadata import version as distribution_version
+
 import pandas as pd
 import pytest
 
@@ -5,7 +7,7 @@ import framevitals
 
 
 def test_package_version():
-    assert framevitals.__version__ == "0.1.0"
+    assert framevitals.__version__ == distribution_version("framevitals")
 
 
 def test_analyze_is_public():

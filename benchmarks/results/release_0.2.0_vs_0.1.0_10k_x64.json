@@ -1,0 +1,322 @@
+{
+  "benchmark_schema_version": 1,
+  "comparison": "FrameVitals 0.2.0 vs 0.1.0",
+  "old_ref": "v0.1.0@3da1432168fbfcb3dbe99fcfb6f6200f5e63214b",
+  "new_ref": "develop/august@05b11e594995a3833ec08f5b4a8a145197bf4cab",
+  "dataset": {
+    "rows": 10000,
+    "columns": 64,
+    "cells": 640000,
+    "format": "csv",
+    "bytes": 2811188,
+    "c000": {
+      "count": 10000,
+      "mean": -1.4965,
+      "min": -1000,
+      "max": 998
+    }
+  },
+  "methodology": {
+    "runner": "GitHub Actions ubuntu-latest",
+    "python": "3.11",
+    "warmups_per_version_mode": 1,
+    "measured_repetitions_per_version_mode": 3,
+    "measurement_order": "ABBAAB",
+    "public_api": "framevitals.analyze(path, mode=..., artifacts=False)",
+    "scope": "all 10,000 rows and all 64 columns in both releases",
+    "dependency_stack": {
+      "numpy": "1.26.0",
+      "pandas": "2.2.0",
+      "scipy": "1.13.0",
+      "statsmodels": "0.14.0",
+      "scikit-learn": "1.5.0",
+      "pyarrow": "25.0.0"
+    }
+  },
+  "modes": {
+    "quick": {
+      "0.1.0": {
+        "wall_seconds": [
+          1.6478449049999995,
+          1.619613931999993,
+          1.6437554540000008
+        ],
+        "median_wall_seconds": 1.6437554540000008,
+        "min_wall_seconds": 1.619613931999993,
+        "max_wall_seconds": 1.6478449049999995,
+        "peak_rss_mb": [
+          234.6953125,
+          234.5390625,
+          234.6796875
+        ],
+        "median_peak_rss_mb": 234.6796875,
+        "backend": {
+          "selected": "legacy-python",
+          "native_available": false
+        },
+        "profiled_columns": 64,
+        "full_materialization": null
+      },
+      "0.2.0": {
+        "wall_seconds": [
+          0.6861838410000018,
+          0.6908588409999936,
+          0.691870496000007
+        ],
+        "median_wall_seconds": 0.6908588409999936,
+        "min_wall_seconds": 0.6861838410000018,
+        "max_wall_seconds": 0.691870496000007,
+        "peak_rss_mb": [
+          239.72265625,
+          238.875,
+          239.515625
+        ],
+        "median_peak_rss_mb": 239.515625,
+        "backend": {
+          "selected": "rust",
+          "native_available": true,
+          "environment_override": "rust",
+          "eligible": [
+            "numpy",
+            "rust"
+          ]
+        },
+        "profiled_columns": 64,
+        "full_materialization": null
+      },
+      "speedup_x": 2.3792927823297783,
+      "wall_time_reduction_percent": 57.970704260246166,
+      "peak_rss_reduction_percent": -2.0606544825060746
+    },
+    "standard": {
+      "0.1.0": {
+        "wall_seconds": [
+          141.083503924,
+          141.13010660999998,
+          140.708747796
+        ],
+        "median_wall_seconds": 141.083503924,
+        "min_wall_seconds": 140.708747796,
+        "max_wall_seconds": 141.13010660999998,
+        "peak_rss_mb": [
+          2737.171875,
+          2736.421875,
+          2736.7265625
+        ],
+        "median_peak_rss_mb": 2736.7265625,
+        "backend": {
+          "selected": "legacy-python",
+          "native_available": false
+        },
+        "profiled_columns": 64,
+        "full_materialization": null
+      },
+      "0.2.0": {
+        "wall_seconds": [
+          0.8411333409999884,
+          0.822897117000025,
+          0.8394920780000348
+        ],
+        "median_wall_seconds": 0.8394920780000348,
+        "min_wall_seconds": 0.822897117000025,
+        "max_wall_seconds": 0.8411333409999884,
+        "peak_rss_mb": [
+          265.33984375,
+          264.4296875,
+          264.8984375
+        ],
+        "median_peak_rss_mb": 264.8984375,
+        "backend": {
+          "selected": "rust",
+          "native_available": true,
+          "environment_override": "rust",
+          "eligible": [
+            "numpy",
+            "rust"
+          ]
+        },
+        "profiled_columns": 64,
+        "full_materialization": null
+      },
+      "speedup_x": 168.05817186519556,
+      "wall_time_reduction_percent": 99.40496794121852,
+      "peak_rss_reduction_percent": 90.32060998969457
+    }
+  },
+  "measurements": [
+    {
+      "version": "0.1.0",
+      "mode": "quick",
+      "elapsed_seconds": 1.6478449049999995,
+      "peak_rss_mb": 234.6953125,
+      "profiled_columns": 64,
+      "backend_status": {
+        "selected": "legacy-python",
+        "native_available": false
+      },
+      "full_materialization": null
+    },
+    {
+      "version": "0.1.0",
+      "mode": "quick",
+      "elapsed_seconds": 1.619613931999993,
+      "peak_rss_mb": 234.5390625,
+      "profiled_columns": 64,
+      "backend_status": {
+        "selected": "legacy-python",
+        "native_available": false
+      },
+      "full_materialization": null
+    },
+    {
+      "version": "0.1.0",
+      "mode": "quick",
+      "elapsed_seconds": 1.6437554540000008,
+      "peak_rss_mb": 234.6796875,
+      "profiled_columns": 64,
+      "backend_status": {
+        "selected": "legacy-python",
+        "native_available": false
+      },
+      "full_materialization": null
+    },
+    {
+      "version": "0.2.0",
+      "mode": "quick",
+      "elapsed_seconds": 0.6861838410000018,
+      "peak_rss_mb": 239.72265625,
+      "profiled_columns": 64,
+      "backend_status": {
+        "selected": "rust",
+        "native_available": true,
+        "environment_override": "rust",
+        "eligible": [
+          "numpy",
+          "rust"
+        ]
+      },
+      "full_materialization": null
+    },
+    {
+      "version": "0.2.0",
+      "mode": "quick",
+      "elapsed_seconds": 0.6908588409999936,
+      "peak_rss_mb": 238.875,
+      "profiled_columns": 64,
+      "backend_status": {
+        "selected": "rust",
+        "native_available": true,
+        "environment_override": "rust",
+        "eligible": [
+          "numpy",
+          "rust"
+        ]
+      },
+      "full_materialization": null
+    },
+    {
+      "version": "0.2.0",
+      "mode": "quick",
+      "elapsed_seconds": 0.691870496000007,
+      "peak_rss_mb": 239.515625,
+      "profiled_columns": 64,
+      "backend_status": {
+        "selected": "rust",
+        "native_available": true,
+        "environment_override": "rust",
+        "eligible": [
+          "numpy",
+          "rust"
+        ]
+      },
+      "full_materialization": null
+    },
+    {
+      "version": "0.1.0",
+      "mode": "standard",
+      "elapsed_seconds": 141.083503924,
+      "peak_rss_mb": 2737.171875,
+      "profiled_columns": 64,
+      "backend_status": {
+        "selected": "legacy-python",
+        "native_available": false
+      },
+      "full_materialization": null
+    },
+    {
+      "version": "0.1.0",
+      "mode": "standard",
+      "elapsed_seconds": 141.13010660999998,
+      "peak_rss_mb": 2736.421875,
+      "profiled_columns": 64,
+      "backend_status": {
+        "selected": "legacy-python",
+        "native_available": false
+      },
+      "full_materialization": null
+    },
+    {
+      "version": "0.1.0",
+      "mode": "standard",
+      "elapsed_seconds": 140.708747796,
+      "peak_rss_mb": 2736.7265625,
+      "profiled_columns": 64,
+      "backend_status": {
+        "selected": "legacy-python",
+        "native_available": false
+      },
+      "full_materialization": null
+    },
+    {
+      "version": "0.2.0",
+      "mode": "standard",
+      "elapsed_seconds": 0.8411333409999884,
+      "peak_rss_mb": 265.33984375,
+      "profiled_columns": 64,
+      "backend_status": {
+        "selected": "rust",
+        "native_available": true,
+        "environment_override": "rust",
+        "eligible": [
+          "numpy",
+          "rust"
+        ]
+      },
+      "full_materialization": null
+    },
+    {
+      "version": "0.2.0",
+      "mode": "standard",
+      "elapsed_seconds": 0.822897117000025,
+      "peak_rss_mb": 264.4296875,
+      "profiled_columns": 64,
+      "backend_status": {
+        "selected": "rust",
+        "native_available": true,
+        "environment_override": "rust",
+        "eligible": [
+          "numpy",
+          "rust"
+        ]
+      },
+      "full_materialization": null
+    },
+    {
+      "version": "0.2.0",
+      "mode": "standard",
+      "elapsed_seconds": 0.8394920780000348,
+      "peak_rss_mb": 264.8984375,
+      "profiled_columns": 64,
+      "backend_status": {
+        "selected": "rust",
+        "native_available": true,
+        "environment_override": "rust",
+        "eligible": [
+          "numpy",
+          "rust"
+        ]
+      },
+      "full_materialization": null
+    }
+  ]
+}

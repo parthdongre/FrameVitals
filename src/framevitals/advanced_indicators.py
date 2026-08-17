@@ -1,10 +1,35 @@
+from __future__ import annotations
+
+import re
+
 import numpy as np
 import pandas as pd
 
-SENSITIVE_KEYWORDS = [
-    "gender", "sex", "age", "race", "religion",
-    "region", "location", "income", "salary", "caste",
-]
+SENSITIVE_KEYWORDS = {
+    "gender",
+    "sex",
+    "age",
+    "race",
+    "religion",
+    "region",
+    "location",
+    "income",
+    "salary",
+    "caste",
+}
+
+
+def _column_tokens(name: object) -> set[str]:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(name).strip().lower()).strip("_")
+    return {token for token in normalized.split("_") if token}
+
+
+def _bounded_non_null_sample(series: pd.Series, max_rows: int = 200) -> pd.Series:
+    clean = series.dropna()
+    if len(clean) <= max_rows:
+        return clean
+    positions = np.linspace(0, len(clean) - 1, num=max_rows, dtype=np.int64)
+    return clean.iloc[np.unique(positions)]
 
 
 def calculate_column_utility(df):
@@ -45,37 +70,65 @@ def calculate_column_utility(df):
 
 
 def calculate_anomalies(df):
+    """Calculate simple IQR anomaly density using O(rows) auxiliary memory."""
     numeric = df.select_dtypes(include=[np.number])
 
     if numeric.empty:
         return {"anomalous_rows": 0, "highest_score": 0, "top_rows": []}
 
-    flags = pd.DataFrame(index=df.index)
+    # The old implementation materialized one boolean column per numeric
+    # feature. A single counter vector produces the identical row score while
+    # avoiding O(rows * numeric_columns) temporary memory.
+    row_hits = np.zeros(len(df), dtype=np.uint32)
+    usable_columns = 0
 
     for col in numeric.columns:
-        q1 = numeric[col].quantile(0.25)
-        q3 = numeric[col].quantile(0.75)
+        series = numeric[col]
+        q1 = series.quantile(0.25)
+        q3 = series.quantile(0.75)
         iqr = q3 - q1
 
         if pd.isna(iqr) or iqr == 0:
-            flags[col] = False
             continue
 
         lower = q1 - 1.5 * iqr
         upper = q3 + 1.5 * iqr
-        flags[col] = (numeric[col] < lower) | (numeric[col] > upper)
+        mask = ((series < lower) | (series > upper)).to_numpy(dtype=bool)
+        row_hits += mask
+        usable_columns += 1
 
-    scores = flags.sum(axis=1) / max(len(numeric.columns), 1)
-    top = scores.sort_values(ascending=False).head(10)
+    denominator = max(usable_columns, 1)
+    scores = row_hits.astype(np.float64) / denominator
+    anomalous_mask = row_hits > 0
+
+    if not anomalous_mask.any():
+        return {"anomalous_rows": 0, "highest_score": 0, "top_rows": []}
+
+    top_count = min(10, len(scores))
+    candidate_positions = np.argpartition(scores, -top_count)[-top_count:]
+    candidate_positions = candidate_positions[
+        np.argsort(scores[candidate_positions])[::-1]
+    ]
+
+    top_rows = []
+    for position in candidate_positions:
+        score = float(scores[position])
+        if score <= 0:
+            continue
+        index_value = df.index[int(position)]
+        top_rows.append({
+            "row_index": (
+                int(index_value)
+                if isinstance(index_value, (int, np.integer))
+                else str(index_value)
+            ),
+            "score": round(score, 3),
+        })
 
     return {
-        "anomalous_rows": int((scores > 0).sum()),
+        "anomalous_rows": int(anomalous_mask.sum()),
         "highest_score": round(float(scores.max()), 3),
-        "top_rows": [
-            {"row_index": int(idx), "score": round(float(score), 3)}
-            for idx, score in top.items()
-            if score > 0
-        ],
+        "top_rows": top_rows,
     }
 
 
@@ -83,8 +136,8 @@ def detect_fairness_review(df):
     found = []
 
     for col in df.columns:
-        lower_col = col.lower()
-        if any(keyword in lower_col for keyword in SENSITIVE_KEYWORDS):
+        tokens = _column_tokens(col)
+        if tokens & SENSITIVE_KEYWORDS:
             found.append(col)
 
     if found:
@@ -102,21 +155,34 @@ def detect_fairness_review(df):
 
 
 def calculate_freshness(df):
-    date_columns = []
+    """Detect a date column with bounded screening and one full parse at most."""
+    candidates: list[tuple[float, str]] = []
 
     for col in df.columns:
-        if pd.api.types.is_numeric_dtype(df[col]):
+        series = df[col]
+        if pd.api.types.is_numeric_dtype(series):
             continue
 
-        parsed = pd.to_datetime(df[col], errors="coerce", format="mixed")
+        sample = _bounded_non_null_sample(series, 200)
+        if sample.empty:
+            continue
 
-        if parsed.notna().mean() >= 0.7:
-            date_columns.append((col, parsed))
+        parsed_sample = pd.to_datetime(sample, errors="coerce", format="mixed")
+        parse_rate = float(parsed_sample.notna().mean())
+        if parse_rate >= 0.7:
+            candidates.append((parse_rate, col))
 
-    if not date_columns:
+    if not candidates:
         return {"available": False, "message": "No strong date column detected."}
 
-    col, parsed = date_columns[0]
+    # Parse only the strongest candidate across the complete column. Future
+    # Arrow/Rust sources will calculate extrema while streaming instead.
+    candidates.sort(key=lambda item: (-item[0], item[1]))
+    _, col = candidates[0]
+    parsed = pd.to_datetime(df[col], errors="coerce", format="mixed")
+    if parsed.notna().mean() < 0.7:
+        return {"available": False, "message": "No strong date column detected."}
+
     min_date = parsed.min()
     max_date = parsed.max()
 

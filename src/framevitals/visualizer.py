@@ -12,7 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import Wedge, Patch
+from matplotlib.patches import Patch
 import seaborn as sns
 import numpy as np
 import pandas as pd
@@ -484,7 +484,7 @@ def _chart_pareto_categorical(did, df, col):
     cum = counts.cumsum() / counts.sum() * 100
 
     fig, ax1 = plt.subplots(figsize=(10, 5.2))
-    bars = ax1.bar(range(len(counts)), counts.values, color=ACCENT,
+    ax1.bar(range(len(counts)), counts.values, color=ACCENT,
                    edgecolor=BG_PAGE, linewidth=1.0, width=0.65, zorder=3)
     ax1.set_xticks(range(len(counts)))
     ax1.set_xticklabels([str(x)[:18] for x in counts.index],
@@ -1020,7 +1020,7 @@ def generate_charts(
                 chart = _chart_time_series_trend(dataset_id, df, time_series)
             elif t == "bivariate_highlights":
                 chart = _chart_bivariate_highlights(dataset_id, deep_statistics_v2)
-        except Exception as exc:  # noqa: BLE001 — never let a single chart kill the run
+        except Exception:  # noqa: BLE001 — never let a single chart kill the run
             chart = None
             # We deliberately don't log here at WARN level because chart fallout
             # is expected (e.g. all-NaN columns, single-class targets, etc.).

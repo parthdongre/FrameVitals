@@ -1,16 +1,18 @@
 """
 Column Role Inference Engine
 ============================
-Assigns semantic roles to each column based on name keywords,
-dtype, unique ratio, missingness, and statistical properties.
-
-Each column receives a SET of roles (not a single label),
-enabling downstream modules to make informed decisions.
+Assigns semantic roles to each column based on name keywords, dtype, unique
+ratio, missingness, statistical properties, and bounded value-pattern samples.
 """
+
+from __future__ import annotations
 
 import re
 
+import numpy as np
 import pandas as pd
+
+from framevitals.semantic_types import infer_semantic_types
 
 ID_KEYWORDS = [
     "id", "uuid", "hash", "key", "identifier", "index",
@@ -56,14 +58,56 @@ TARGET_HINT_KEYWORDS = [
     "pass", "fail", "approved", "rejected",
 ]
 
+SEMANTIC_ROLE_MAP = {
+    "email": "email_like",
+    "url": "url_like",
+    "uuid": "uuid_like",
+    "ip_address": "ip_address_like",
+    "phone": "phone_like",
+    "percentage": "percentage_like",
+    "currency": "currency_like",
+    "json": "json_like",
+    "boolean_token": "boolean_token_like",
+}
+
+
+def _normalise_name(value: object) -> tuple[str, tuple[str, ...]]:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower()).strip("_")
+    return normalized, tuple(token for token in normalized.split("_") if token)
+
 
 def _name_matches(column_name: str, keywords: list) -> bool:
-    lower = column_name.lower().replace("-", "_")
-    return any(kw in lower for kw in keywords)
+    """Match keyword tokens/phrases without unsafe substring collisions.
+
+    This prevents names such as ``paid_amount`` from matching ``id`` and
+    ``average_score`` from matching ``age`` while retaining conventional names
+    such as ``customer_id``, ``created_at``, and ``roll_number``.
+    """
+    normalized, tokens = _normalise_name(column_name)
+    token_set = set(tokens)
+
+    for keyword in keywords:
+        keyword_normalized, keyword_tokens = _normalise_name(keyword)
+        if not keyword_normalized:
+            continue
+        if normalized == keyword_normalized:
+            return True
+        if len(keyword_tokens) == 1 and keyword_tokens[0] in token_set:
+            return True
+        if len(keyword_tokens) > 1:
+            width = len(keyword_tokens)
+            for start in range(0, len(tokens) - width + 1):
+                if tokens[start : start + width] == keyword_tokens:
+                    return True
+    return False
 
 
-def _safe_unique_ratio(series: pd.Series) -> float:
-    return series.nunique(dropna=True) / max(len(series), 1)
+def _bounded_text_sample(series: pd.Series, max_rows: int = 500) -> pd.Series:
+    clean = series.dropna()
+    if len(clean) <= max_rows:
+        return clean.astype(str)
+    positions = np.linspace(0, len(clean) - 1, num=max_rows, dtype=np.int64)
+    return clean.iloc[np.unique(positions)].astype(str)
 
 
 def _classify_missingness(missing_percent: float) -> str:
@@ -95,6 +139,13 @@ def _infer_single_column_roles(column: str, series: pd.Series, rows: int) -> dic
         or pd.api.types.is_string_dtype(series.dtype)
         or isinstance(series.dtype, pd.CategoricalDtype)
     )
+
+    semantic = (
+        infer_semantic_types(series)
+        if is_text
+        else {"primary": None, "candidates": [], "sample_size": 0}
+    )
+    semantic_primary = semantic.get("primary")
 
     if is_numeric:
         roles.add("numeric")
@@ -131,16 +182,26 @@ def _infer_single_column_roles(column: str, series: pd.Series, rows: int) -> dic
     if _name_matches(column, TARGET_HINT_KEYWORDS):
         roles.add("target_hint")
 
+    if semantic_primary in SEMANTIC_ROLE_MAP:
+        roles.add(SEMANTIC_ROLE_MAP[semantic_primary])
+    if semantic_primary in {"email", "phone", "ip_address"}:
+        roles.add("sensitive")
+    if semantic_primary == "uuid":
+        roles.add("id_like")
+    if semantic_primary == "currency":
+        roles.add("price_like")
+
     if not is_numeric and not is_bool:
-        sample = series.dropna().astype(str).head(30)
+        sample = _bounded_text_sample(series, 30)
         if len(sample) > 0:
             parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
             if parsed.notna().mean() >= 0.7:
                 roles.add("time_like")
 
     if is_text:
-        lengths = series.dropna().astype(str).str.len()
-        if len(lengths) > 0:
+        sample = _bounded_text_sample(series, 500)
+        if len(sample) > 0:
+            lengths = sample.str.len()
             avg_len = float(lengths.mean())
             max_len = int(lengths.max())
             if avg_len > 50 or max_len > 200:
@@ -169,6 +230,9 @@ def _infer_single_column_roles(column: str, series: pd.Series, rows: int) -> dic
         "non_missing_count": non_missing,
         "is_numeric": bool(is_numeric),
         "is_categorical": bool(is_text or is_bool),
+        "semantic_type": semantic_primary,
+        "semantic_candidates": semantic.get("candidates", []),
+        "semantic_sample_size": int(semantic.get("sample_size", 0)),
     }
 
 
@@ -234,6 +298,15 @@ def summarize_roles(column_roles: dict) -> dict:
             column_roles, "regression_target_candidate"
         ),
         "sensitive": get_columns_with_role(column_roles, "sensitive"),
+        "email_like": get_columns_with_role(column_roles, "email_like"),
+        "url_like": get_columns_with_role(column_roles, "url_like"),
+        "uuid_like": get_columns_with_role(column_roles, "uuid_like"),
+        "ip_address_like": get_columns_with_role(column_roles, "ip_address_like"),
+        "phone_like": get_columns_with_role(column_roles, "phone_like"),
+        "percentage_like": get_columns_with_role(column_roles, "percentage_like"),
+        "currency_like": get_columns_with_role(column_roles, "currency_like"),
+        "json_like": get_columns_with_role(column_roles, "json_like"),
+        "boolean_token_like": get_columns_with_role(column_roles, "boolean_token_like"),
         "high_missing": [
             col for col, info in column_roles.items()
             if info["missing_percent"] >= 20

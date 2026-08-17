@@ -1,0 +1,62 @@
+name: Interoperability
+
+on:
+  push:
+    branches: [main, dev, "develop/august"]
+    paths:
+      - "src/framevitals/sources.py"
+      - "src/framevitals/duckdb_source.py"
+      - "src/framevitals/analysis_api.py"
+      - "src/framevitals/streaming_*.py"
+      - "tests/test_arrow_memory.py"
+      - "tests/test_duckdb_source.py"
+      - "pyproject.toml"
+      - ".github/workflows/interop.yml"
+  pull_request:
+    paths:
+      - "src/framevitals/sources.py"
+      - "src/framevitals/duckdb_source.py"
+      - "src/framevitals/analysis_api.py"
+      - "src/framevitals/streaming_*.py"
+      - "tests/test_arrow_memory.py"
+      - "tests/test_duckdb_source.py"
+      - "pyproject.toml"
+      - ".github/workflows/interop.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  arrow-duckdb:
+    name: Arrow + DuckDB (Python 3.12)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install interoperability capabilities
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[duckdb,dev]"
+
+      - name: Verify dependency consistency
+        run: python -m pip check
+
+      - name: Run interoperability tests
+        env:
+          FRAMEVITALS_BACKEND: numpy
+        run: pytest -v tests/test_arrow_memory.py tests/test_duckdb_source.py

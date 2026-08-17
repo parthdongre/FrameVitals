@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "notes": "Initial ceilings are intentionally generous. Tighten only after collecting stable hosted-run history.",
+  "scenarios": {
+    "core_profile_150k_x12": {
+      "max_seconds": 25.0,
+      "max_peak_rss_mb": 1200.0
+    },
+    "parquet_profile_150k_x12": {
+      "max_seconds": 30.0,
+      "max_peak_rss_mb": 1400.0
+    }
+  }
+}

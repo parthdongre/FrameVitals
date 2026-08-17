@@ -1,5 +1,5 @@
 """
-DataLens AI — Agentic AI Layer (WS-9)
+FrameVitals — Agentic AI Layer (WS-9)
 ======================================
 Planner → Executor → Critic → Writer loop running on a local Ollama model
 with OpenRouter and a deterministic fallback.
@@ -27,7 +27,6 @@ import re
 from typing import Any
 
 import pandas as pd
-import pydantic
 from pydantic import BaseModel, Field, ValidationError
 
 from framevitals.rag_index import (
@@ -54,7 +53,7 @@ _DEFAULT_OPENROUTER_MODEL = os.environ.get(
 )
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 _OPENROUTER_SITE_URL = os.environ.get("OPENROUTER_SITE_URL", "http://127.0.0.1:5055")
-_OPENROUTER_APP_NAME = os.environ.get("OPENROUTER_APP_NAME", "DataLens AI")
+_OPENROUTER_APP_NAME = os.environ.get("OPENROUTER_APP_NAME", "FrameVitals")
 
 # Per-call Ollama timeout. Cloud models (deepseek 671b, gpt-oss 120b, kimi)
 # can take 30-60s end-to-end. Override with DATALENS_OLLAMA_TIMEOUT (seconds).
