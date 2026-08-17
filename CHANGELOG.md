@@ -2,104 +2,83 @@
 
 All notable user-facing changes to FrameVitals are documented here.
 
-FrameVitals follows semantic versioning while the public API matures. The 0.x series may still include breaking changes, which will be called out in release notes.
+FrameVitals follows semantic versioning while the public API matures. The 0.x series may still include breaking changes, which are called out in release notes.
 
 ## Unreleased
 
-Development continues on the development branches. Changes intended for the next release should be documented here before they are promoted to `main`.
+No user-facing changes are currently queued beyond 0.2.0.
 
-### Added
+## 0.2.0 - 2026-08-17
 
-- Data-contract inference through `framevitals.infer_contract()` with versioned contract schemas, tolerant null-rate and numeric-bound expectations, categorical domains, optional-column semantics, and uniqueness hints
-- Structured exact contract validation through `framevitals.validate()`
-- `framevitals.gate()` for one CI-friendly pass/warn/fail verdict combining contract validation, drift, and optional custom checks
-- `framevitals gate` CLI command with configurable drift warning/failure thresholds, optional contract enforcement, JSON output, and CI exit codes
-- Reusable root `action.yml` GitHub Action for running FrameVitals quality gates with status/result outputs
-- Path-scoped smoke CI for the reusable Gate Action
-- `framevitals plan` for previewing applicable modules, execution budgets, source capabilities, and bounded planning samples
-- `framevitals.inspect_source()` for inspecting source shape, storage kind, format, materialization state, projection support, and streaming capability without running diagnostics
-- `framevitals inspect` CLI command with terminal/JSON output and optional persisted source metadata
-- `framevitals snapshot` and `framevitals compare-snapshots` CLI commands for compact monitoring state, snapshot diffs, JSON persistence, and CI-friendly change exit codes
-- `framevitals system-info` CLI command for reproducible CPU/native/GPU capability reports in support and performance workflows
-- Compact versioned analysis snapshots with deterministic fingerprints, JSON persistence, and snapshot-to-snapshot schema/health/ML-readiness/finding diffs
-- `SnapshotHistory` for persistent compact monitoring timelines, latest/previous lookup, labels, and recent-state comparison without storing raw datasets
-- Dict-compatible result objects including `AnalysisResult`, `DiagnosticResult`, `DriftResult`, `ValidationResult`, `CheckResult`, `GateResult`, and per-column result views
-- `framevitals.check()` and `framevitals.run_checks()` for exact user-defined DataFrame invariants with warning/error severities and structured findings
-- Opt-in `framevitals.discover_checks()` plugin discovery through the `framevitals.checks` Python entry-point group
-- Installable third-party check-plugin example plus CI that installs, discovers, executes, and gates on external entry points
-- Focused public APIs for profiling, column roles, health, ML readiness, quality, statistics, anomalies, relationships, and target analysis without running unrelated pipeline stages
-- Source abstraction with metadata inspection, projection, and streaming capability discovery
-- Bounded Arrow-backed Parquet execution for public profiling, health, ML-readiness, roles, quality, statistics, anomaly, relationship, target-aware, drift, gate, planning, and full-analysis paths where those diagnostics support bounded execution
-- Optional Arrow-backed CSV and TSV streaming with exact row-count metadata, projected record batches, and pandas fallback for incompatible inputs
-- Native PyArrow `Table` and `RecordBatch` inputs through the same source-aware streaming engine
-- Arrow C Stream / PyCapsule-compatible table input support without requiring a library-specific adapter for every producer
-- Tested Polars DataFrame interoperability through the standard Arrow C Stream boundary without adding Polars as a FrameVitals runtime dependency
-- Optional lazy DuckDB relation source with exact count/schema metadata, projection pushdown, Arrow record batches, and full pandas materialization only for exact/full-row APIs
-- Optional `duckdb` dependency group containing DuckDB plus its Arrow transport
-- Dedicated Arrow/DuckDB interoperability CI coverage
-- Versioned execution-provenance schema v1 with shared `method`, `full_materialization`, source, sampling, strategy, component, and reason fields while preserving legacy operation-specific metadata during the `0.x` migration
-- Optional Rust native core and Python bridge for accelerated streaming numeric state, cardinality/quantile sketches, and backend routing
-- Dedicated Arrow/NumPy-fallback and Rust/native CI coverage
-- Reproducible performance benchmark workflow with time/RSS summaries and retained JSON artifacts
-- Catastrophic performance guardrails for deterministic core and Parquet profiling scenarios with retained measurement artifacts
-- Minimum-dependency CI that installs and tests the declared core dependency floors separately from optional extras
-- Windows and macOS public-API smoke CI alongside the full Linux matrix
-- CodeQL scanning for Python and JavaScript/TypeScript on integration/release branches, pull requests, manual runs, and a scheduled cadence
-- PEP 561 `py.typed` marker for downstream type-checking support
-- Optional `excel` dependency group for XLS/XLSX readers
-- Optional `plot` dependency group for Matplotlib/Seaborn chart and report plotting support
-- Optional `docs` dependency group plus a MkDocs Material documentation site covering source-aware execution, execution provenance, result objects, monitoring, quality gates, custom checks, extension authors, and stability guarantees
-- Strict path-scoped documentation CI using `mkdocs build --strict`
-- Pre-commit and pre-push contributor guardrails mirrored by dedicated CI
-- `SUPPORT.md` guidance for reproducible issue reports without requiring users to share sensitive datasets
-- Stability/compatibility documentation defining the intended `0.x` public-surface, result-schema, execution-provenance, optional-dependency, Python-version, and platform expectations
-- Contributor architecture guidance covering canonical layers, streaming provenance, optional-dependency boundaries, and performance-sensitive changes
-- Focused examples for domain-specific quality gates and persistent snapshot monitoring
+FrameVitals 0.2.0 is the first release built around the source-aware Arrow/Rust execution architecture rather than treating every dataset as a pandas-first workload.
 
-### Changed
+### Highlights
 
-- Full `framevitals.analyze()` now resolves generic `DatasetSource` inputs and dispatches streaming-capable sources through a bounded source-aware pipeline when artifacts do not require materialization
-- Drift comparison now preserves exact source shape metadata while bounding value-distribution work for streaming sources
-- Flask `/api/compare` now routes through the same canonical source-aware drift engine as Python and CLI callers
-- `framevitals.gate()` reuses the same canonical drift, validation, and custom-check engines instead of maintaining separate data-loading logic
-- Contract validation explicitly remains exact for uniqueness, allowed-value, nullability, and bound constraints rather than silently weakening them to sampled checks
-- Arbitrary custom Python checks explicitly remain exact and materialize non-pandas sources rather than silently sampling user-defined invariants
-- Top-level gate execution now reports whether any selected check family required full materialization
-- Materialization provenance is now based on actual execution semantics rather than assuming only file-backed sources can materialize
-- Focused statistics, anomaly, relationship, role, health, ML-readiness, quality, drift, validation, custom-check, and gate paths are converging on execution-provenance schema v1 without removing legacy metadata keys
-- Focused diagnostic APIs return dict-compatible `DiagnosticResult` objects with JSON/summary/source/execution ergonomics while preserving existing mapping payloads
-- The package-root `__all__` surface is now regression-tested as an exact `0.2` stabilization contract so accidental additions and removals both fail CI
-- `framevitals.api` is now a lazy compatibility facade over the canonical focused, analysis, planning, operations, check, plugin, and source-inspection engines instead of a second eager implementation, with focused return annotations aligned to `DiagnosticResult`
-- The installed CLI now routes directly through canonical APIs and no longer relies on a runtime monkeypatch shim
-- CLI `--version` works from a no-dependencies wheel smoke install without importing the analytics stack
-- The `all` extra now includes Arrow and DuckDB interoperability capabilities
-- The `dev` extra now includes the pre-commit tool required by the documented and CI-enforced contributor workflow
-- Excel engines moved out of the default dependency set into `framevitals[excel]`; AI-only Pydantic moved into `framevitals[ai]`
-- Matplotlib and Seaborn moved out of the default dependency set into `framevitals[plot]`
-- Explainability no longer requires Matplotlib at module import time; structured importance can run without plotting and SHAP chart rendering is optional
-- Flask startup no longer eagerly imports the agentic AI or report/plot stacks; those capabilities load only when their endpoints are used
-- Excel loading now reports a FrameVitals-specific install hint when the optional reader capability is missing
-- README and roadmap now describe the source-aware analyze → compare → validate → gate → monitor direction, source interoperability, exact-vs-bounded execution, optional capability groups, plugins, and the reusable Gate Action
-- Project metadata now advertises the package as typed and points documentation users at the maintained `docs/` tree
-- Package CI now requires the `py.typed` marker to be present in built wheels
-- Test and package workflows now use read-only default permissions and cancel stale runs on the same branch
-- Release documentation now separates stabilization-branch promotion to `dev` from intentional `dev` → `main` versioning and PyPI publication
-- Release publishing now verifies that the GitHub release tag, `pyproject.toml` version, and `framevitals.__version__` match before building/publishing
+- Added bounded Arrow streaming for large Parquet, CSV/TSV, PyArrow, Arrow C Stream, Polars-through-Arrow, and optional DuckDB relation inputs.
+- Added a native Rust execution backend with direct Arrow `RecordBatch` profiling, mergeable numeric state, native categorical sketches, and full-stream log-quantile sketches.
+- Added exact-once reuse so downstream Deep/Research diagnostics consume already-known full-stream facts instead of recomputing weaker bounded-sample estimates.
+- Added exact full-stream count, missingness, mean, variance/std, min/max, skewness, and excess kurtosis through mergeable central moments up to M4.
+- Replaced fixed evenly spaced row sampling with deterministic stratified-jitter sampling to reduce periodic/structured-data aliasing while preserving reproducibility and row order.
+- Added explicit execution provenance for full-stream, projected-column, sketch, bounded-sample, and materialized operations.
+- Added physical large-scale benchmark coverage up to 500,000 × 10,000 (5 billion logical cells) with native/fallback routing, accuracy, exact-once, and no-full-materialization checks.
+- Added mixed statistical ground-truth validation across native and fallback execution.
+- PyPI publishing now builds native ABI3 wheels for common Linux/macOS/Windows targets while retaining a portable pure-Python fallback wheel and source distribution.
+
+### Analysis and public APIs
+
+- Added focused APIs for `profile`, `roles`, `health`, `ml_readiness`, `quality`, `statistics`, `anomalies`, `relationships`, and `target_analysis` so callers do not need to run unrelated pipeline stages.
+- Added `framevitals.plan()` for previewing execution budgets, source capabilities, applicable work, and bounded planning behavior.
+- Added `framevitals.inspect_source()` and the matching CLI command for source metadata/capability inspection without analysis.
+- Added data-contract inference with `framevitals.infer_contract()` and structured validation with `framevitals.validate()`.
+- Added `framevitals.gate()` plus a reusable GitHub Action for CI-friendly contract, drift, and custom-check verdicts.
+- Added `framevitals.check()`, `run_checks()`, and opt-in third-party check discovery through Python entry points.
+- Added compact versioned analysis snapshots, snapshot history, and snapshot-to-snapshot monitoring diffs.
+- Added structured dict-compatible result objects including analysis, diagnostic, drift, validation, check, and gate results.
+- Added `system-info`, snapshot, monitoring, planning, inspection, validation, and gate CLI workflows.
+
+### Execution architecture
+
+- Full `framevitals.analyze()` now resolves generic dataset sources and uses bounded source-aware execution when the source supports streaming/projection.
+- Ultra-wide sources use deterministic schema projection under explicit cell/column budgets instead of scanning every source cell blindly.
+- Streaming analysis performs one authoritative full-source profile scan and schedules only genuinely row-dependent modules on the bounded working sample.
+- Numeric native execution accepts Arrow record batches directly through the Arrow C Data/PyCapsule interface, avoiding the former Arrow → NumPy float64 → per-column Python bridge on supported types.
+- Streaming numeric profiling uses a specialized moments + log-quantile state instead of paying for unrelated HLL/heavy-hitter/reservoir work on every numeric cell.
+- Parquet sources cache metadata/schema/file handles per source to avoid repeated metadata parsing.
+- Research inference uses adaptive statistically defensible methods rather than blindly running expensive resampling on large bounded samples.
+- Execution budgets now bound expensive quality, deep-statistics, anomaly, time-series, relationship, bootstrap, and distribution work by source scale and analysis mode.
+
+### Correctness and statistical fidelity
+
+- Full-stream missing counts, numeric counts, min/max, and moments are reused downstream with explicit provenance.
+- Deep/Research shape summaries can reuse exact full-stream skewness/kurtosis while sample-dependent distribution fits, tests, intervals, and relationship diagnostics remain explicitly sample-scoped.
+- Streaming ML-readiness, health, roles, quality, relationships, statistics, and anomaly results now distinguish exact/full-stream facts from bounded estimates.
+- Categorical native profiling reports full-stream approximate cardinality/heavy-hitter provenance rather than pretending native sketches were row samples.
+- Anderson-Darling normality diagnostics support modern and legacy SciPy contracts without relying on a fixed critical-value index.
+- Large-source sampling regression tests cover periodic aliasing and native/fallback provenance contracts.
+
+### Performance and scale validation
+
+FrameVitals benchmarks are not advertised as universal speedups. Results depend on mode, backend, source shape, storage, and statistical fidelity.
+
+Validated physical workloads include 1B, 2.5B, and 5B logical cells. On the 5B 500k × 10k workload, the native full-stream profiling kernel remains competitive while retaining full-stream native quantile sketches where the fallback may choose bounded row-sample quantiles for cost. All published stress workflows enforce no full materialization and correctness tolerances.
+
+### Packaging and compatibility
+
+- Added Python 3.11, 3.12, and 3.13 core coverage plus Windows/macOS smoke testing.
+- Added dedicated Arrow fallback, Rust/native, minimum-dependency, optional-feature, frontend, package-quality, documentation, and performance CI lanes.
+- Added PEP 561 `py.typed` packaging support.
+- Moved Excel, plotting, AI, Arrow, DuckDB, and other heavier capabilities behind explicit optional dependency groups where appropriate.
+- Release CI verifies the GitHub tag, Python package version, `pyproject.toml`, Rust core version, and Rust bridge version before publication.
+- Package CI verifies both fallback/native wheel contents and proves that pip prefers a compatible native wheel when both are available.
 
 ### Fixed
 
-- CSV/TSV no-Arrow fallback no longer relies on zero-argument `super()` in a slotted dataclass subclass, restoring Python 3.11/3.12 compatibility
-- Streaming ML-readiness results now disclose when duplicate rate is estimated from a bounded sample instead of reporting sampled data as exact
-- Streaming relationship metadata reports true source size instead of sample size
-- Streaming column-role cardinality metadata distinguishes bounded-sample cardinality from full-stream native estimates
-- CSV/TSV streaming sources preserve `FileSource` compatibility for existing callers and tests
-- Dedicated Arrow CI now exercises streaming statistics, drift, CSV/TSV sources, in-memory Arrow inputs, and the quality-gate CLI
-- Arrow `string_view` and `binary_view` inputs are normalized to compute-compatible Arrow types at the in-memory source boundary, fixing Polars sampling on PyArrow 25 without falling back to pandas
-- Optional AI and plotting tests now skip cleanly in core-only/minimum-dependency environments rather than requiring undeclared optional extras during test collection
-- Web runtime dependency boundaries no longer force AI/report/plot packages to import during Flask startup
-- Reusable Gate Action setup no longer relies on an invalid absolute `setup-python` cache dependency path
-- Exact validation/custom-check provenance now reports full materialization for Arrow and relation-backed inputs when they are converted to complete pandas DataFrames
-- Monitoring snapshot and system-capability CLI commands are now implemented by the installed parser/dispatcher rather than existing only as tests/documentation
+- Fixed periodic sampling aliasing caused by fixed evenly spaced global-row samples.
+- Fixed projected streaming missingness/quality semantics so denominators describe the profiled projection rather than silently using the true source width.
+- Fixed duplicate core recomputation in the streaming pipeline.
+- Fixed stale sampling/native-categorical provenance assertions and public execution labels.
+- Fixed SciPy Anderson-Darling compatibility and a pandas string-dtype selection deprecation.
+- Fixed several optional-dependency/import boundaries so core/lightweight usage does not eagerly require plotting, AI, web, or Excel stacks.
 
 ## 0.1.0 - 2026-08-15
 
@@ -107,40 +86,12 @@ First public alpha release of FrameVitals.
 
 ### Added
 
-- Installable `framevitals` package under `src/framevitals/`
-- Public `framevitals.analyze()` API for pandas DataFrames and supported dataset files
-- Public `framevitals.compare()` API for reference-vs-current drift analysis
-- `framevitals` command-line interface with analyze and compare commands
-- Data-health and ML-readiness scoring
-- Structural profiling and semantic column-role inference
-- Missingness, duplicate, cardinality, statistical, anomaly, target-aware, time-series, and text diagnostics
-- Drift comparison using PSI plus numeric/categorical statistical tests
-- Optional artifact generation for reusable Python workflows
-- Optional ML, AI, and Flask/React web dependency groups
-- Python 3.11, 3.12, and 3.13 test matrix
-- Package-build, wheel-boundary, Twine, and clean-install validation
-- PyPI Trusted Publishing release workflow
-- Dependabot configuration for Python, npm, and GitHub Actions
-- Open-source contributor, security, conduct, issue, and pull-request guidance
-
-### Changed
-
-- Project identity and package documentation moved from DataLens AI to FrameVitals
-- Reusable dashboard/report helpers moved into the canonical package
-- Top-level package import and CLI version path load the analytics pipeline lazily
-- Heavy ML, Ollama, and web dependencies moved into optional extras
-- Reusable Python analysis no longer writes cleaned datasets or charts unless `artifacts=True`
-- Repository layout is package-first, with the Flask API and React dashboard kept as optional interfaces
-- Frontend module documentation now points directly at canonical `src/framevitals/` implementations
-- Development setup standardized on `.venv`
-
-### Removed
-
-- Unused runtime dependencies including Optuna, imbalanced-learn, Pingouin, Plotly, Missingno, fpdf2, Jinja2, Joblib, and Loguru
-- Academic report, presentation, and whitepaper artifacts
-- Generated TypeScript compiler metadata and generated Vite JavaScript/config declarations
-- Tracked runtime-output directories for uploads, reports, and cleaned datasets
-- Large legacy demo CSVs and their one-off inspection harness
-- Redundant Streamlit console and its configuration
-- Legacy shell launcher/install scripts and duplicate `requirements.txt` development wrapper
-- Deprecated top-level `modules/` compatibility namespace after application imports moved to `framevitals.*`
+- Installable `framevitals` package under `src/framevitals/`.
+- Public `framevitals.analyze()` API for pandas DataFrames and supported dataset files.
+- Public `framevitals.compare()` API for reference-vs-current drift analysis.
+- `framevitals` command-line interface with analyze and compare commands.
+- Data-health and ML-readiness scoring.
+- Structural profiling and semantic column-role inference.
+- Missingness, duplicate, cardinality, statistical, anomaly, target-aware, time-series, and text diagnostics.
+- Drift comparison using PSI plus numeric/categorical statistical tests.
+- Optional artifact generation and ML/AI/web dependency groups.

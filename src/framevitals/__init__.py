@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from framevitals.checks import DataCheck
     from framevitals.cleaning_plan import CleaningPlan
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 def __getattr__(name: str):
@@ -336,44 +336,11 @@ def gate(
 
 
 __all__ = [
-    "AnalysisConfig",
-    "AnalysisPlan",
-    "AnalysisResult",
-    "AnalysisSnapshot",
-    "SnapshotHistory",
-    "CleaningPlan",
-    "ColumnResult",
-    "DiagnosticResult",
-    "DataCheck",
-    "CheckResult",
-    "DriftResult",
-    "GateResult",
-    "ValidationResult",
-    "inspect_source",
-    "profile",
-    "roles",
-    "health",
-    "ml_readiness",
-    "quality",
-    "statistics",
-    "anomalies",
-    "relationships",
-    "system_info",
-    "target_analysis",
-    "analyze",
-    "plan",
-    "plan_cleaning",
-    "clean",
-    "compare",
-    "infer_contract",
-    "validate",
-    "check",
-    "run_checks",
-    "discover_checks",
-    "gate",
-    "available_modules",
-    "create_snapshot",
-    "load_snapshot",
-    "compare_snapshots",
-    "__version__",
+    "AnalysisConfig", "AnalysisPlan", "AnalysisResult", "AnalysisSnapshot", "SnapshotHistory",
+    "CleaningPlan", "ColumnResult", "DiagnosticResult", "DataCheck", "CheckResult", "DriftResult",
+    "GateResult", "ValidationResult", "inspect_source", "profile", "roles", "health",
+    "ml_readiness", "quality", "statistics", "anomalies", "relationships", "system_info",
+    "target_analysis", "analyze", "plan", "plan_cleaning", "clean", "compare", "infer_contract",
+    "validate", "check", "run_checks", "discover_checks", "gate", "available_modules",
+    "create_snapshot", "load_snapshot", "compare_snapshots", "__version__",
 ]

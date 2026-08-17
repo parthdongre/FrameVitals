@@ -1,94 +1,94 @@
 # Releasing FrameVitals
 
-FrameVitals is configured to publish to PyPI through GitHub Actions Trusted Publishing. No long-lived PyPI API token is required.
+FrameVitals publishes to PyPI through GitHub Actions Trusted Publishing. No long-lived PyPI API token is required.
 
 ## Branch model
 
-- `main` is the release-ready branch. Published releases and version tags come from `main`.
-- `dev` is the integration branch for ongoing development.
-- Feature and dependency-update pull requests should target `dev`.
-- Large stabilization branches should be promoted to `dev` only after their public contracts and specialized CI lanes are clean.
-- When a release is ready, promote the tested release changes from `dev` to `main`, update the version/changelog, and publish from `main`.
+- `main` is release-ready; version tags and published GitHub releases come from `main`.
+- `dev` is the normal integration branch.
+- Stabilization branches such as `develop/august` are promoted into `dev` only after their contracts and specialized CI lanes are clean.
+- A stabilization-branch merge is not itself a PyPI release.
 
-## Stabilization branch → `dev`
+## Release candidate checklist
 
-Promoting a development branch such as `develop/august` to `dev` is **not** a PyPI release and does not require changing the package version.
+Before promoting a release candidate toward `main`:
 
-Before opening or merging the promotion pull request:
+1. Core Tests, Package, minimum-dependency, platform, Arrow/fallback, native Rust, optional-feature, frontend/package-quality, docs, and security-relevant CI must be green.
+2. Performance-sensitive changes must have benchmark evidence and accuracy/safety checks; do not publish unsupported universal speed claims.
+3. Review generated files, temporary artifacts, stale compatibility shims, and branch-only experiments before promotion.
+4. Update `CHANGELOG.md` with the release section and any known 0.x compatibility changes.
+5. Keep all release-version sources synchronized:
+   - GitHub release tag, e.g. `v0.2.0`;
+   - `pyproject.toml` → `[project].version`;
+   - `src/framevitals/__init__.py` → `__version__`;
+   - `rust/framevitals-core/Cargo.toml` → `[package].version`;
+   - `rust/framevitals-py/Cargo.toml` → `[package].version`.
+6. Confirm the package workflow builds and validates both the portable fallback wheel and a compatible native wheel.
+7. Confirm the clean-environment package smoke proves pip prefers the native wheel when both compatible native and universal fallback wheels are present.
 
-1. Confirm the branch is not behind `dev`, or deliberately reconcile any new `dev` commits.
-2. Confirm the package-root public surface test passes and any intended API change is documented.
-3. Confirm execution/result schema changes are additive or carry the appropriate schema-version change.
-4. Confirm `CHANGELOG.md` records user-facing changes under `Unreleased`.
-5. Confirm the core Tests and Package workflows are green.
-6. Confirm the specialized compatibility lanes relevant to the branch are green:
-   - documentation strict build;
-   - developer/pre-commit guardrails;
-   - declared minimum dependencies;
-   - Windows/macOS platform smoke;
-   - Arrow/DuckDB interoperability;
-   - Polars-through-Arrow interoperability;
-   - external check-plugin installation/discovery;
-   - native Rust bridge, when touched;
-   - reusable Gate Action smoke tests, when touched;
-   - performance guardrails for performance-sensitive changes.
-7. Confirm no known security-analysis failure is being carried into `dev`; CodeQL runs on `dev`, `main`, and their pull requests.
-8. Review the branch diff for generated files, temporary artifacts, stale compatibility shims, and accidental package-boundary changes.
+## Distribution model
 
-A large promotion pull request should summarize the public API, compatibility impact, execution-semantics changes, optional dependencies, performance implications, and remaining known limitations.
+FrameVitals intentionally publishes two kinds of Python wheels:
+
+- **Native ABI3 wheels** for supported/common platforms. These include `framevitals._native` and are preferred automatically by pip when compatible.
+- **Portable fallback wheel** (`py3-none-any`) for environments without a published native wheel.
+
+The release workflow also publishes one source distribution.
+
+Current native release targets are:
+
+- Linux x86_64;
+- macOS arm64;
+- macOS x86_64;
+- Windows x86_64.
+
+The native extension uses a Python 3.11 ABI3 floor so one compatible wheel can serve supported Python 3.11+ versions on the same platform.
 
 ## One-time PyPI setup
 
-Before the first release:
-
-1. Create or sign in to your PyPI account.
-2. Open your PyPI account's **Publishing** page and configure a pending Trusted Publisher for project name `framevitals`.
+1. Create/sign in to the PyPI account.
+2. Configure a pending Trusted Publisher for project `framevitals`.
 3. GitHub owner: `parthdongre`.
 4. Repository: `FrameVitals`.
 5. Workflow filename: `release.yml`.
 6. GitHub environment: `pypi`.
-7. In GitHub repository settings, create a `pypi` environment. Requiring manual approval for production publishing is recommended.
+7. Create the matching `pypi` environment in GitHub repository settings; production approval is recommended.
 
-A pending publisher does not reserve the package name until the first successful publication. If the repository is renamed later, update the PyPI Trusted Publisher configuration before publishing again.
-
-## `dev` → `main` release checklist
-
-Before promoting a release candidate from `dev` to `main`:
-
-1. Confirm the intended release candidate on `dev` has green core and specialized CI, including CodeQL.
-2. Convert the relevant `Unreleased` changelog entries into a dated release section and call out any breaking 0.x change explicitly.
-3. Set the release version in both `pyproject.toml` and `src/framevitals/__init__.py` and confirm they match.
-4. Build distributions from the release candidate and run `python -m twine check dist/*`.
-5. Inspect the wheel boundary: the `framevitals` package and `py.typed` must be present, while removed compatibility namespaces and repository-only files must not leak into the wheel.
-6. Install the built wheel into a clean environment and verify at minimum:
-   - `import framevitals`;
-   - installed metadata version equals `framevitals.__version__`;
-   - `framevitals --version` reports the release version.
-7. Merge the reviewed release pull request to `main` only after its required checks are green.
+If the repository is renamed, update the PyPI Trusted Publisher configuration before publishing again.
 
 ## Publish checklist
 
-1. Confirm the release commit is on `main` and the release version/changelog are final.
-2. Create a GitHub release from that exact `main` commit with a matching tag such as `v0.2.0`.
-3. Publishing the GitHub release triggers `.github/workflows/release.yml`.
-4. The release workflow verifies that the GitHub tag, `pyproject.toml`, and `framevitals.__version__` agree before building.
-5. Confirm the Trusted Publishing job succeeds and the expected files appear on PyPI.
-6. Install the published package in a brand-new environment and run:
+1. Promote the reviewed release candidate to `main` through the normal branch process.
+2. Verify the exact `main` commit has the intended release versions and changelog.
+3. Create a GitHub release from that exact commit with a matching tag such as `v0.2.0`.
+4. Publishing the GitHub release triggers `.github/workflows/release.yml`.
+5. The workflow must:
+   - verify tag/Python/Rust version consistency;
+   - build one fallback wheel and one source distribution;
+   - build the configured native ABI3 wheels;
+   - verify each native wheel actually contains `framevitals._native`;
+   - run `twine check` across the complete payload;
+   - publish through Trusted Publishing only after all build jobs pass.
+6. Confirm the expected files appear on PyPI.
+7. In a brand-new environment, run:
 
    ```bash
+   python -m pip install --upgrade framevitals
    python -c "import framevitals; print(framevitals.__version__)"
    framevitals --version
    ```
 
-7. Smoke-test at least one normal analysis path from the published wheel. For a minor release that changes optional capabilities, also smoke-test the affected extra in a clean environment.
+8. On a supported native platform, also verify:
 
-## Version consistency
+   ```bash
+   python -c "from framevitals.backends import backend_status; print(backend_status())"
+   ```
 
-Until version metadata is centralized, keep these two values identical:
+   `native_available` should be `True` and automatic backend selection should choose `rust`.
+9. Smoke-test one normal analysis and one source-aware/Arrow path from the published wheel.
 
-- `pyproject.toml` → `[project].version`
-- `src/framevitals/__init__.py` → `__version__`
+## Release discipline
 
-Do not bump the version merely to merge a development/stabilization branch into `dev`. Bump it only as part of intentional release preparation.
+Do not bump versions merely to merge a stabilization branch into `dev`. Version bumps belong to an intentional release-candidate commit.
 
-A future cleanup can derive the package version from one canonical source.
+Do not publish a release because the feature list is long. Publish when correctness, packaging, provenance, platform compatibility, and performance-sensitive behavior have all passed their release gates.

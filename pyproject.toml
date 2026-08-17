@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "framevitals"
-version = "0.1.0"
+version = "0.2.0"
 description = "Data quality, drift detection, anomaly analysis, and ML-readiness diagnostics for pandas and tabular data."
 readme = "README.md"
 requires-python = ">=3.11"
