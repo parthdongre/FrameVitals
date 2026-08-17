@@ -61,10 +61,27 @@ def _score_ml_readiness(
 
 
 def calculate_ml_readiness_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
-    """Calculate ML-readiness directly from a completed dataset profile."""
+    """Calculate ML-readiness directly from a completed dataset profile.
+
+    Streaming ultra-wide profiles may intentionally cover all source rows but
+    only a deterministic projection of columns. In that case missingness and
+    column-group penalties must be normalized by the profiled width, not by the
+    unobserved source width. The result is explicitly marked as a projected-
+    column estimate rather than a full-schema exact score.
+    """
     shape = profile.get("shape", {})
     rows = int(shape.get("rows", 0) or 0)
-    columns = int(shape.get("columns", len(profile.get("columns", []))) or 0)
+    source_columns = int(shape.get("columns", len(profile.get("columns", []))) or 0)
+    streaming = profile.get("streaming_metadata", {})
+    profiled_columns = int(
+        streaming.get("profiled_columns", len(profile.get("columns", [])))
+        or len(profile.get("columns", []))
+    )
+    column_sampled = bool(streaming.get("column_sampled", False)) or (
+        profiled_columns < source_columns
+    )
+    scoring_columns = profiled_columns if column_sampled else source_columns
+
     missing_total = sum(
         int(value)
         for value in profile.get("missing_counts", {}).values()
@@ -76,31 +93,56 @@ def calculate_ml_readiness_from_profile(profile: dict[str, Any]) -> dict[str, An
 
     result = _score_ml_readiness(
         rows=rows,
-        columns=columns,
+        columns=scoring_columns,
         missing_total=missing_total,
         duplicate_percent=duplicate_percent,
         categorical_cols=categorical_cols,
         numeric_cols=numeric_cols,
     )
 
-    streaming = profile.get("streaming_metadata", {})
+    if column_sampled:
+        result["score_scope"] = "full_rows_projected_columns_estimate"
+        result["profiled_columns"] = profiled_columns
+        result["source_columns"] = source_columns
+        result["issues"]["missing_percent_scope"] = "profiled_columns"
+        result["issues"]["duplicate_percent_scope"] = (
+            "bounded_rows_projected_columns"
+        )
+    else:
+        result["score_scope"] = "full_schema"
+
     if streaming.get("enabled"):
         duplicate_metadata = profile.get("duplicate_metadata", {})
         duplicate_sampled = bool(duplicate_metadata.get("sampled"))
+        if column_sampled:
+            missingness_scope = "full_rows_projected_columns_exact"
+            column_group_scope = "projected_schema_exact"
+            duplicate_scope = (
+                "bounded_row_sample_projected_columns_estimate"
+                if duplicate_sampled
+                else "projected_columns_exact"
+            )
+        else:
+            missingness_scope = "full_stream_exact"
+            column_group_scope = "schema_exact"
+            duplicate_scope = (
+                "bounded_row_sample_estimate" if duplicate_sampled else "exact"
+            )
+
         result["execution"] = normalize_execution(
             {
                 "method": "streaming_profile",
                 "full_materialization": bool(streaming.get("full_materialization", False)),
                 "source_rows": rows,
-                "source_columns": columns,
+                "source_columns": source_columns,
+                "profiled_columns": profiled_columns,
+                "column_sampled": column_sampled,
                 "sample_rows": int(streaming.get("sample_rows", 0) or 0),
                 "sampled": int(streaming.get("sample_rows", 0) or 0) < rows,
                 "components": {
-                    "missingness": "full_stream_exact",
-                    "column_groups": "schema_exact",
-                    "duplicate_rate": (
-                        "bounded_row_sample_estimate" if duplicate_sampled else "exact"
-                    ),
+                    "missingness": missingness_scope,
+                    "column_groups": column_group_scope,
+                    "duplicate_rate": duplicate_scope,
                 },
             },
             method="streaming_profile",
