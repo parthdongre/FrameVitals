@@ -44,6 +44,7 @@ jobs:
       - name: Build native wheel
         run: |
           maturin build \
+            --locked \
             --release \
             --manifest-path rust/framevitals-py/Cargo.toml \
             --interpreter python \
