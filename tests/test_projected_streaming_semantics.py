@@ -47,14 +47,16 @@ def test_ml_readiness_uses_profiled_width_for_projected_missingness():
 
 def test_streaming_quality_reports_only_columns_actually_checked():
     profile = _projected_profile(rows=200, profiled_columns=64)
-    sample = pd.DataFrame({f"c{i}": [i, i + 1, i + 2] for i in range(64)})
+    sample = pd.DataFrame(
+        {f"c{i}": [i + row for row in range(10)] for i in range(64)}
+    )
 
     result = run_streaming_quality_diagnostics(
         sample,
         profile=profile,
         source_rows=200,
         source_columns=10_000,
-        max_sample_rows=3,
+        max_sample_rows=10,
         max_columns=100,
     )
 
