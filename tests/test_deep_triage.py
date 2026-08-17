@@ -54,7 +54,7 @@ def test_budgeted_deep_statistics_only_passes_triaged_columns(monkeypatch):
         return {"available": True}
 
     monkeypatch.setattr(
-        "framevitals.budgeted_analysis.run_deep_statistics_v2",
+        "framevitals.budgeted_analysis.run_fast_deep_statistics_v2",
         fake_deep,
     )
     budget = derive_execution_budget(len(frame), len(frame.columns), mode="deep")
