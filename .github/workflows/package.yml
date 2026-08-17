@@ -27,55 +27,106 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Configure Rust
+        run: |
+          rustup default stable
+          rustc --version
+          cargo --version
+
       - name: Install build tools
         run: |
           python -m pip install --upgrade pip
-          pip install build twine
+          pip install build twine "maturin==1.14.1"
 
-      - name: Build package
-        run: python -m build
+      - name: Build portable fallback distribution
+        run: python -m build --outdir dist-fallback
 
-      - name: Verify wheel contents
+      - name: Build native wheel
+        run: |
+          maturin build \
+            --release \
+            --manifest-path rust/framevitals-py/Cargo.toml \
+            --interpreter python \
+            --out dist-native \
+            --compatibility pypi
+
+      - name: Verify fallback and native wheel contents
         run: |
           python - <<'PY'
           from pathlib import Path
           import zipfile
 
-          wheels = list(Path("dist").glob("*.whl"))
-          assert len(wheels) == 1, f"Expected exactly one wheel, found {len(wheels)}"
+          fallback = list(Path("dist-fallback").glob("*.whl"))
+          native = list(Path("dist-native").glob("*.whl"))
+          assert len(fallback) == 1, f"Expected one fallback wheel, found {len(fallback)}"
+          assert len(native) == 1, f"Expected one native wheel, found {len(native)}"
 
-          wheel = wheels[0]
-          with zipfile.ZipFile(wheel) as archive:
-              names = archive.namelist()
+          def names(path: Path) -> list[str]:
+              with zipfile.ZipFile(path) as archive:
+                  return archive.namelist()
 
-          assert any(name.startswith("framevitals/") for name in names), (
-              "framevitals package missing from wheel"
-          )
-          assert "framevitals/py.typed" in names, (
-              "PEP 561 marker missing from wheel"
-          )
-          assert not any(name.startswith("modules/") for name in names), (
-              "legacy modules package leaked into wheel"
-          )
-          print(f"Verified distribution boundary: {wheel.name}")
+          fallback_names = names(fallback[0])
+          native_names = names(native[0])
+
+          for wheel, wheel_names in ((fallback[0], fallback_names), (native[0], native_names)):
+              assert any(name.startswith("framevitals/") for name in wheel_names), (
+                  f"framevitals package missing from {wheel.name}"
+              )
+              assert "framevitals/py.typed" in wheel_names, (
+                  f"PEP 561 marker missing from {wheel.name}"
+              )
+              assert not any(name.startswith("modules/") for name in wheel_names), (
+                  f"legacy modules package leaked into {wheel.name}"
+              )
+
+          native_suffixes = (".so", ".pyd", ".dylib")
+          assert not any(
+              name.startswith("framevitals/_native") and name.endswith(native_suffixes)
+              for name in fallback_names
+          ), "Portable fallback unexpectedly contains a native extension"
+          assert any(
+              name.startswith("framevitals/_native") and name.endswith(native_suffixes)
+              for name in native_names
+          ), "Native wheel does not contain framevitals._native"
+
+          print(f"Portable fallback: {fallback[0].name}")
+          print(f"Native wheel: {native[0].name}")
           PY
 
       - name: Validate distributions
-        run: python -m twine check dist/*
+        run: twine check dist-fallback/* dist-native/*
 
-      - name: Smoke-test built wheel
+      - name: Verify pip prefers the native wheel when compatible
         run: |
+          mkdir -p dist-install
+          cp dist-fallback/*.whl dist-install/
+          cp dist-native/*.whl dist-install/
           python -m venv /tmp/framevitals-wheel-smoke
-          /tmp/framevitals-wheel-smoke/bin/python -m pip install --no-deps dist/*.whl
+          /tmp/framevitals-wheel-smoke/bin/python -m pip install --upgrade pip
+          VERSION=$(python - <<'PY'
+          import tomllib
+          with open("pyproject.toml", "rb") as handle:
+              print(tomllib.load(handle)["project"]["version"])
+          PY
+          )
           cd /tmp
+          /tmp/framevitals-wheel-smoke/bin/python -m pip install \
+            --no-index \
+            --find-links "$GITHUB_WORKSPACE/dist-install" \
+            --no-deps \
+            "framevitals==$VERSION"
           /tmp/framevitals-wheel-smoke/bin/python - <<'PY'
           from importlib.metadata import version
           import framevitals
+          from framevitals.backends import backend_status
 
           installed = version("framevitals")
           assert installed == framevitals.__version__, (
               f"metadata version {installed} != package version {framevitals.__version__}"
           )
-          print(f"Imported FrameVitals {installed} from built wheel")
+          status = backend_status()
+          assert status["native_available"] is True, status
+          assert status["selected"] == "rust", status
+          print(f"Imported FrameVitals {installed} with native backend: {status}")
           PY
           /tmp/framevitals-wheel-smoke/bin/framevitals --version

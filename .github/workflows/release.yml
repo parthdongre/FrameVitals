@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build distribution
+  build-fallback:
+    name: Build portable fallback
     runs-on: ubuntu-latest
 
     steps:
@@ -21,14 +21,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.x"
+          python-version: "3.12"
 
       - name: Install build tools
         run: |
           python -m pip install --upgrade pip
           python -m pip install build twine
 
-      - name: Verify release version
+      - name: Verify release version across Python and Rust packages
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
@@ -43,32 +43,116 @@ jobs:
           release_version = tag[1:] if tag.startswith("v") else tag
           with Path("pyproject.toml").open("rb") as handle:
               project_version = tomllib.load(handle)["project"]["version"]
+          with Path("rust/framevitals-core/Cargo.toml").open("rb") as handle:
+              core_version = tomllib.load(handle)["package"]["version"]
+          with Path("rust/framevitals-py/Cargo.toml").open("rb") as handle:
+              bridge_version = tomllib.load(handle)["package"]["version"]
           package_version = framevitals.__version__
 
-          assert release_version == project_version, (
-              f"release tag {tag!r} != pyproject version {project_version!r}"
-          )
-          assert project_version == package_version, (
-              f"pyproject version {project_version!r} != package version {package_version!r}"
-          )
-          print(f"Release version verified: {project_version}")
+          versions = {
+              "release tag": release_version,
+              "pyproject": project_version,
+              "python package": package_version,
+              "rust core": core_version,
+              "rust bridge": bridge_version,
+          }
+          assert len(set(versions.values())) == 1, f"Release versions disagree: {versions}"
+          print(f"Release version verified across Python/Rust packages: {project_version}")
           PY
 
-      - name: Build distributions
-        run: python -m build
+      - name: Build portable fallback wheel and sdist
+        run: python -m build --outdir dist
 
-      - name: Validate distributions
+      - name: Validate fallback distributions
         run: python -m twine check dist/*
 
-      - name: Store distributions
-        uses: actions/upload-artifact@v5
+      - name: Store fallback distributions
+        uses: actions/upload-artifact@v6
         with:
-          name: python-package-distributions
+          name: python-package-fallback
           path: dist/
+          if-no-files-found: error
+
+  build-native:
+    name: Native wheel — ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2_28"
+          - name: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            manylinux: "off"
+          - name: macos-x86_64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            manylinux: "off"
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            manylinux: "off"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.11 ABI floor
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build native abi3 wheel
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          command: build
+          maturin-version: v1.14.1
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: >-
+            --release
+            --manifest-path rust/framevitals-py/Cargo.toml
+            --interpreter python
+            --out dist
+            --compatibility pypi
+
+      - name: Verify native wheel payload
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+
+          wheels = list(Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, f"Expected one native wheel, found {len(wheels)}"
+          wheel = wheels[0]
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+          suffixes = (".so", ".pyd", ".dylib")
+          assert "framevitals/py.typed" in names, f"PEP 561 marker missing from {wheel.name}"
+          assert any(
+              name.startswith("framevitals/_native") and name.endswith(suffixes)
+              for name in names
+          ), f"Native extension missing from {wheel.name}"
+          print(f"Verified native distribution: {wheel.name}")
+          PY
+
+      - name: Store native wheel
+        uses: actions/upload-artifact@v6
+        with:
+          name: python-package-native-${{ matrix.name }}
+          path: dist/*.whl
+          if-no-files-found: error
 
   publish:
-    name: Publish distribution to PyPI
-    needs: build
+    name: Publish distributions to PyPI
+    needs: [build-fallback, build-native]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -78,11 +162,33 @@ jobs:
       contents: read
 
     steps:
-      - name: Download distributions
+      - name: Download all release distributions
         uses: actions/download-artifact@v6
         with:
-          name: python-package-distributions
+          pattern: python-package-*
           path: dist/
+          merge-multiple: true
+
+      - name: Show release payload
+        run: ls -lh dist/
+
+      - name: Validate complete release payload
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check dist/*
+          python - <<'PY'
+          from pathlib import Path
+
+          wheels = list(Path("dist").glob("*.whl"))
+          sdists = list(Path("dist").glob("*.tar.gz"))
+          native = [path for path in wheels if "none-any" not in path.name]
+          fallback = [path for path in wheels if "none-any" in path.name]
+
+          assert len(sdists) == 1, f"Expected one sdist, found {len(sdists)}"
+          assert len(fallback) == 1, f"Expected one portable fallback wheel, found {len(fallback)}"
+          assert len(native) == 4, f"Expected four native wheels, found {len(native)}: {native}"
+          print("Release payload contains one fallback wheel, one sdist, and four native wheels.")
+          PY
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
