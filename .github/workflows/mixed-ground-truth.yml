@@ -1,0 +1,133 @@
+name: Mixed Ground Truth Validation
+
+on:
+  push:
+    branches: ["develop/august"]
+    paths:
+      - ".github/workflows/mixed-ground-truth.yml"
+      - "tests/test_mixed_ground_truth_pipeline.py"
+      - "src/framevitals/**"
+      - "rust/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: native/fallback mixed statistical ground truth
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Configure Rust
+        run: |
+          rustup default stable
+          rustc --version
+          cargo --version
+
+      - name: Install test and Arrow dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,arrow]"
+          pip install "maturin>=1.14,<2"
+
+      - name: Build and install FrameVitals native engine
+        run: |
+          maturin build \
+            --release \
+            --manifest-path rust/framevitals-py/Cargo.toml \
+            --interpreter python \
+            --out dist-native
+          pip install --force-reinstall --no-deps dist-native/*.whl
+          FRAMEVITALS_BACKEND=rust python - <<'PY'
+          from framevitals.backends import backend_status
+
+          status = backend_status()
+          assert status["native_available"] is True, status
+          assert status["selected"] == "rust", status
+          print(status)
+          PY
+
+      - name: NumPy fallback mixed ground-truth suite
+        env:
+          FRAMEVITALS_BACKEND: numpy
+        run: |
+          pytest -q \
+            tests/test_mixed_ground_truth_pipeline.py \
+            tests/test_parquet_streaming.py \
+            tests/test_target_intelligence.py \
+            tests/test_target_intelligence_v2.py \
+            tests/test_semantic_types.py \
+            tests/test_relationship_graph.py \
+            tests/test_fast_anomaly.py \
+            tests/test_deep_statistics.py \
+            --junitxml=mixed-ground-truth-numpy.xml
+
+      - name: Rust native mixed ground-truth suite
+        env:
+          FRAMEVITALS_BACKEND: rust
+        run: |
+          pytest -q \
+            tests/test_mixed_ground_truth_pipeline.py \
+            tests/test_parquet_streaming.py \
+            tests/test_target_intelligence.py \
+            tests/test_target_intelligence_v2.py \
+            tests/test_semantic_types.py \
+            tests/test_relationship_graph.py \
+            tests/test_fast_anomaly.py \
+            tests/test_deep_statistics.py \
+            --junitxml=mixed-ground-truth-rust.xml
+
+      - name: Publish validation summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          print("## Mixed ground-truth validation")
+          print()
+          print("Coverage: mixed Parquet streaming, exact missingness/moments, quantile tolerance, categorical/date detection, target intelligence, semantic types, relationship discovery, anomaly recall, and backend parity through the same test contracts.")
+          print()
+          print("| Backend | Tests | Failures | Errors | Skipped |")
+          print("|---|---:|---:|---:|---:|")
+          for backend in ("numpy", "rust"):
+              path = Path(f"mixed-ground-truth-{backend}.xml")
+              if not path.exists():
+                  print(f"| {backend} | unavailable | - | - | - |")
+                  continue
+              root = ET.parse(path).getroot()
+              attrs = root.attrib
+              print(
+                  f"| {backend} | {attrs.get('tests', '?')} | {attrs.get('failures', '?')} | "
+                  f"{attrs.get('errors', '?')} | {attrs.get('skipped', '?')} |"
+              )
+          PY
+
+      - name: Upload validation reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: framevitals-mixed-ground-truth
+          path: |
+            mixed-ground-truth-numpy.xml
+            mixed-ground-truth-rust.xml
+          if-no-files-found: ignore
+          retention-days: 30
