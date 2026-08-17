@@ -320,11 +320,23 @@ class DelimitedTextSource(FileSource):
 
 @dataclass(slots=True)
 class ParquetSource:
-    """Projection-aware, streaming Parquet source backed by optional PyArrow."""
+    """Projection-aware, streaming Parquet source backed by optional PyArrow.
+
+    A single source object owns one ``ParquetFile`` instance plus cached schema
+    and metadata. Ultra-wide files can have expensive footer/schema parsing, so
+    repeatedly reopening the same file inside ``inspect()``, ``schema()`` and
+    ``iter_batches()`` wastes work without improving correctness.
+    """
 
     path: Path
+    _parquet_file_cache: Any = field(default=None, init=False, repr=False)
+    _metadata_cache: DatasetMetadata | None = field(default=None, init=False, repr=False)
+    _schema_cache: Any = field(default=None, init=False, repr=False)
 
     def _parquet_file(self):
+        if self._parquet_file_cache is not None:
+            return self._parquet_file_cache
+
         _validate_file_path(self.path)
         try:
             import pyarrow.parquet as pq
@@ -333,12 +345,16 @@ class ParquetSource:
                 "Parquet streaming requires the optional Arrow capability. "
                 'Install it with: pip install "framevitals[arrow]"'
             ) from exc
-        return pq.ParquetFile(self.path)
+        self._parquet_file_cache = pq.ParquetFile(self.path)
+        return self._parquet_file_cache
 
     def inspect(self) -> DatasetMetadata:
+        if self._metadata_cache is not None:
+            return self._metadata_cache
+
         parquet_file = self._parquet_file()
         metadata = parquet_file.metadata
-        return DatasetMetadata(
+        self._metadata_cache = DatasetMetadata(
             name=self.path.name,
             kind="file",
             format="parquet",
@@ -349,10 +365,13 @@ class ParquetSource:
             supports_projection=True,
             supports_streaming=True,
         )
+        return self._metadata_cache
 
     def schema(self):
-        """Return the Arrow schema without reading all row data."""
-        return self._parquet_file().schema_arrow
+        """Return the cached Arrow schema without reading row data."""
+        if self._schema_cache is None:
+            self._schema_cache = self._parquet_file().schema_arrow
+        return self._schema_cache
 
     def iter_batches(
         self,
@@ -362,16 +381,14 @@ class ParquetSource:
     ) -> Iterator[Any]:
         if batch_size < 1:
             raise ValueError("batch_size must be at least 1.")
-        parquet_file = self._parquet_file()
-        yield from parquet_file.iter_batches(
+        yield from self._parquet_file().iter_batches(
             batch_size=int(batch_size),
             columns=list(columns) if columns is not None else None,
             use_threads=True,
         )
 
     def load(self) -> pd.DataFrame:
-        parquet_file = self._parquet_file()
-        table = parquet_file.read(use_threads=True)
+        table = self._parquet_file().read(use_threads=True)
         dataframe = table.to_pandas()
         if dataframe.empty:
             raise ValueError(f"Dataset is empty: {self.path}")
