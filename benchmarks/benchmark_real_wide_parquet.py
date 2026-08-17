@@ -86,7 +86,10 @@ def generate_dataset(
             patterns = [_pattern_arrow(index, row_ids) for index in range(PATTERN_COUNT)]
             arrays = [patterns[index % PATTERN_COUNT] for index in range(columns)]
             batch = pa.RecordBatch.from_arrays(arrays, schema=schema)
-            writer.write_table(pa.Table.from_batches([batch], schema=schema), row_group_size=len(row_ids))
+            writer.write_table(
+                pa.Table.from_batches([batch], schema=schema),
+                row_group_size=len(row_ids),
+            )
     finally:
         writer.close()
 
@@ -150,9 +153,7 @@ def _accuracy_checks(result: dict[str, Any], *, rows: int) -> dict[str, Any]:
         if observed_mean is not None and truth["mean"] is not None:
             mean_errors.append(abs(float(observed_mean) - float(truth["mean"])))
 
-    expected_health_missing = (
-        expected_missing_total / max(rows * len(columns), 1) * 100.0
-    )
+    expected_health_missing = expected_missing_total / max(rows * len(columns), 1) * 100.0
     observed_health_missing = float(
         result.get("health", {}).get("details", {}).get("missing_percent", 0.0) or 0.0
     )
@@ -160,6 +161,7 @@ def _accuracy_checks(result: dict[str, Any], *, rows: int) -> dict[str, Any]:
     deep_stats = result.get("deep_statistics_v2", {})
     numeric_stats = deep_stats.get("numeric_statistics", {}) if isinstance(deep_stats, dict) else {}
     deep_mean_errors: list[float] = []
+    exact_once_columns = 0
     for column, summary in numeric_stats.items():
         if not isinstance(summary, dict) or summary.get("mean") is None:
             continue
@@ -167,6 +169,9 @@ def _accuracy_checks(result: dict[str, Any], *, rows: int) -> dict[str, Any]:
         truth_mean = expected[index % PATTERN_COUNT]["mean"]
         if truth_mean is not None:
             deep_mean_errors.append(abs(float(summary["mean"]) - float(truth_mean)))
+        provenance = summary.get("summary_provenance", {})
+        if isinstance(provenance, dict) and provenance.get("scope") == "full_stream":
+            exact_once_columns += 1
 
     timings = result.get("timings_ms", {})
     phase3 = timings.get("phase3_tasks", {}) if isinstance(timings, dict) else {}
@@ -181,6 +186,7 @@ def _accuracy_checks(result: dict[str, Any], *, rows: int) -> dict[str, Any]:
         "health_missing_percent": round(observed_health_missing, 6),
         "health_missing_abs_error": round(abs(observed_health_missing - expected_health_missing), 6),
         "deep_numeric_columns_checked": len(numeric_stats),
+        "deep_exact_once_columns": exact_once_columns,
         "deep_mean_max_abs_error": round(max(deep_mean_errors), 6) if deep_mean_errors else None,
         "deep_mean_mean_abs_error": round(float(np.mean(deep_mean_errors)), 6) if deep_mean_errors else None,
         "phase3_tasks_present": sorted(phase3) if isinstance(phase3, dict) else [],
@@ -212,8 +218,11 @@ def benchmark_dataset(path: Path, *, mode: str) -> dict[str, Any]:
     analysis_seconds = time.perf_counter() - started
 
     streaming = result.get("execution", {}).get("streaming", {})
+    profile = result.get("profile", {})
+    numeric_metadata = profile.get("numeric_summary_metadata", {})
+    streaming_metadata = profile.get("streaming_metadata", {})
     return {
-        "benchmark_schema_version": 1,
+        "benchmark_schema_version": 2,
         "workload": {
             "rows": rows,
             "columns": columns,
@@ -222,6 +231,14 @@ def benchmark_dataset(path: Path, *, mode: str) -> dict[str, Any]:
             "dense_int16_raw_gb": round(rows * columns * 2 / 1_000_000_000, 3),
             "mode": mode,
             "source": "real_parquet_file",
+        },
+        "backend": {
+            "numeric_backend": streaming_metadata.get("numeric_backend"),
+            "numeric_method": (
+                numeric_metadata.get("method")
+                if isinstance(numeric_metadata, dict)
+                else None
+            ),
         },
         "analysis_seconds": round(analysis_seconds, 6),
         "pipeline_timings_ms": result.get("timings_ms", {}),
