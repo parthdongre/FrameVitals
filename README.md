@@ -12,7 +12,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/parthdongre/FrameVitals?style=social)](https://github.com/parthdongre/FrameVitals)
 
-[Install](#installation) · [Quick start](#quick-start) · [Quality gates](#quality-gates) · [Sources](#source-aware-execution) · [CLI](#command-line-interface) · [Roadmap](#roadmap) · [Contributing](#contributing)
+[Install](#installation) · [Quick start](#quick-start) · [Performance](#020-performance-and-fidelity) · [Quality gates](#quality-gates) · [Sources](#source-aware-execution) · [CLI](#command-line-interface) · [Roadmap](#roadmap) · [Contributing](#contributing)
 
 </div>
 
@@ -80,11 +80,13 @@ FrameVitals is **package-first**. Product logic lives under `src/framevitals/`; 
 
 ## Installation
 
-FrameVitals supports **Python 3.11, 3.12, and 3.13**. The current public release is **0.1.0 (alpha)**.
+FrameVitals supports **Python 3.11, 3.12, and 3.13**. The current public release is **0.2.0**.
 
 ```bash
 pip install framevitals
 ```
+
+FrameVitals 0.2.0 publishes native ABI3 wheels for supported Linux, macOS, and Windows targets while retaining a portable pure-Python fallback wheel and source distribution. When a compatible native wheel is available, FrameVitals can route supported hot paths through the Rust backend automatically; otherwise the Python/NumPy fallback remains available.
 
 Optional capabilities are split into extras so the base data-health engine stays focused:
 
@@ -296,7 +298,7 @@ FrameVitals does not import or execute installed check plugins automatically.
 The repository ships a reusable composite action at `action.yml`:
 
 ```yaml
-- uses: parthdongre/FrameVitals@main
+- uses: parthdongre/FrameVitals@v0.2.0
   id: framevitals
   with:
     current: data/production.parquet
@@ -445,6 +447,21 @@ A source being streamable does **not** mean every operation is approximate. Fram
 - some statistics, anomaly and drift work can operate on explicit bounded samples;
 - exact contracts and arbitrary custom checks remain full-data operations;
 - every source-aware result should disclose whether data was streamed, sampled, estimated or fully materialized.
+
+## 0.2.0 performance and fidelity
+
+FrameVitals does **not** claim a universal speedup. Performance depends on source shape, mode, backend, storage and statistical fidelity. The release comparison below uses the same deterministic physical 10,000 × 64 CSV (640,000 cells), the same Python/dependency stack, one warm-up and three interleaved measured runs per release/mode. FrameVitals 0.2.0 used the native Rust backend and both releases analyzed all rows and all 64 columns.
+
+| Mode | 0.1.0 median wall | 0.2.0 median wall | Speedup | 0.1.0 peak RSS | 0.2.0 peak RSS |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Quick | 1.644 s | 0.691 s | **2.38×** | 234.7 MB | 239.5 MB |
+| Standard | 141.084 s | 0.839 s | **168.06×** | 2736.7 MB | 264.9 MB |
+
+The large Standard improvement is an end-to-end architectural result, not a same-algorithm Rust-vs-Python microbenchmark. FrameVitals 0.2.0 replaces the old fully materialized, unbounded heavy-statistics path with source-aware bounded/adaptive execution, exact-once reuse and native streaming kernels.
+
+Accuracy was independently graded on five representative columns plus one Pearson pair from that exact benchmark dataset. Tested count/missing/min/max facts remained exact, and the measured mean, standard deviation, skewness/kurtosis and Pearson errors were unchanged from 0.1.0 at the recorded output precision. The deliberate fidelity trade-off is native streaming quantiles: across tested q25/median/q75 values, 0.2.0 measured about **0.08% mean** and **0.21% max** absolute error normalized to the observed column range.
+
+The repository also contains physical scale validation through **5 billion logical cells** and machine-readable benchmark evidence under `benchmarks/results/`. See [CHANGELOG.md](CHANGELOG.md) for methodology and caveats.
 
 ## Filesystem artifacts are opt-in
 
@@ -607,7 +624,7 @@ Typical local endpoints:
 ├── src/framevitals/          # canonical installable Python package
 ├── tests/                    # automated test suite
 ├── benchmarks/               # scale/performance harnesses
-├── rust/                     # optional native acceleration core
+├── rust/                     # native acceleration core
 ├── frontend/                 # optional React + TypeScript dashboard
 ├── templates/                # Flask report pages
 ├── static/                   # web/report assets
@@ -656,23 +673,23 @@ FrameVitals is moving toward a dependable data-health quality gate rather than a
      analyze · focused diagnostics · drift · package/CLI baseline
 
 0.2  SOURCE-AWARE QUALITY GATES
-     bounded streaming · contracts · validate · gate · snapshots · provenance
+     bounded streaming · native execution · contracts · validate · gate · snapshots · provenance
 
 0.3  STABLE RESULTS + PERFORMANCE
-     result-schema hardening · regression budgets · lighter installs · richer history
+     result-schema hardening · planner/cost fidelity · regression budgets · richer history
 
 0.4  EXTENSIBILITY + INTEROPERABILITY
-     custom checks · entry-point plugins · source protocols · integrations
+     ecosystem checks · source protocols · integrations · advanced streaming statistics
 
 1.0  STABLE DATA-HEALTH API
      dependable analyze → compare → validate → gate → monitor workflow
 ```
 
-Several post-0.1 capabilities are already under active development on repository development branches. Before `1.0`, naming, thresholds, result schemas and extension points may still evolve.
+FrameVitals 0.2.0 delivers the source-aware quality-gate architecture. Before `1.0`, naming, thresholds, result schemas and extension points may still evolve.
 
 ## Project status
 
-FrameVitals `0.1.x` is **alpha software**. The project already has a package API, CLI, contracts, gates, snapshots, source-aware execution, tests and release tooling, while the `0.x` series deliberately leaves room to refine schemas, thresholds, dependency boundaries and extension points before stability guarantees begin.
+FrameVitals `0.2.x` is **pre-1.0 software**. The project now has a package API, CLI, native/portable execution paths, contracts, gates, snapshots, source-aware streaming, exact-once statistical reuse, reproducible performance evidence, broad CI coverage and release tooling, while the `0.x` series deliberately leaves room to refine schemas, thresholds, dependency boundaries and extension points before stability guarantees begin.
 
 Feedback on real datasets, false positives, missing diagnostics, performance, source compatibility and API ergonomics is especially valuable.
 
