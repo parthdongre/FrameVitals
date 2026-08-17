@@ -136,7 +136,18 @@ def test_large_parquet_retains_only_bounded_row_sample(tmp_path):
     assert streaming["full_materialization"] is False
     assert streaming["sample_rows"] == 50_000
     assert streaming["sample_strategy"] == "evenly_spaced_global_rows"
-    assert result["categorical_summary_metadata"]["sampled"] is True
+
+    categorical = result["categorical_summary_metadata"]
+    if categorical["native_full_stream_columns"]:
+        assert categorical["sampled"] is False
+        assert categorical["method"] == "native_full_stream_sketch"
+        assert "group" in categorical["native_full_stream_columns"]
+        assert categorical["sample_fallback_columns"] == []
+    else:
+        assert categorical["sampled"] is True
+        assert categorical["method"] == "evenly_spaced_row_sample"
+        assert "group" in categorical["sample_fallback_columns"]
+
     assert result["correlation_metadata"]["row_sampled"] is True
     assert result["duplicate_metadata"]["sampled"] is True
     assert result["missing_counts"]["value"] == int(frame["value"].isna().sum())
