@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use rustc_hash::FxHashMap;
 
 const DEFAULT_ZERO_THRESHOLD: f64 = 1.0e-12;
+type QuantileBins = Vec<(i32, u64)>;
 
 #[inline]
 pub(crate) fn mix64(mut value: u64) -> u64 {
@@ -36,10 +37,7 @@ pub struct HyperLogLog {
 
 impl HyperLogLog {
     pub fn new(precision: u8) -> Self {
-        assert!(
-            (4..=16).contains(&precision),
-            "HLL precision must be 4..=16"
-        );
+        assert!((4..=16).contains(&precision), "HLL precision must be 4..=16");
         Self {
             precision,
             registers: vec![0; 1usize << precision],
@@ -183,13 +181,13 @@ impl LogQuantileSketch {
         self
     }
 
-    fn sorted_bins(&self) -> (Vec<(i32, u64)>, Vec<(i32, u64)>) {
-        let mut negative: Vec<_> = self
+    fn sorted_bins(&self) -> (QuantileBins, QuantileBins) {
+        let mut negative: QuantileBins = self
             .negative
             .iter()
             .map(|(key, count)| (*key, *count))
             .collect();
-        let mut positive: Vec<_> = self
+        let mut positive: QuantileBins = self
             .positive
             .iter()
             .map(|(key, count)| (*key, *count))
@@ -313,10 +311,7 @@ impl HeavyHittersSketch {
 
     #[must_use]
     pub fn merge(mut self, other: Self) -> Self {
-        assert_eq!(
-            self.capacity, other.capacity,
-            "heavy-hitter capacity mismatch"
-        );
+        assert_eq!(self.capacity, other.capacity, "heavy-hitter capacity mismatch");
         for (key, count) in other.counters {
             self.observe_weighted(key, count);
         }
