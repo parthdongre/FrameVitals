@@ -7,6 +7,7 @@ on:
       - "benchmarks/benchmark_real_wide_parquet.py"
       - ".github/workflows/real-wide-parquet-benchmark.yml"
       - "src/framevitals/**"
+      - "rust/**"
   workflow_dispatch:
 
 permissions:
@@ -18,7 +19,7 @@ concurrency:
 
 jobs:
   benchmark:
-    name: Full pipeline 100k x 10k real Parquet
+    name: Native vs fallback full pipeline 100k x 10k real Parquet
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -35,10 +36,34 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Install benchmark runtime
+      - name: Configure Rust
+        run: |
+          rustup default stable
+          rustc --version
+          cargo --version
+
+      - name: Install benchmark and native build runtime
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[arrow]"
+          pip install "maturin>=1.14,<2"
+
+      - name: Build and install FrameVitals native engine
+        run: |
+          maturin build \
+            --release \
+            --manifest-path rust/framevitals-py/Cargo.toml \
+            --interpreter python \
+            --out dist-native
+          pip install --force-reinstall --no-deps dist-native/*.whl
+          FRAMEVITALS_BACKEND=rust python - <<'PY'
+          from framevitals.backends import backend_status
+
+          status = backend_status()
+          assert status["native_available"] is True, status
+          assert status["selected"] == "rust", status
+          print(status)
+          PY
 
       - name: Generate real 100k x 10k Parquet dataset
         run: |
@@ -50,53 +75,86 @@ jobs:
             --row-group-rows 10000 \
             --output generation.json
 
-      - name: Run all four full analysis modes
+      - name: Run native Rust full analysis in all modes
+        env:
+          FRAMEVITALS_BACKEND: rust
+        run: |
+          for mode in quick standard deep research; do
+            echo "=== rust / ${mode} ==="
+            python benchmarks/benchmark_real_wide_parquet.py \
+              --dataset wide-100k-x-10k.parquet \
+              --mode "${mode}" \
+              --output "real-wide-rust-${mode}.json"
+          done
+
+      - name: Run NumPy fallback full analysis in all modes
         env:
           FRAMEVITALS_BACKEND: numpy
         run: |
           for mode in quick standard deep research; do
-            echo "=== ${mode} ==="
+            echo "=== numpy / ${mode} ==="
             python benchmarks/benchmark_real_wide_parquet.py \
               --dataset wide-100k-x-10k.parquet \
               --mode "${mode}" \
-              --output "real-wide-${mode}.json"
+              --output "real-wide-numpy-${mode}.json"
           done
 
-      - name: Validate full-pipeline accuracy
+      - name: Validate backend routing and full-pipeline accuracy
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
 
           failures = []
-          for mode in ("quick", "standard", "deep", "research"):
-              payload = json.loads(Path(f"real-wide-{mode}.json").read_text())
-              accuracy = payload["accuracy"]
-              checked = accuracy["profiled_columns_checked"]
-              if accuracy["missing_count_exact_matches"] != checked:
-                  failures.append(f"{mode}: missing-count parity failed")
-              if accuracy["numeric_count_exact_matches"] != checked:
-                  failures.append(f"{mode}: numeric-count parity failed")
-              if accuracy["numeric_minmax_exact_matches"] != checked:
-                  failures.append(f"{mode}: min/max parity failed")
-              if (accuracy["profile_mean_max_abs_error"] or 0.0) > 0.01:
-                  failures.append(
-                      f"{mode}: profile mean max error {accuracy['profile_mean_max_abs_error']}"
+          for backend in ("rust", "numpy"):
+              for mode in ("quick", "standard", "deep", "research"):
+                  payload = json.loads(
+                      Path(f"real-wide-{backend}-{mode}.json").read_text()
                   )
-              if accuracy["health_missing_abs_error"] > 0.02:
-                  failures.append(
-                      f"{mode}: health missingness error {accuracy['health_missing_abs_error']}"
-                  )
-              if (accuracy["deep_mean_max_abs_error"] or 0.0) > 8.0:
-                  failures.append(
-                      f"{mode}: bounded deep-stat mean error {accuracy['deep_mean_max_abs_error']}"
-                  )
-              if payload["safety"]["full_materialization"] is not False:
-                  failures.append(f"{mode}: full materialization occurred")
+                  observed_backend = payload["backend"]["numeric_backend"]
+                  if observed_backend != backend:
+                      failures.append(
+                          f"{backend}/{mode}: routed to {observed_backend!r}"
+                      )
+
+                  accuracy = payload["accuracy"]
+                  checked = accuracy["profiled_columns_checked"]
+                  if accuracy["missing_count_exact_matches"] != checked:
+                      failures.append(f"{backend}/{mode}: missing-count parity failed")
+                  if accuracy["numeric_count_exact_matches"] != checked:
+                      failures.append(f"{backend}/{mode}: numeric-count parity failed")
+                  if accuracy["numeric_minmax_exact_matches"] != checked:
+                      failures.append(f"{backend}/{mode}: min/max parity failed")
+                  if (accuracy["profile_mean_max_abs_error"] or 0.0) > 0.01:
+                      failures.append(
+                          f"{backend}/{mode}: profile mean max error "
+                          f"{accuracy['profile_mean_max_abs_error']}"
+                      )
+                  if accuracy["health_missing_abs_error"] > 0.02:
+                      failures.append(
+                          f"{backend}/{mode}: health missingness error "
+                          f"{accuracy['health_missing_abs_error']}"
+                      )
+
+                  deep_checked = accuracy["deep_numeric_columns_checked"]
+                  if deep_checked:
+                      if accuracy["deep_exact_once_columns"] != deep_checked:
+                          failures.append(
+                              f"{backend}/{mode}: exact-once reuse missing for "
+                              f"{deep_checked - accuracy['deep_exact_once_columns']} columns"
+                          )
+                      if (accuracy["deep_mean_max_abs_error"] or 0.0) > 0.01:
+                          failures.append(
+                              f"{backend}/{mode}: deep exact mean error "
+                              f"{accuracy['deep_mean_max_abs_error']}"
+                          )
+
+                  if payload["safety"]["full_materialization"] is not False:
+                      failures.append(f"{backend}/{mode}: full materialization occurred")
 
           if failures:
               raise SystemExit("\n".join(failures))
-          print("All full-pipeline accuracy checks passed.")
+          print("Native and fallback full-pipeline accuracy checks passed.")
           PY
 
       - name: Publish benchmark summary
@@ -118,43 +176,54 @@ jobs:
               print(f"- Row groups: **{generation['row_groups']}**")
               print()
 
-          print("## Full analysis results")
+          print("## Native Rust vs NumPy fallback")
           print()
-          print("| Mode | Wall time | Profiled cols | Sample rows | Profile mean max error | Deep mean max error | Health missing error |")
-          print("|---|---:|---:|---:|---:|---:|---:|")
-          for mode in ("quick", "standard", "deep", "research"):
-              path = Path(f"real-wide-{mode}.json")
-              if not path.exists():
-                  print(f"| {mode.title()} | failed | - | - | - | - | - |")
-                  continue
-              payload = json.loads(path.read_text())
-              safety = payload["safety"]
-              accuracy = payload["accuracy"]
-              print(
-                  f"| {mode.title()} | {payload['analysis_seconds']:.3f}s | "
-                  f"{safety['profiled_columns']} | {safety['working_sample_rows']} | "
-                  f"{accuracy['profile_mean_max_abs_error']} | "
-                  f"{accuracy['deep_mean_max_abs_error']} | "
-                  f"{accuracy['health_missing_abs_error']} |"
-              )
+          print("| Backend | Mode | Wall time | Profiled cols | Sample rows | Profile mean max error | Deep mean max error |")
+          print("|---|---|---:|---:|---:|---:|---:|")
+          for backend in ("rust", "numpy"):
+              for mode in ("quick", "standard", "deep", "research"):
+                  path = Path(f"real-wide-{backend}-{mode}.json")
+                  if not path.exists():
+                      print(f"| {backend} | {mode.title()} | failed | - | - | - | - |")
+                      continue
+                  payload = json.loads(path.read_text())
+                  safety = payload["safety"]
+                  accuracy = payload["accuracy"]
+                  print(
+                      f"| {backend} | {mode.title()} | {payload['analysis_seconds']:.3f}s | "
+                      f"{safety['profiled_columns']} | {safety['working_sample_rows']} | "
+                      f"{accuracy['profile_mean_max_abs_error']} | "
+                      f"{accuracy['deep_mean_max_abs_error']} |"
+                  )
               print()
-              print(f"### {mode.title()} pipeline stages")
-              for name, milliseconds in sorted(payload.get("pipeline_timings_ms", {}).items()):
-                  if isinstance(milliseconds, (int, float)):
-                      print(f"- {name}: {milliseconds / 1000:.3f}s")
-              print()
+
+          for backend in ("rust", "numpy"):
+              for mode in ("quick", "standard", "deep", "research"):
+                  path = Path(f"real-wide-{backend}-{mode}.json")
+                  if not path.exists():
+                      continue
+                  payload = json.loads(path.read_text())
+                  print(f"### {backend} / {mode.title()} pipeline stages")
+                  for name, milliseconds in sorted(payload.get("pipeline_timings_ms", {}).items()):
+                      if isinstance(milliseconds, (int, float)):
+                          print(f"- {name}: {milliseconds / 1000:.3f}s")
+                  print()
           PY
 
       - name: Upload benchmark results
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: framevitals-real-wide-100k-x-10k
+          name: framevitals-real-wide-100k-x-10k-native-vs-numpy
           path: |
             generation.json
-            real-wide-quick.json
-            real-wide-standard.json
-            real-wide-deep.json
-            real-wide-research.json
+            real-wide-rust-quick.json
+            real-wide-rust-standard.json
+            real-wide-rust-deep.json
+            real-wide-rust-research.json
+            real-wide-numpy-quick.json
+            real-wide-numpy-standard.json
+            real-wide-numpy-deep.json
+            real-wide-numpy-research.json
           if-no-files-found: ignore
           retention-days: 30
