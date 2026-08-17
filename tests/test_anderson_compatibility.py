@@ -1,3 +1,4 @@
+import inspect
 from types import SimpleNamespace
 import warnings
 
@@ -9,7 +10,7 @@ from framevitals import deep_statistics_v2
 from framevitals.deep_statistics_v2 import _anderson_normality, _normality
 
 
-def test_anderson_modern_api_returns_pvalue_without_futurewarning():
+def test_anderson_supported_api_is_warning_free():
     rng = np.random.default_rng(42)
     sample = pd.Series(rng.normal(size=256))
 
@@ -18,10 +19,16 @@ def test_anderson_modern_api_returns_pvalue_without_futurewarning():
         result = _normality(sample)
 
     anderson = result["anderson"]
-    assert anderson["method"] == "interpolate"
     assert anderson["statistic"] is not None
-    assert anderson["critical_5pct"] is None
-    assert 0.0 <= anderson["p_value"] <= 1.0
+
+    if "method" in inspect.signature(deep_statistics_v2.stats.anderson).parameters:
+        assert anderson["method"] == "interpolate"
+        assert anderson["critical_5pct"] is None
+        assert 0.0 <= anderson["p_value"] <= 1.0
+    else:
+        assert anderson["method"] == "legacy_critical_values"
+        assert anderson["p_value"] is None
+        assert anderson["critical_5pct"] is not None
 
 
 def test_anderson_legacy_api_falls_back_to_critical_values(monkeypatch):
