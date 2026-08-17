@@ -6,6 +6,13 @@ on:
     paths:
       - ".github/workflows/mixed-ground-truth.yml"
       - "tests/test_mixed_ground_truth_pipeline.py"
+      - "tests/test_parquet_streaming.py"
+      - "tests/test_target_intelligence.py"
+      - "tests/test_target_intelligence_v2.py"
+      - "tests/test_semantic_types.py"
+      - "tests/test_relationship_graph.py"
+      - "tests/test_fast_anomaly.py"
+      - "tests/test_deep_statistics.py"
       - "src/framevitals/**"
       - "rust/**"
   workflow_dispatch:
