@@ -142,15 +142,9 @@ impl NumericState {
             + 3.0 * delta * (left_f * other.m2 - right_f * self.m2) / total_f;
         let m4 = self.m4
             + other.m4
-            + delta4
-                * left_f
-                * right_f
-                * (left_f * left_f - left_f * right_f + right_f * right_f)
+            + delta4 * left_f * right_f * (left_f * left_f - left_f * right_f + right_f * right_f)
                 / total3
-            + 6.0
-                * delta2
-                * (left_f * left_f * other.m2 + right_f * right_f * self.m2)
-                / total2
+            + 6.0 * delta2 * (left_f * left_f * other.m2 + right_f * right_f * self.m2) / total2
             + 4.0 * delta * (left_f * other.m3 - right_f * self.m3) / total_f;
 
         Self {
@@ -211,10 +205,7 @@ impl NumericState {
         }
         let n = self.count as f64;
         let population_excess = n * self.m4 / (self.m2 * self.m2) - 3.0;
-        Some(
-            (n - 1.0) / ((n - 2.0) * (n - 3.0))
-                * ((n + 1.0) * population_excess + 6.0),
-        )
+        Some((n - 1.0) / ((n - 2.0) * (n - 3.0)) * ((n + 1.0) * population_excess + 6.0))
     }
 }
 
