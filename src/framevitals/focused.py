@@ -239,14 +239,14 @@ def statistics(
             "source_columns": source_columns,
             "sample_rows": int(len(sample)),
             "strategy": (
-                "streaming_evenly_spaced_global_rows"
+                "streaming_stratified_jitter_global_rows"
                 if sampled
                 else "full_stream_via_batches"
             ),
             "full_materialization": False,
             "reason": (
-                "Deep statistics ran on a bounded evenly spaced sample selected "
-                "directly from the streaming source."
+                "Deep statistics ran on a bounded deterministic stratified-jitter sample "
+                "selected directly from the streaming source."
                 if sampled
                 else "The streaming source fits within the deep-statistics execution budget."
             ),
@@ -355,14 +355,14 @@ def anomalies(
             "projected_columns": int(len(numeric_columns)),
             "sample_rows": int(len(sample)),
             "strategy": (
-                "streaming_evenly_spaced_numeric_projection"
+                "streaming_stratified_jitter_numeric_projection"
                 if sampled
                 else "full_stream_numeric_projection"
             ),
             "full_materialization": False,
             "reason": (
-                "Anomaly diagnostics ran on a bounded numeric projection selected "
-                "directly from the streaming source."
+                "Anomaly diagnostics ran on a bounded deterministic stratified-jitter "
+                "numeric projection selected directly from the streaming source."
                 if sampled
                 else "The streaming source fits within the anomaly execution budget."
             ),
@@ -436,13 +436,18 @@ def relationships(
         source_rows = int(metadata.rows or len(sample))
         source_columns = int(metadata.columns or len(sample.columns))
         sampled = source_rows > len(sample)
+        strategy = (
+            "streaming_stratified_jitter_global_rows"
+            if sampled
+            else "full_stream_via_batches"
+        )
         sample_metadata = payload.setdefault("sample", {})
         sample_metadata.update({
             "source_rows": source_rows,
             "sample_rows": int(len(sample)),
             "sampled": sampled,
             "full_materialization": False,
-            "strategy": "streaming_evenly_spaced_global_rows",
+            "strategy": strategy,
         })
         payload["source"] = metadata.to_dict()
         payload["streaming_source"] = True
@@ -455,7 +460,7 @@ def relationships(
             source_rows=source_rows,
             source_columns=source_columns,
             sample_rows=int(len(sample)),
-            strategy="streaming_evenly_spaced_global_rows",
+            strategy=strategy,
             components={
                 "numeric_projection": "schema_exact",
                 "relationship_candidates": (
