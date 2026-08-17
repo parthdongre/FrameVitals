@@ -84,7 +84,7 @@ def test_deep_statistics_adapter_never_passes_unbounded_frame(monkeypatch):
         return {"available": True}
 
     monkeypatch.setattr(
-        "framevitals.budgeted_analysis.run_deep_statistics_v2",
+        "framevitals.budgeted_analysis.run_fast_deep_statistics_v2",
         fake_deep,
     )
     frame = pd.DataFrame({"x": np.arange(20_000), "y": np.arange(20_000)})
@@ -96,6 +96,32 @@ def test_deep_statistics_adapter_never_passes_unbounded_frame(monkeypatch):
     assert seen["pairs"] <= budget.relationship_pair_budget
     assert result["execution"]["sampled"] is True
     assert result["execution"]["source_rows"] == 20_000
+    assert (
+        result["execution"]["inference_strategy"]
+        == "closed_form_and_order_statistics"
+    )
+
+
+def test_research_deep_statistics_adapter_keeps_bca(monkeypatch):
+    seen = {}
+
+    def fake_deep(frame, max_pairs=20):
+        seen["rows"] = len(frame)
+        seen["pairs"] = max_pairs
+        return {"available": True}
+
+    monkeypatch.setattr(
+        "framevitals.budgeted_analysis.run_deep_statistics_v2",
+        fake_deep,
+    )
+    frame = pd.DataFrame({"x": np.arange(500), "y": np.arange(500)})
+    budget = derive_execution_budget(len(frame), len(frame.columns), mode="research")
+
+    result = run_budgeted_deep_statistics(frame, budget=budget)
+
+    assert seen["rows"] == len(frame)
+    assert seen["pairs"] <= budget.relationship_pair_budget
+    assert result["execution"]["inference_strategy"] == "bca_bootstrap"
 
 
 def test_anomaly_adapter_discloses_sample_coverage(monkeypatch):

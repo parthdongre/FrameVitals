@@ -13,6 +13,7 @@ import pandas as pd
 
 from framevitals.anomaly_ensemble import detect_anomalies_ensemble
 from framevitals.deep_statistics_v2 import run_deep_statistics_v2
+from framevitals.fast_deep_statistics import run_fast_deep_statistics_v2
 from framevitals.deep_triage import triage_deep_columns
 from framevitals.execution import ExecutionBudget, deterministic_sample_frame
 from framevitals.fast_anomaly import fast_anomaly_scan
@@ -75,7 +76,15 @@ def run_budgeted_deep_statistics(
     if pair_budget < 1:
         raise ValueError("max_pairs must be at least 1.")
 
-    payload = run_deep_statistics_v2(diagnostic_view, max_pairs=pair_budget)
+    if budget.mode == "research":
+        payload = run_deep_statistics_v2(diagnostic_view, max_pairs=pair_budget)
+        inference_strategy = "bca_bootstrap"
+    else:
+        payload = run_fast_deep_statistics_v2(
+            diagnostic_view,
+            max_pairs=pair_budget,
+        )
+        inference_strategy = "closed_form_and_order_statistics"
     triage_payload = triage.to_dict()
     payload["column_triage"] = triage_payload
 
@@ -83,13 +92,15 @@ def run_budgeted_deep_statistics(
         **sampling,
         "reason": (
             "Deep statistics use a bounded row view plus adaptive column triage; "
-            "bootstrap/distribution work is reserved for the highest-interest columns."
+            "expensive distribution work is reserved for the highest-interest columns; "
+            "non-research modes use O(n) confidence intervals instead of resampling."
         ),
         "pair_budget": int(pair_budget),
         "column_triage": triage_payload,
         "source_columns": int(dataframe.shape[1]),
         "diagnostic_columns": int(len(selected_columns)),
         "adaptive_strategy": "column_interest_triage",
+        "inference_strategy": inference_strategy,
     }
     return _attach_execution(
         payload,
