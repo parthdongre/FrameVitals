@@ -138,3 +138,96 @@ def test_release_delta_benchmark_evidence_is_self_consistent():
         )
 
         assert new["median_wall_seconds"] < old["median_wall_seconds"]
+
+
+def test_release_accuracy_evidence_matches_same_performance_dataset_and_contract():
+    evidence = Path(
+        "benchmarks/results/release_0.2.0_vs_0.1.0_accuracy_10k_x64.json"
+    )
+    payload = json.loads(evidence.read_text(encoding="utf-8"))
+
+    assert payload["benchmark_schema_version"] == 1
+    assert payload["comparison"] == (
+        "FrameVitals 0.2.0 vs 0.1.0 same-dataset statistical accuracy"
+    )
+    assert payload["old_ref"] == (
+        "v0.1.0@3da1432168fbfcb3dbe99fcfb6f6200f5e63214b"
+    )
+
+    dataset = payload["dataset"]
+    assert dataset == {
+        "bytes": 2_811_188,
+        "cells": 640_000,
+        "columns": 64,
+        "format": "csv",
+        "generator": "((row * (col + 3) + col * 17) % 2001 - 1000).astype(int16)",
+        "rows": 10_000,
+        "same_as_release_performance_run": 32010158292,
+    }
+    assert payload["tracked_columns"] == [
+        "c000",
+        "c001",
+        "c007",
+        "c031",
+        "c063",
+    ]
+    assert payload["evidence_runs"] == {
+        "accuracy_full_legacy_and_initial_native_run": 32014979365,
+        "native_shape_corrected_run": 32015665811,
+        "same_dataset_performance_run": 32010158292,
+    }
+
+    old = payload["versions"]["0.1.0"]
+    new = payload["versions"]["0.2.0"]
+    assert old["backend"] == {
+        "native_available": False,
+        "selected": "legacy-python",
+    }
+    assert new["backend"]["selected"] == "rust"
+    assert new["backend"]["native_available"] is True
+
+    old_summary = old["summary"]
+    new_summary = new["summary"]
+    unchanged_metrics = [
+        "max_exact_fact_absolute_error",
+        "max_mean_absolute_error",
+        "max_std_absolute_error",
+        "max_shape_absolute_error",
+        "pearson_absolute_error",
+    ]
+    for metric in unchanged_metrics:
+        assert math.isclose(
+            new_summary[metric],
+            old_summary[metric],
+            rel_tol=0.0,
+            abs_tol=1e-15,
+        )
+        assert math.isclose(
+            payload["delta_new_minus_old"][metric],
+            0.0,
+            rel_tol=0.0,
+            abs_tol=1e-15,
+        )
+
+    assert old_summary["max_exact_fact_absolute_error"] == 0.0
+    assert new_summary["max_exact_fact_absolute_error"] == 0.0
+    assert old_summary["shape_values_unavailable"] == 0
+    assert new_summary["shape_values_unavailable"] == 0
+
+    quantiles = payload["quantile_error_context"]
+    assert quantiles["tracked_quantile_values"] == 15
+    assert quantiles["native_quantile_relative_accuracy_setting"] == 0.01
+    assert math.isclose(
+        new_summary["max_quantile_absolute_error"],
+        quantiles["max_absolute_error_units"],
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    )
+    assert math.isclose(
+        new_summary["mean_quantile_absolute_error"],
+        quantiles["mean_absolute_error_units"],
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    )
+    assert quantiles["max_error_percent_of_column_range"] < 0.211
+    assert quantiles["mean_error_percent_of_column_range"] < 0.080
