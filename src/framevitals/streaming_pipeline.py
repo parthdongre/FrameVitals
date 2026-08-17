@@ -1,11 +1,11 @@
 """Full FrameVitals orchestration for streaming dataset sources.
 
 The streaming pipeline performs one full-source Arrow scan to build reusable
-profile state, retains one bounded deterministic working sample, and runs legacy
-row-dependent modules only on that sample. Full-source facts are overlaid back
-onto the stable analysis result shape, and every bounded module is explicitly
-scoped so downstream consumers never mistake sample-derived diagnostics for
-full-data execution.
+profile state, retains one bounded deterministic working sample, and runs only
+row-dependent modules on that sample. Full-source facts are reused instead of
+re-entering the materialized pandas pipeline, and every bounded module is
+explicitly scoped so downstream consumers never mistake sample-derived
+diagnostics for full-data execution.
 """
 
 from __future__ import annotations
@@ -24,9 +24,9 @@ from framevitals.execution import (
 )
 from framevitals.health_score import calculate_health_score_from_profile_sample
 from framevitals.ml_readiness import calculate_ml_readiness_from_profile
-from framevitals.pipeline import run_full_analysis
 from framevitals.signal_engine import build_signals
 from framevitals.sources import DatasetMetadata, StreamingDatasetSource
+from framevitals.streaming_bounded_pipeline import run_streaming_bounded_modules
 from framevitals.streaming_profile import build_streaming_profile
 from framevitals.streaming_quality import run_streaming_quality_diagnostics
 from framevitals.streaming_roles import infer_streaming_column_roles
@@ -257,13 +257,14 @@ def run_streaming_analysis(
         else source
     )
 
-    profile_start = time.perf_counter()
+    core_timings: dict[str, float] = {}
+    t0 = time.perf_counter()
     profile, working_sample = build_streaming_profile(
         profile_source,
         sample_rows=working_rows,
         return_sample=True,
     )
-    streaming_profile_ms = (time.perf_counter() - profile_start) * 1000
+    core_timings["streaming_profile"] = (time.perf_counter() - t0) * 1000
 
     profiled_columns = int(len(working_sample.columns))
     column_sampled = profiled_columns < columns
@@ -286,11 +287,21 @@ def run_streaming_analysis(
     if target_column is not None and target_column not in working_sample.columns:
         raise ValueError(f"Target column not found: {target_column}")
 
+    t0 = time.perf_counter()
     role_payload = infer_streaming_column_roles(working_sample, profile=profile)
     column_roles = role_payload["columns"]
     roles_summary = summarize_roles(column_roles)
+    core_timings["column_roles"] = (time.perf_counter() - t0) * 1000
+
+    t0 = time.perf_counter()
     health = calculate_health_score_from_profile_sample(profile, working_sample)
+    core_timings["health"] = (time.perf_counter() - t0) * 1000
+
+    t0 = time.perf_counter()
     ml_readiness = calculate_ml_readiness_from_profile(profile)
+    core_timings["ml_readiness"] = (time.perf_counter() - t0) * 1000
+
+    t0 = time.perf_counter()
     quality_diagnostics = (
         run_streaming_quality_diagnostics(
             working_sample,
@@ -307,13 +318,18 @@ def run_streaming_analysis(
             "reason": "Disabled by configuration.",
         }
     )
+    core_timings["quality_diagnostics"] = (time.perf_counter() - t0) * 1000
 
+    t0 = time.perf_counter()
     dataset_signals = detect_dataset_signals(
         working_sample,
         profile,
         column_roles=column_roles,
         source_shape=(rows, columns),
     )
+    core_timings["dataset_signals"] = (time.perf_counter() - t0) * 1000
+
+    t0 = time.perf_counter()
     analysis_selection = select_analyses(
         signals=dataset_signals,
         analysis_mode=analysis_mode,
@@ -333,21 +349,22 @@ def run_streaming_analysis(
         "profiled_columns": profiled_columns,
         "column_sampled": column_sampled,
     }
+    core_timings["analysis_selection"] = (time.perf_counter() - t0) * 1000
 
-    # Cleaning/charts are internally suppressed on the bounded sample. Charts
-    # are irrelevant here because this path is only selected when artifacts are
-    # disabled; cleaning would otherwise describe a transformed sample as though
-    # it represented the complete source.
+    # Cleaning/charts are internally suppressed on the bounded sample. The
+    # streaming scheduler runs only modules that genuinely require row values;
+    # profile/roles/health/readiness/quality above are never recomputed.
     internal_disabled = set(user_disabled) | {"cleaning", "charts"}
-    sample_payload = run_full_analysis(
+    sample_payload = run_streaming_bounded_modules(
+        working_sample,
         dataset_id=dataset_id,
         original_filename=original_filename,
         analysis_mode=analysis_mode,
-        skip_ai=skip_ai,
         target_column=target_column,
         parallel_workers=parallel_workers,
-        dataframe=working_sample,
-        write_artifacts=False,
+        source_budget=budget,
+        column_roles=column_roles,
+        skip_ai=skip_ai,
         disabled_modules=tuple(sorted(internal_disabled)),
     )
 
@@ -362,7 +379,9 @@ def run_streaming_analysis(
         )
 
     advanced = sample_payload.get("advanced")
+    t0 = time.perf_counter()
     signals = build_signals(profile, health, ml_readiness, advanced)
+    core_timings["signals"] = (time.perf_counter() - t0) * 1000
 
     cleaning = _streaming_cleaning_result(
         enabled_by_user="cleaning" not in user_disabled,
@@ -378,10 +397,9 @@ def run_streaming_analysis(
     module_status["charts"] = (
         "disabled" if "charts" in user_disabled else "not_applicable"
     )
-    if "quality_diagnostics" in user_disabled:
-        module_status["quality_diagnostics"] = "disabled"
-    else:
-        module_status["quality_diagnostics"] = "ran"
+    module_status["quality_diagnostics"] = (
+        "disabled" if "quality_diagnostics" in user_disabled else "ran"
+    )
 
     module_scope: dict[str, str] = {}
     for module in (
@@ -456,7 +474,7 @@ def run_streaming_analysis(
     })
 
     timings = dict(sample_payload.get("timings_ms", {}))
-    timings["streaming_profile"] = streaming_profile_ms
+    timings.update(core_timings)
     timings["total"] = (time.perf_counter() - overall_start) * 1000
 
     sample_payload.update({
