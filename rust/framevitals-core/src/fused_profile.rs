@@ -7,8 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use arrow_array::{
-    Array, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array,
-    RecordBatch, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
+    Array, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, RecordBatch,
+    UInt16Array, UInt32Array, UInt64Array, UInt8Array,
 };
 use arrow_schema::DataType;
 

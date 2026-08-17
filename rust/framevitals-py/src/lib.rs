@@ -75,7 +75,8 @@ fn batch_profile_dict<'py>(
 
     let profiles = PyDict::new(py);
     for (name, profile) in &state.profiles {
-        let observations = profile.moments.count + profile.moments.missing + profile.moments.infinite;
+        let observations =
+            profile.moments.count + profile.moments.missing + profile.moments.infinite;
         profiles.set_item(
             name,
             profile_dict(py, &profile.moments, &profile.sketches, observations)?,
