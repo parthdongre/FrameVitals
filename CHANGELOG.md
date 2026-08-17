@@ -73,7 +73,20 @@ For an end-to-end release comparison, `v0.1.0` (`3da1432`) and the 0.2.0 release
 
 The measured Quick ranges were 1.620–1.648 s for 0.1.0 and 0.686–0.692 s for 0.2.0. Standard ranges were 140.709–141.130 s for 0.1.0 and 0.823–0.841 s for 0.2.0. The large Standard improvement is a release-level architectural result: 0.2.0 replaces 0.1.0's fully materialized, unbounded heavy-statistics path with bounded/adaptive execution and native streaming. It should not be interpreted as a same-algorithm microbenchmark.
 
-The machine-readable evidence is committed as `benchmarks/results/release_0.2.0_vs_0.1.0_10k_x64.json` from GitHub Actions run `32010158292`.
+The exact same serialized CSV was then graded against independent pandas/SciPy ground truth. The full Standard pipeline still processed all 10,000 rows and all 64 columns in both releases; the accuracy comparison tracks five representative numeric columns (`c000`, `c001`, `c007`, `c031`, `c063`) plus Pearson correlation for `c000`↔`c001`.
+
+| Tracked metric | 0.1.0 max absolute error | 0.2.0 max absolute error |
+| --- | ---: | ---: |
+| Count / missing / min / max | **0** | **0** |
+| Mean | 0.0005000 | 0.0005000 |
+| Standard deviation | 0.0004745 | 0.0004745 |
+| Skewness / excess kurtosis | 4.92×10⁻⁷ | 4.92×10⁻⁷ |
+| Pearson correlation | 0.0001469 | 0.0001469 |
+| q25 / median / q75 | **0** | 4.196 max; 1.589 mean |
+
+For every tested non-quantile metric, 0.2.0 had **exactly the same measured absolute error as 0.1.0 at the published output precision**. The quantile difference is intentional: 0.2.0 uses a full-stream native log-quantile sketch configured for 1% relative accuracy instead of materializing exact profile quartiles. Across the 15 tracked q25/median/q75 values, the maximum absolute error was 4.196 units and the mean was 1.589 units; normalized by each approximately 2,000-unit observed column range, that is **0.210% max** and **0.0795% mean**. Thus the measured 168.06× Standard speedup and 90.3% RSS reduction preserved the tested exact facts, moments, shape statistics, and correlation fidelity while trading exact profile quartiles for explicitly approximate streaming estimates.
+
+Timing/RSS evidence is committed as `benchmarks/results/release_0.2.0_vs_0.1.0_10k_x64.json` from GitHub Actions run `32010158292`. Same-dataset accuracy evidence is committed as `benchmarks/results/release_0.2.0_vs_0.1.0_accuracy_10k_x64.json`; the legacy/current accuracy run was `32014979365`, with a current-only shape-field extractor correction verified in run `32015665811`.
 
 A separate 100,000 × 64 (6.4M-cell) stress run completed all Quick repetitions at a 5.097 s vs 1.447 s median (**3.52× faster**) and 406.1 MB vs 282.7 MB median peak RSS (**30.4% lower**) for 0.1.0 vs 0.2.0. The repeated Standard comparison intentionally has no formal speedup claim: the 30-minute workflow limit expired because completed 0.1.0 Standard passes took about 640–649 s and roughly 12.4 GB peak RSS each, while observed 0.2.0 Standard passes completed in about 1.58–2.06 s at roughly 303–308 MB. That incomplete stress evidence is GitHub Actions run `32008727705`.
 
