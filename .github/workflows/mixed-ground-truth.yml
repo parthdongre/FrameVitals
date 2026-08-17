@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/mixed-ground-truth.yml"
       - "tests/test_mixed_ground_truth_pipeline.py"
+      - "tests/test_release_hardening.py"
       - "tests/test_parquet_streaming.py"
       - "tests/test_target_intelligence.py"
       - "tests/test_target_intelligence_v2.py"
@@ -78,6 +79,7 @@ jobs:
         run: |
           pytest -q \
             tests/test_mixed_ground_truth_pipeline.py \
+            tests/test_release_hardening.py \
             tests/test_parquet_streaming.py \
             tests/test_target_intelligence.py \
             tests/test_target_intelligence_v2.py \
@@ -93,6 +95,7 @@ jobs:
         run: |
           pytest -q \
             tests/test_mixed_ground_truth_pipeline.py \
+            tests/test_release_hardening.py \
             tests/test_parquet_streaming.py \
             tests/test_target_intelligence.py \
             tests/test_target_intelligence_v2.py \
@@ -111,7 +114,7 @@ jobs:
 
           print("## Mixed ground-truth validation")
           print()
-          print("Coverage: mixed Parquet streaming, exact missingness/moments, quantile tolerance, categorical/date detection, target intelligence, semantic types, relationship discovery, anomaly recall, and backend parity through the same test contracts.")
+          print("Coverage: mixed Parquet streaming, exact missingness/moments, finite-value fallback semantics, sampling provenance, quantile tolerance, categorical/date detection, target intelligence, semantic types, relationship discovery, anomaly recall, and backend parity through the same test contracts.")
           print()
           print("| Backend | Tests | Failures | Errors | Skipped |")
           print("|---|---:|---:|---:|---:|")
