@@ -135,7 +135,7 @@ def test_large_parquet_retains_only_bounded_row_sample(tmp_path):
     streaming = result["streaming_metadata"]
     assert streaming["full_materialization"] is False
     assert streaming["sample_rows"] == 50_000
-    assert streaming["sample_strategy"] == "evenly_spaced_global_rows"
+    assert streaming["sample_strategy"] == "stratified_jitter_global_rows"
 
     categorical = result["categorical_summary_metadata"]
     if categorical["native_full_stream_columns"]:
@@ -145,7 +145,7 @@ def test_large_parquet_retains_only_bounded_row_sample(tmp_path):
         assert categorical["sample_fallback_columns"] == []
     else:
         assert categorical["sampled"] is True
-        assert categorical["method"] == "evenly_spaced_row_sample"
+        assert categorical["method"] == "stratified_jitter_row_sample"
         assert "group" in categorical["sample_fallback_columns"]
 
     assert result["correlation_metadata"]["row_sampled"] is True
@@ -299,7 +299,7 @@ def test_public_anomalies_stream_numeric_projection_without_calling_load(tmp_pat
     assert execution["projected_columns"] == 2
     assert execution["sample_rows"] == 5_000
     assert execution["sampled"] is True
-    assert execution["strategy"] == "streaming_evenly_spaced_numeric_projection"
+    assert execution["strategy"] == "streaming_stratified_jitter_numeric_projection"
     assert result["source"]["supports_projection"] is True
 
 
@@ -343,7 +343,7 @@ def test_relationships_stream_numeric_projection_without_full_materialization(
     assert result["sample"]["sample_rows"] <= 256
     assert result["sample"]["sampled"] is True
     assert result["sample"]["full_materialization"] is False
-    assert result["sample"]["strategy"] == "streaming_evenly_spaced_global_rows"
+    assert result["sample"]["strategy"] == "streaming_stratified_jitter_global_rows"
     assert result["source"]["supports_projection"] is True
     edge_pairs = {(edge["source"], edge["target"]) for edge in result["edges"]}
     assert ("value", "other") in edge_pairs or ("other", "value") in edge_pairs
