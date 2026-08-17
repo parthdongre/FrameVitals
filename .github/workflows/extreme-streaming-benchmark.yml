@@ -20,9 +20,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deep-1m-x-100k:
-    name: Deep 1M x 100k virtual stream
+  mode-comparison-100k-x-100k:
+    name: ${{ matrix.mode }} 100k x 100k virtual stream
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        mode: [quick, standard, deep, research]
 
     steps:
       - name: Checkout repository
@@ -42,33 +48,47 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[arrow]"
 
-      - name: Run 1M x 100k Deep benchmark
+      - name: Run 100k x 100k benchmark
         env:
           FRAMEVITALS_BACKEND: numpy
-        run: python benchmarks/benchmark_extreme_streaming.py
+        run: |
+          python benchmarks/benchmark_extreme_streaming.py \
+            --rows 100000 \
+            --columns 100000 \
+            --mode "${{ matrix.mode }}" \
+            --output "extreme-${{ matrix.mode }}-results.json"
 
       - name: Publish benchmark summary
         if: always()
+        env:
+          MODE: ${{ matrix.mode }}
         run: |
-          if [[ ! -f extreme-benchmark-results.json ]]; then
+          FILE="extreme-${MODE}-results.json"
+          if [[ ! -f "$FILE" ]]; then
+            echo "## ${MODE} 100k x 100k benchmark" >> "$GITHUB_STEP_SUMMARY"
+            echo >> "$GITHUB_STEP_SUMMARY"
+            echo "Benchmark did not produce a result file." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json
+          import os
           from pathlib import Path
 
-          payload = json.loads(Path("extreme-benchmark-results.json").read_text())
+          mode = os.environ["MODE"]
+          payload = json.loads(Path(f"extreme-{mode}-results.json").read_text())
           workload = payload["workload"]
           safety = payload["safety"]
-          print("## FrameVitals 1M x 100k Deep benchmark")
+          print(f"## FrameVitals {mode.title()} 100k x 100k benchmark")
           print()
           print(f"- Logical cells: **{workload['cells']:,}**")
           print(f"- Dense float64 equivalent: **{workload['dense_float64_raw_gb']:.1f} GB raw**")
           print(f"- Plan: **{payload['plan_seconds']:.3f}s**")
-          print(f"- Deep analysis: **{payload['analysis_seconds']:.3f}s**")
+          print(f"- Analysis: **{payload['analysis_seconds']:.3f}s**")
           print(f"- Scale class: **{payload['scale_class']}**")
           print(f"- Profiled columns: **{safety['profiled_columns']} / {safety['source_columns']}**")
-          print(f"- All 1,000,000 source rows scanned: **{safety['all_source_rows_scanned']}**")
+          print(f"- Working sample rows: **{safety['working_sample_rows']:,}**")
+          print(f"- All 100,000 source rows scanned: **{safety['all_source_rows_scanned']}**")
           print(f"- Full materialization: **{safety['full_materialization']}**")
           print(f"- Unbounded 100k-column request: **{safety['unbounded_width_requested']}**")
           print()
@@ -82,7 +102,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: framevitals-extreme-1m-x-100k
-          path: extreme-benchmark-results.json
+          name: framevitals-100k-x-100k-${{ matrix.mode }}
+          path: extreme-${{ matrix.mode }}-results.json
           if-no-files-found: ignore
           retention-days: 30
