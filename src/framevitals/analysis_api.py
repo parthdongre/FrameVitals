@@ -117,6 +117,7 @@ def analyze(
             and isinstance(source, StreamingDatasetSource)
             and not resolved.artifacts
         ):
+            from framevitals.streaming_exact_reuse import reuse_streaming_exact_statistics
             from framevitals.streaming_pipeline import run_streaming_analysis
 
             payload = run_streaming_analysis(
@@ -129,6 +130,7 @@ def analyze(
                 skip_ai=True,
                 disabled_modules=effective_disabled,
             )
+            payload = reuse_streaming_exact_statistics(payload)
         elif isinstance(data, (str, Path)):
             path = Path(data)
             if not path.exists():
