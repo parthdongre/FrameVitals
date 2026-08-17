@@ -1,8 +1,10 @@
 //! Fused Arrow numeric profiling.
 //!
 //! One pass over each supported numeric Arrow column updates exact moments and
-//! bounded sketches together. This avoids a separate full-column scan for every
-//! statistic and produces states that can be merged across batches/partitions.
+//! the one sketch consumed by the streaming profile: mergeable log quantiles.
+//! Richer HLL/heavy-hitter/reservoir sketches remain available through the
+//! standalone numeric profiling APIs, but the full-stream dataframe profiler
+//! avoids paying for statistics it never reads.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -12,21 +14,21 @@ use arrow_array::{
 };
 use arrow_schema::DataType;
 
-use crate::sketches::NumericSketchState;
+use crate::sketches::LogQuantileSketch;
 use crate::NumericState;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct NumericProfileState {
     pub moments: NumericState,
-    pub sketches: NumericSketchState,
+    pub quantiles: LogQuantileSketch,
 }
 
 impl NumericProfileState {
-    pub fn observe(&mut self, value: Option<f64>, stream_id: u64, sequence: u64) {
+    pub fn observe(&mut self, value: Option<f64>) {
         self.moments.observe(value);
         if let Some(value) = value {
             if value.is_finite() {
-                self.sketches.observe(value, stream_id, sequence);
+                self.quantiles.observe(value);
             }
         }
     }
@@ -35,7 +37,7 @@ impl NumericProfileState {
     pub fn merge(self, other: Self) -> Self {
         Self {
             moments: self.moments.merge(other.moments),
-            sketches: self.sketches.merge(other.sketches),
+            quantiles: self.quantiles.merge(other.quantiles),
         }
     }
 }
@@ -63,14 +65,14 @@ impl BatchProfileState {
 }
 
 macro_rules! scan_profile_primitive {
-    ($array:expr, $stream_id:expr) => {{
+    ($array:expr) => {{
         let array = $array;
         let mut profile = NumericProfileState::default();
         for index in 0..array.len() {
             if array.is_null(index) {
-                profile.observe(None, $stream_id, index as u64);
+                profile.observe(None);
             } else {
-                profile.observe(Some(array.value(index) as f64), $stream_id, index as u64);
+                profile.observe(Some(array.value(index) as f64));
             }
         }
         profile
@@ -79,10 +81,10 @@ macro_rules! scan_profile_primitive {
 
 /// Scan supported primitive numeric columns in one fused pass.
 ///
-/// `partition_id` must be stable and distinct for independently scanned
-/// partitions when deterministic reservoirs are expected to merge without
-/// priority collisions. Moments and the other sketches do not depend on it.
-pub fn profile_record_batch(batch: &RecordBatch, partition_id: u64) -> BatchProfileState {
+/// ``partition_id`` is retained in the public signature for compatibility with
+/// earlier fused-profile callers. Moments and log quantiles are deterministic
+/// without partition-specific state.
+pub fn profile_record_batch(batch: &RecordBatch, _partition_id: u64) -> BatchProfileState {
     let mut output = BatchProfileState {
         rows: batch.num_rows() as u64,
         ..BatchProfileState::default()
@@ -91,51 +93,48 @@ pub fn profile_record_batch(batch: &RecordBatch, partition_id: u64) -> BatchProf
     for (index, field) in batch.schema().fields().iter().enumerate() {
         let name = field.name().clone();
         let array = batch.column(index);
-        let stream_id = partition_id
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-            .wrapping_add(index as u64);
 
         let profile = match field.data_type() {
             DataType::Float64 => array
                 .as_any()
                 .downcast_ref::<Float64Array>()
-                .map(|values| scan_profile_primitive!(values, stream_id)),
+                .map(|values| scan_profile_primitive!(values)),
             DataType::Float32 => array
                 .as_any()
                 .downcast_ref::<Float32Array>()
-                .map(|values| scan_profile_primitive!(values, stream_id)),
+                .map(|values| scan_profile_primitive!(values)),
             DataType::Int64 => array
                 .as_any()
                 .downcast_ref::<Int64Array>()
-                .map(|values| scan_profile_primitive!(values, stream_id)),
+                .map(|values| scan_profile_primitive!(values)),
             DataType::Int32 => array
                 .as_any()
                 .downcast_ref::<Int32Array>()
-                .map(|values| scan_profile_primitive!(values, stream_id)),
+                .map(|values| scan_profile_primitive!(values)),
             DataType::Int16 => array
                 .as_any()
                 .downcast_ref::<Int16Array>()
-                .map(|values| scan_profile_primitive!(values, stream_id)),
+                .map(|values| scan_profile_primitive!(values)),
             DataType::Int8 => array
                 .as_any()
                 .downcast_ref::<Int8Array>()
-                .map(|values| scan_profile_primitive!(values, stream_id)),
+                .map(|values| scan_profile_primitive!(values)),
             DataType::UInt64 => array
                 .as_any()
                 .downcast_ref::<UInt64Array>()
-                .map(|values| scan_profile_primitive!(values, stream_id)),
+                .map(|values| scan_profile_primitive!(values)),
             DataType::UInt32 => array
                 .as_any()
                 .downcast_ref::<UInt32Array>()
-                .map(|values| scan_profile_primitive!(values, stream_id)),
+                .map(|values| scan_profile_primitive!(values)),
             DataType::UInt16 => array
                 .as_any()
                 .downcast_ref::<UInt16Array>()
-                .map(|values| scan_profile_primitive!(values, stream_id)),
+                .map(|values| scan_profile_primitive!(values)),
             DataType::UInt8 => array
                 .as_any()
                 .downcast_ref::<UInt8Array>()
-                .map(|values| scan_profile_primitive!(values, stream_id)),
+                .map(|values| scan_profile_primitive!(values)),
             _ => None,
         };
 
@@ -177,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn fused_profile_updates_moments_and_sketches_together() {
+    fn fused_profile_updates_moments_and_quantiles_together() {
         let batch = batch(
             vec![Some(1.0), Some(2.0), None, Some(2.0), Some(f64::INFINITY)],
             vec![Some(1), Some(2), Some(3), Some(4), Some(5)],
@@ -190,9 +189,8 @@ mod tests {
         assert_eq!(value.moments.missing, 1);
         assert_eq!(value.moments.infinite, 1);
         assert!((value.moments.mean - 5.0 / 3.0).abs() < 1e-12);
-        assert!(value.sketches.cardinality.estimate() > 1.5);
-        assert_eq!(value.sketches.quantiles.count(), 3);
-        assert!(!value.sketches.reservoir.is_empty());
+        assert_eq!(value.quantiles.count(), 3);
+        assert!(value.quantiles.quantile(0.5).is_some());
         assert!(state.skipped_columns.contains("label"));
     }
 
@@ -223,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn fused_partition_merge_preserves_compact_profile_semantics() {
+    fn fused_partition_merge_preserves_profile_semantics() {
         let left = batch(
             (0..1_000).map(|value| Some(value as f64)).collect(),
             (0..1_000).map(|value| Some(value as i64)).collect(),
@@ -239,9 +237,7 @@ mod tests {
         assert_eq!(merged.rows, 2_000);
         assert_eq!(value.moments.count, 2_000);
         assert!((value.moments.mean - 999.5).abs() < 1e-12);
-        assert!(value.sketches.cardinality.estimate() > 1_800.0);
-        let median = value.sketches.quantiles.quantile(0.5).unwrap();
+        let median = value.quantiles.quantile(0.5).unwrap();
         assert!(median > 900.0 && median < 1_100.0);
-        assert_eq!(value.sketches.reservoir.len(), 256);
     }
 }

@@ -3,7 +3,7 @@
 mod string_accumulator;
 
 use framevitals_core::fused_profile::{profile_record_batch, BatchProfileState};
-use framevitals_core::sketches::NumericSketchState;
+use framevitals_core::sketches::{LogQuantileSketch, NumericSketchState};
 use framevitals_core::NumericState;
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::PyBufferError;
@@ -65,6 +65,34 @@ fn profile_dict<'py>(
     Ok(payload)
 }
 
+fn streaming_profile_dict<'py>(
+    py: Python<'py>,
+    state: &NumericState,
+    quantile_sketch: &LogQuantileSketch,
+    observations: u64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let payload = exact_state_dict(py, state)?;
+    payload.set_item("backend", "rust")?;
+    payload.set_item("observations", observations)?;
+    payload.set_item("sketch_policy", "moments_and_log_quantiles")?;
+
+    let quantiles = PyDict::new(py);
+    for (name, q) in [
+        ("p01", 0.01),
+        ("p05", 0.05),
+        ("p25", 0.25),
+        ("p50", 0.50),
+        ("p75", 0.75),
+        ("p95", 0.95),
+        ("p99", 0.99),
+    ] {
+        quantiles.set_item(name, quantile_sketch.quantile(q))?;
+    }
+    quantiles.set_item("relative_accuracy", quantile_sketch.relative_accuracy())?;
+    payload.set_item("quantiles", quantiles)?;
+    Ok(payload)
+}
+
 fn batch_profile_dict<'py>(
     py: Python<'py>,
     state: &BatchProfileState,
@@ -72,6 +100,7 @@ fn batch_profile_dict<'py>(
     let payload = PyDict::new(py);
     payload.set_item("backend", "rust")?;
     payload.set_item("rows", state.rows)?;
+    payload.set_item("sketch_policy", "moments_and_log_quantiles")?;
 
     let profiles = PyDict::new(py);
     for (name, profile) in &state.profiles {
@@ -79,7 +108,7 @@ fn batch_profile_dict<'py>(
             profile.moments.count + profile.moments.missing + profile.moments.infinite;
         profiles.set_item(
             name,
-            profile_dict(py, &profile.moments, &profile.sketches, observations)?,
+            streaming_profile_dict(py, &profile.moments, &profile.quantiles, observations)?,
         )?;
     }
     payload.set_item("profiles", profiles)?;

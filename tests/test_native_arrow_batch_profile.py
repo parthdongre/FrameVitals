@@ -25,10 +25,15 @@ def test_native_arrow_batch_accumulator_profiles_int16_without_numpy_bridge():
     }
 
     assert payload["rows"] == 4
+    assert payload["sketch_policy"] == "moments_and_log_quantiles"
     assert profiles["small"]["count"] == 3
     assert profiles["small"]["missing"] == 1
     assert profiles["small"]["mean"] == pytest.approx(7 / 3)
     assert profiles["small"]["minimum"] == 1.0
     assert profiles["small"]["maximum"] == 4.0
+    assert profiles["small"]["sketch_policy"] == "moments_and_log_quantiles"
+    assert "heavy_hitters" not in profiles["small"]
+    assert "reservoir" not in profiles["small"]
+    assert profiles["small"]["quantiles"]["p50"] is not None
     assert profiles["wide"]["mean"] == pytest.approx(25.0)
     assert "label" in payload["skipped_columns"]
