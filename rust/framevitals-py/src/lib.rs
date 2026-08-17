@@ -25,8 +25,13 @@ fn exact_state_dict<'py>(py: Python<'py>, state: &NumericState) -> PyResult<Boun
             None
         },
     )?;
+    payload.set_item("m2", state.m2)?;
+    payload.set_item("m3", state.m3)?;
+    payload.set_item("m4", state.m4)?;
     payload.set_item("variance", state.variance())?;
     payload.set_item("std", state.standard_deviation())?;
+    payload.set_item("skewness", state.skewness())?;
+    payload.set_item("kurtosis", state.excess_kurtosis())?;
     payload.set_item("minimum", state.minimum)?;
     payload.set_item("maximum", state.maximum)?;
     Ok(payload)

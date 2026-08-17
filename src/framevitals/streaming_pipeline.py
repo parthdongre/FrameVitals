@@ -369,7 +369,7 @@ def run_streaming_analysis(
     )
 
     sample_rows = int(len(working_sample))
-    sample_strategy = "streaming_evenly_spaced_global_rows"
+    sample_strategy = "streaming_stratified_jitter_global_rows"
     for key in _BOUNDED_RESULT_KEYS:
         sample_payload[key] = _scope_bounded_result(
             sample_payload.get(key),

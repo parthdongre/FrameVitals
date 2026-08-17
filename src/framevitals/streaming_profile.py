@@ -193,7 +193,16 @@ def _state_from_payload(payload: dict[str, Any]) -> NumericColumnState:
         count=count,
         missing=int(payload["missing"]),
         mean=float(payload["mean"]) if count else 0.0,
-        m2=(float(variance) * (count - 1) if variance is not None and count >= 2 else 0.0),
+        m2=float(
+            payload.get(
+                "m2",
+                float(variance) * (count - 1)
+                if variance is not None and count >= 2
+                else 0.0,
+            )
+        ),
+        m3=float(payload.get("m3", 0.0)),
+        m4=float(payload.get("m4", 0.0)),
         minimum=(
             float(payload["minimum"])
             if payload.get("minimum") is not None
@@ -225,6 +234,8 @@ def _summary_from_native_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
         "50%": _round_optional(quantiles.get("p50")),
         "75%": _round_optional(quantiles.get("p75")),
         "max": _round_optional(payload.get("maximum")),
+        "skewness": _round_optional(payload.get("skewness"), 6),
+        "kurtosis": _round_optional(payload.get("kurtosis"), 6),
     }
 
 
@@ -258,6 +269,8 @@ def _summary_from_python_state(
         "50%": _round_optional(q50),
         "75%": _round_optional(q75),
         "max": _round_optional(state.maximum),
+        "skewness": _round_optional(state.skewness, 6),
+        "kurtosis": _round_optional(state.kurtosis, 6),
     }
 
 
@@ -554,6 +567,8 @@ def build_streaming_profile(
             "quantile_relative_accuracy": quantile_accuracy,
             "quantile_source": "full_stream_sketch",
             "finite_only_moments": True,
+            "higher_moments": "full_stream_exact",
+            "shape_statistics": ["skewness", "kurtosis"],
             "columns_profiled": len(numeric_cols),
             "raw_observations_retained": False,
         }
@@ -575,6 +590,8 @@ def build_streaming_profile(
                 "quantile_source": "full_stream_sketch",
                 "quantile_cell_budget": int(PYTHON_NUMERIC_SKETCH_CELL_BUDGET),
                 "finite_only_moments": True,
+                "higher_moments": "full_stream_exact",
+                "shape_statistics": ["skewness", "kurtosis"],
                 "columns_profiled": len(numeric_cols),
                 "raw_observations_retained": False,
             }
@@ -588,6 +605,8 @@ def build_streaming_profile(
                 "quantile_cell_budget": int(PYTHON_NUMERIC_SKETCH_CELL_BUDGET),
                 "quantile_sketch_skipped_for_cost": bool(numeric_cols),
                 "finite_only_moments": True,
+                "higher_moments": "full_stream_exact",
+                "shape_statistics": ["skewness", "kurtosis"],
                 "columns_profiled": len(numeric_cols),
                 "raw_observations_retained": False,
             }

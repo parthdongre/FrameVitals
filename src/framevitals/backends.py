@@ -62,6 +62,33 @@ def _float64_array(values: pd.Series | np.ndarray | list[Any]) -> np.ndarray:
     return np.ascontiguousarray(array, dtype=np.float64)
 
 
+def _bias_corrected_shape(
+    count: int,
+    m2: float,
+    m3: float,
+    m4: float,
+) -> tuple[float | None, float | None]:
+    """Return pandas/SciPy-compatible sample skewness and excess kurtosis."""
+    if count < 3 or m2 <= 0.0:
+        skewness = None
+    else:
+        n = float(count)
+        population_skew = np.sqrt(n) * m3 / (m2 ** 1.5)
+        skewness = float(np.sqrt(n * (n - 1.0)) / (n - 2.0) * population_skew)
+
+    if count < 4 or m2 <= 0.0:
+        kurtosis = None
+    else:
+        n = float(count)
+        population_excess = n * m4 / (m2 * m2) - 3.0
+        kurtosis = float(
+            (n - 1.0)
+            / ((n - 2.0) * (n - 3.0))
+            * ((n + 1.0) * population_excess + 6.0)
+        )
+    return skewness, kurtosis
+
+
 def _numpy_numeric_state(array: np.ndarray) -> dict[str, Any]:
     missing = int(np.isnan(array).sum())
     infinite = int(np.isinf(array).sum())
@@ -76,12 +103,23 @@ def _numpy_numeric_state(array: np.ndarray) -> dict[str, Any]:
             "mean": None,
             "variance": None,
             "std": None,
+            "skewness": None,
+            "kurtosis": None,
+            "m2": 0.0,
+            "m3": 0.0,
+            "m4": 0.0,
             "minimum": None,
             "maximum": None,
         }
 
     mean = float(finite.mean())
-    variance = float(finite.var(ddof=1)) if finite.size >= 2 else None
+    centered = finite - mean
+    centered2 = centered * centered
+    m2 = float(np.sum(centered2))
+    m3 = float(np.dot(centered2, centered))
+    m4 = float(np.dot(centered2, centered2))
+    variance = m2 / (finite.size - 1) if finite.size >= 2 else None
+    skewness, kurtosis = _bias_corrected_shape(int(finite.size), m2, m3, m4)
     return {
         "backend": "numpy",
         "observations": int(array.size),
@@ -91,6 +129,11 @@ def _numpy_numeric_state(array: np.ndarray) -> dict[str, Any]:
         "mean": mean,
         "variance": variance,
         "std": float(np.sqrt(variance)) if variance is not None else None,
+        "skewness": skewness,
+        "kurtosis": kurtosis,
+        "m2": m2,
+        "m3": m3,
+        "m4": m4,
         "minimum": float(finite.min()),
         "maximum": float(finite.max()),
     }
@@ -101,7 +144,7 @@ def numeric_state(
     *,
     backend: BackendName | str | None = None,
 ) -> dict[str, Any]:
-    """Calculate exact first/second-moment state through the selected backend."""
+    """Calculate exact mergeable moments through fourth order."""
     array = _float64_array(values)
     selected = resolve_numeric_backend(backend)
     if selected == "rust":

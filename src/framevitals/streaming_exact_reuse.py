@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from framevitals.deep_statistics_v2 import _classify_kurtosis, _classify_skew
+
 
 _EXACT_NUMERIC_FIELD_MAP = {
     "count": "count",
@@ -18,16 +20,18 @@ _EXACT_NUMERIC_FIELD_MAP = {
     "std": "std",
     "min": "min",
     "max": "max",
+    "skewness": "skewness",
+    "kurtosis": "kurtosis",
 }
 
 
 def reuse_streaming_exact_statistics(payload: dict[str, Any]) -> dict[str, Any]:
     """Overlay full-stream numeric sufficient statistics onto deep diagnostics.
 
-    Quantiles, skew/kurtosis, outlier views, distribution fits, hypothesis tests,
-    confidence intervals, and bivariate tests remain bounded-sample diagnostics.
-    Only statistics that the streaming profile already computed over every
-    profiled source row are reused.
+    Quantiles, outlier views, distribution fits, hypothesis tests, confidence
+    intervals, and bivariate tests remain bounded-sample diagnostics. Exact
+    count/mean/std/min/max and central-moment shape statistics are reused from
+    the already-completed full-stream profile pass.
     """
     profile = payload.get("profile")
     deep = payload.get("deep_statistics_v2")
@@ -59,6 +63,15 @@ def reuse_streaming_exact_statistics(payload: dict[str, Any]) -> dict[str, Any]:
             sample_summary[target_field] = exact_summary[source_field]
             reused_fields.append(target_field)
 
+        if "skewness" in reused_fields:
+            sample_summary["skewness_label"] = _classify_skew(
+                sample_summary.get("skewness")
+            )
+        if "kurtosis" in reused_fields:
+            sample_summary["kurtosis_label"] = _classify_kurtosis(
+                sample_summary.get("kurtosis")
+            )
+
         if reused_fields:
             reused_columns += 1
             sample_summary["summary_provenance"] = {
@@ -71,8 +84,6 @@ def reuse_streaming_exact_statistics(payload: dict[str, Any]) -> dict[str, Any]:
                     "median",
                     "q3",
                     "iqr",
-                    "skewness",
-                    "kurtosis",
                     "outliers",
                     "normality",
                     "distribution_fit",
