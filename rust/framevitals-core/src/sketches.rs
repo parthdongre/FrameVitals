@@ -7,6 +7,8 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
+use rustc_hash::FxHashMap;
+
 const DEFAULT_ZERO_THRESHOLD: f64 = 1.0e-12;
 
 #[inline]
@@ -111,9 +113,10 @@ impl Default for HyperLogLog {
 pub struct LogQuantileSketch {
     relative_accuracy: f64,
     log_gamma: f64,
+    inv_log_gamma: f64,
     zero_threshold: f64,
-    negative: BTreeMap<i32, u64>,
-    positive: BTreeMap<i32, u64>,
+    negative: FxHashMap<i32, u64>,
+    positive: FxHashMap<i32, u64>,
     zero_count: u64,
     count: u64,
 }
@@ -125,25 +128,30 @@ impl LogQuantileSketch {
             "relative accuracy must be between 0 and 1"
         );
         let gamma = (1.0 + relative_accuracy) / (1.0 - relative_accuracy);
+        let log_gamma = gamma.ln();
         Self {
             relative_accuracy,
-            log_gamma: gamma.ln(),
+            log_gamma,
+            inv_log_gamma: 1.0 / log_gamma,
             zero_threshold: DEFAULT_ZERO_THRESHOLD,
-            negative: BTreeMap::new(),
-            positive: BTreeMap::new(),
+            negative: FxHashMap::default(),
+            positive: FxHashMap::default(),
             zero_count: 0,
             count: 0,
         }
     }
 
+    #[inline]
     fn key(&self, magnitude: f64) -> i32 {
-        (magnitude.ln() / self.log_gamma).floor() as i32
+        (magnitude.ln() * self.inv_log_gamma).floor() as i32
     }
 
+    #[inline]
     fn representative(&self, key: i32) -> f64 {
         ((key as f64 + 0.5) * self.log_gamma).exp()
     }
 
+    #[inline]
     pub fn observe(&mut self, value: f64) {
         if !value.is_finite() {
             return;
@@ -175,14 +183,35 @@ impl LogQuantileSketch {
         self
     }
 
-    pub fn quantile(&self, q: f64) -> Option<f64> {
+    fn sorted_bins(&self) -> (Vec<(i32, u64)>, Vec<(i32, u64)>) {
+        let mut negative: Vec<_> = self
+            .negative
+            .iter()
+            .map(|(key, count)| (*key, *count))
+            .collect();
+        let mut positive: Vec<_> = self
+            .positive
+            .iter()
+            .map(|(key, count)| (*key, *count))
+            .collect();
+        negative.sort_unstable_by_key(|(key, _)| *key);
+        positive.sort_unstable_by_key(|(key, _)| *key);
+        (negative, positive)
+    }
+
+    fn quantile_from_sorted(
+        &self,
+        q: f64,
+        negative: &[(i32, u64)],
+        positive: &[(i32, u64)],
+    ) -> Option<f64> {
         if self.count == 0 || !(0.0..=1.0).contains(&q) {
             return None;
         }
         let target = (q * (self.count - 1) as f64).floor() as u64;
         let mut seen = 0_u64;
 
-        for (key, count) in self.negative.iter().rev() {
+        for (key, count) in negative.iter().rev() {
             if target < seen + count {
                 return Some(-self.representative(*key));
             }
@@ -192,21 +221,29 @@ impl LogQuantileSketch {
             return Some(0.0);
         }
         seen += self.zero_count;
-        for (key, count) in &self.positive {
+        for (key, count) in positive {
             if target < seen + count {
                 return Some(self.representative(*key));
             }
             seen += count;
         }
-        self.positive
-            .last_key_value()
+        positive
+            .last()
             .map(|(key, _)| self.representative(*key))
-            .or_else(|| {
-                self.negative
-                    .first_key_value()
-                    .map(|(key, _)| -self.representative(*key))
-            })
+            .or_else(|| negative.first().map(|(key, _)| -self.representative(*key)))
             .or(Some(0.0))
+    }
+
+    pub fn quantile(&self, q: f64) -> Option<f64> {
+        let (negative, positive) = self.sorted_bins();
+        self.quantile_from_sorted(q, &negative, &positive)
+    }
+
+    pub fn quantiles(&self, qs: &[f64]) -> Vec<Option<f64>> {
+        let (negative, positive) = self.sorted_bins();
+        qs.iter()
+            .map(|q| self.quantile_from_sorted(*q, &negative, &positive))
+            .collect()
     }
 
     pub fn count(&self) -> u64 {
@@ -462,6 +499,18 @@ mod tests {
         let median = merged.quantile(0.5).unwrap();
         assert!((median - 5_000.0).abs() / 5_000.0 < 0.03);
         assert!(merged.bin_count() < 1_000);
+    }
+
+    #[test]
+    fn batched_log_quantiles_match_individual_queries() {
+        let mut sketch = LogQuantileSketch::new(0.01);
+        for value in -5_000..=5_000 {
+            sketch.observe(value as f64);
+        }
+        let levels = [0.01, 0.25, 0.5, 0.75, 0.99];
+        let batched = sketch.quantiles(&levels);
+        let individual: Vec<_> = levels.iter().map(|q| sketch.quantile(*q)).collect();
+        assert_eq!(batched, individual);
     }
 
     #[test]
