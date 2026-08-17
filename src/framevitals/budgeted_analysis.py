@@ -13,14 +13,17 @@ import pandas as pd
 
 from framevitals.anomaly_ensemble import detect_anomalies_ensemble
 from framevitals.deep_statistics_v2 import run_deep_statistics_v2
-from framevitals.fast_deep_statistics import run_fast_deep_statistics_v2
 from framevitals.deep_triage import triage_deep_columns
 from framevitals.execution import ExecutionBudget, deterministic_sample_frame
 from framevitals.fast_anomaly import fast_anomaly_scan
+from framevitals.fast_deep_statistics import run_fast_deep_statistics_v2
 from framevitals.neural_anomaly import neural_reconstruction_anomalies
 from framevitals.provenance import normalize_execution
 from framevitals.stream_change import scan_ordered_mean_shift
 from framevitals.time_series import detect_and_analyze_time_series
+
+
+_RESEARCH_BCA_MAX_ROWS = 2_000
 
 
 def _attach_execution(
@@ -49,7 +52,14 @@ def run_budgeted_deep_statistics(
     budget: ExecutionBudget,
     max_pairs: int | None = None,
 ) -> dict[str, Any]:
-    """Run deep statistics on a bounded, adaptively selected diagnostic view."""
+    """Run deep statistics on a bounded, adaptively selected diagnostic view.
+
+    Research mode keeps BCa bootstrap semantics for genuinely small diagnostic
+    samples, where resampling cost is bounded and finite-sample refinement can
+    be useful. Once the diagnostic sample is larger, deterministic Student-t
+    mean intervals and distribution-free median order-statistic intervals are
+    used instead. The rest of the Research statistical battery is unchanged.
+    """
     sample_limit = max(
         20,
         min(
@@ -76,24 +86,33 @@ def run_budgeted_deep_statistics(
     if pair_budget < 1:
         raise ValueError("max_pairs must be at least 1.")
 
-    if budget.mode == "research":
+    use_research_bca = (
+        budget.mode == "research" and len(diagnostic_view) <= _RESEARCH_BCA_MAX_ROWS
+    )
+    if use_research_bca:
         payload = run_deep_statistics_v2(diagnostic_view, max_pairs=pair_budget)
-        inference_strategy = "bca_bootstrap"
+        inference_strategy = "bca_bootstrap_small_sample"
     else:
         payload = run_fast_deep_statistics_v2(
             diagnostic_view,
             max_pairs=pair_budget,
         )
-        inference_strategy = "closed_form_and_order_statistics"
+        inference_strategy = (
+            "adaptive_large_sample_closed_form_and_order_statistics"
+            if budget.mode == "research"
+            else "closed_form_and_order_statistics"
+        )
+
     triage_payload = triage.to_dict()
     payload["column_triage"] = triage_payload
 
     sampling = {
         **sampling,
         "reason": (
-            "Deep statistics use a bounded row view plus adaptive column triage; "
-            "expensive distribution work is reserved for the highest-interest columns; "
-            "non-research modes use O(n) confidence intervals instead of resampling."
+            "Deep statistics use a bounded row view plus adaptive column triage. "
+            "Research mode retains BCa bootstrap on small diagnostic samples but "
+            "switches to deterministic large-sample intervals above the BCa cost "
+            "threshold; other modes use the deterministic interval path directly."
         ),
         "pair_budget": int(pair_budget),
         "column_triage": triage_payload,
@@ -101,6 +120,7 @@ def run_budgeted_deep_statistics(
         "diagnostic_columns": int(len(selected_columns)),
         "adaptive_strategy": "column_interest_triage",
         "inference_strategy": inference_strategy,
+        "research_bca_max_rows": int(_RESEARCH_BCA_MAX_ROWS),
     }
     return _attach_execution(
         payload,
