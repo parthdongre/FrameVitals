@@ -1,10 +1,11 @@
 """Streaming profile construction for Arrow-capable dataset sources.
 
 The streaming path keeps full-row work to mergeable column state and retains
-only a bounded, evenly spaced row sample for analyses that still require row
-relationships (duplicate estimation and correlation). Native builds consume
-Arrow RecordBatches directly for fused numeric profiling and Arrow UTF-8 buffers
-for full-file categorical sketches when those kernels are available.
+only a bounded, deterministic stratified-jitter row sample for analyses that
+still require row relationships (duplicate estimation and correlation). Native
+builds consume Arrow RecordBatches directly for fused numeric profiling and
+Arrow UTF-8 buffers for full-file categorical sketches when those kernels are
+available.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from framevitals.backends import (
     numeric_state,
     resolve_numeric_backend,
 )
+from framevitals.execution import _deterministic_stratified_positions
 from framevitals.profiler import _bounded_correlations, series_to_dict
 from framevitals.sources import StreamingDatasetSource
 from framevitals.streaming_sketches import (
@@ -260,12 +262,7 @@ def _summary_from_python_state(
 
 
 def _sample_positions(rows: int, target_rows: int) -> np.ndarray:
-    count = min(rows, target_rows)
-    if count <= 0:
-        return np.empty(0, dtype=np.int64)
-    if count == rows:
-        return np.arange(rows, dtype=np.int64)
-    return np.unique(np.linspace(0, rows - 1, num=count, dtype=np.int64))
+    return _deterministic_stratified_positions(rows, target_rows)
 
 
 def _sample_batch(batch, positions: np.ndarray, offset: int):
@@ -287,7 +284,7 @@ def sample_streaming_source(
     batch_size: int = STREAM_BATCH_SIZE,
     columns: Sequence[str] | None = None,
 ) -> pd.DataFrame:
-    """Return an evenly spaced bounded row sample without full materialization."""
+    """Return a deterministic stratified-jitter sample without full materialization."""
     if sample_rows < 1:
         raise ValueError("sample_rows must be at least 1.")
     if batch_size < 1:
@@ -363,7 +360,7 @@ def _estimated_memory_usage(sample: pd.DataFrame, rows: int) -> tuple[float, dic
         estimated = False
     else:
         estimated_bytes = int(round(sample_bytes / len(sample) * rows))
-        method = "scaled_from_even_row_sample"
+        method = "scaled_from_stratified_jitter_sample"
         estimated = True
     return round(estimated_bytes / (1024 * 1024), 3), {
         "method": method,
@@ -638,7 +635,7 @@ def build_streaming_profile(
             else "native_full_stream_sketch_with_sample_fallback"
         )
     else:
-        categorical_method = "exact" if len(sample) == rows else "evenly_spaced_row_sample"
+        categorical_method = "exact" if len(sample) == rows else "stratified_jitter_row_sample"
     categorical_metadata = {
         "method": categorical_method,
         "sampled": bool(sample_categorical_columns and len(sample) < rows),
@@ -708,7 +705,7 @@ def build_streaming_profile(
                 effective_batch_size < int(batch_size)
                 or effective_sample_rows < int(sample_rows)
             ),
-            "sample_strategy": "evenly_spaced_global_rows",
+            "sample_strategy": "stratified_jitter_global_rows",
             "numeric_backend": selected_backend,
             "native_arrow_fused_numeric": bool(native_arrow_fused),
             "numpy_full_stream_quantile_sketches": bool(use_numpy_quantile_sketches),

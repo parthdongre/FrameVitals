@@ -19,6 +19,7 @@ import pandas as pd
 
 
 _VALID_MODES = {"quick", "standard", "deep", "research"}
+_SAMPLE_SEED = 0x9E3779B97F4A7C15
 
 # Full-stream profiling is valuable, but on ultra-wide sources scanning every
 # cell defeats the purpose of streaming. These budgets cap the number of source
@@ -73,6 +74,54 @@ def _bounded(requested: int, rows: int) -> int:
     if rows <= 0:
         return 0
     return min(int(requested), int(rows))
+
+
+def _deterministic_stratified_positions(
+    rows: int,
+    target_rows: int,
+    *,
+    seed: int = _SAMPLE_SEED,
+) -> np.ndarray:
+    """Choose one deterministic pseudo-random row from each equal-width stratum.
+
+    Fixed evenly spaced samples can lock onto periodic structure. Stratified jitter
+    retains deterministic whole-dataset coverage while breaking that phase locking.
+    Positions are returned sorted, so temporal order remains available to callers
+    that need it, without allocating a permutation proportional to the source size.
+    """
+    rows = int(rows)
+    target_rows = int(target_rows)
+    count = min(rows, target_rows)
+    if count <= 0:
+        return np.empty(0, dtype=np.int64)
+    if count == rows:
+        return np.arange(rows, dtype=np.int64)
+    if count == 1:
+        return np.array([rows // 2], dtype=np.int64)
+
+    edges = np.fromiter(
+        ((index * rows) // count for index in range(count + 1)),
+        dtype=np.int64,
+        count=count + 1,
+    )
+    widths = (edges[1:] - edges[:-1]).astype(np.uint64)
+    indices = np.arange(count, dtype=np.uint64)
+
+    # SplitMix64-style deterministic mixing. uint64 overflow is intentional.
+    with np.errstate(over="ignore"):
+        mixed = indices + np.uint64(seed)
+        mixed = (mixed ^ (mixed >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+        mixed = (mixed ^ (mixed >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+        mixed = mixed ^ (mixed >> np.uint64(31))
+
+    offsets = (mixed % widths).astype(np.int64)
+    positions = edges[:-1] + offsets
+
+    # Keep full-range coverage as an explicit invariant while jittering the
+    # interior strata. This is useful for ordered/time-series diagnostics too.
+    positions[0] = 0
+    positions[-1] = rows - 1
+    return positions
 
 
 def derive_streaming_profile_column_limit(
@@ -243,20 +292,18 @@ def deterministic_sample_frame(
             "strategy": "full",
         }
 
-    # Evenly spaced positions are deterministic, preserve coverage across the
-    # source, and avoid allocating a random permutation proportional to n.
-    positions = np.linspace(0, source_rows - 1, num=max_rows, dtype=np.int64)
-    positions = np.unique(positions)
+    positions = _deterministic_stratified_positions(source_rows, max_rows)
     sampled = dataframe.iloc[positions]
     if not preserve_order:
-        # The positions are already ordered; this branch documents that callers
-        # may treat the sample as an unordered statistical sample.
+        # Positions stay sorted so time-aware callers can preserve ordering, while
+        # statistical callers receive a copy that is safe to mutate downstream.
         sampled = sampled.copy()
 
     return sampled, {
         "sampled": True,
         "source_rows": source_rows,
         "sample_rows": int(len(sampled)),
-        "strategy": "deterministic_evenly_spaced",
+        "strategy": "deterministic_stratified_jitter",
         "preserve_order": bool(preserve_order),
+        "seed": int(_SAMPLE_SEED),
     }
