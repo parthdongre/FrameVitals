@@ -102,26 +102,72 @@ def test_deep_statistics_adapter_never_passes_unbounded_frame(monkeypatch):
     )
 
 
-def test_research_deep_statistics_adapter_keeps_bca(monkeypatch):
-    seen = {}
+def test_research_deep_statistics_adapter_keeps_bca_for_small_samples(monkeypatch):
+    seen = {"bca": 0, "fast": 0}
 
-    def fake_deep(frame, max_pairs=20):
+    def fake_bca(frame, max_pairs=20):
+        seen["bca"] += 1
         seen["rows"] = len(frame)
         seen["pairs"] = max_pairs
         return {"available": True}
 
+    def fake_fast(frame, max_pairs=20):
+        seen["fast"] += 1
+        return {"available": True}
+
     monkeypatch.setattr(
         "framevitals.budgeted_analysis.run_deep_statistics_v2",
-        fake_deep,
+        fake_bca,
+    )
+    monkeypatch.setattr(
+        "framevitals.budgeted_analysis.run_fast_deep_statistics_v2",
+        fake_fast,
     )
     frame = pd.DataFrame({"x": np.arange(500), "y": np.arange(500)})
     budget = derive_execution_budget(len(frame), len(frame.columns), mode="research")
 
     result = run_budgeted_deep_statistics(frame, budget=budget)
 
+    assert seen["bca"] == 1
+    assert seen["fast"] == 0
     assert seen["rows"] == len(frame)
     assert seen["pairs"] <= budget.relationship_pair_budget
-    assert result["execution"]["inference_strategy"] == "bca_bootstrap"
+    assert result["execution"]["inference_strategy"] == "bca_bootstrap_small_sample"
+
+
+def test_research_deep_statistics_adapter_uses_fast_intervals_for_large_samples(monkeypatch):
+    seen = {"bca": 0, "fast": 0}
+
+    def fake_bca(frame, max_pairs=20):
+        seen["bca"] += 1
+        return {"available": True}
+
+    def fake_fast(frame, max_pairs=20):
+        seen["fast"] += 1
+        seen["rows"] = len(frame)
+        seen["pairs"] = max_pairs
+        return {"available": True}
+
+    monkeypatch.setattr(
+        "framevitals.budgeted_analysis.run_deep_statistics_v2",
+        fake_bca,
+    )
+    monkeypatch.setattr(
+        "framevitals.budgeted_analysis.run_fast_deep_statistics_v2",
+        fake_fast,
+    )
+    frame = pd.DataFrame({"x": np.arange(5_000), "y": np.arange(5_000)})
+    budget = derive_execution_budget(len(frame), len(frame.columns), mode="research")
+
+    result = run_budgeted_deep_statistics(frame, budget=budget)
+
+    assert seen["bca"] == 0
+    assert seen["fast"] == 1
+    assert seen["rows"] == len(frame)
+    assert seen["pairs"] <= budget.relationship_pair_budget
+    assert result["execution"]["inference_strategy"] == (
+        "adaptive_large_sample_closed_form_and_order_statistics"
+    )
 
 
 def test_anomaly_adapter_discloses_sample_coverage(monkeypatch):
