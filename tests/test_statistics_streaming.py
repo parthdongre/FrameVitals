@@ -44,7 +44,7 @@ def test_public_statistics_streams_bounded_parquet_sample(tmp_path, monkeypatch)
     assert execution["source_columns"] == len(frame.columns)
     assert execution["sample_rows"] == 1_000
     assert execution["sampled"] is True
-    assert execution["strategy"] == "streaming_evenly_spaced_global_rows"
+    assert execution["strategy"] == "streaming_stratified_jitter_global_rows"
     assert execution["pair_budget"] == 2
     assert execution["source"]["format"] == "parquet"
     assert result["source"]["supports_streaming"] is True
