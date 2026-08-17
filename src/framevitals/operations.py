@@ -8,7 +8,6 @@ simple validation or comparison call from importing the heavy analysis stack.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from pathlib import Path
 from typing import Any
 
 import pandas as pd

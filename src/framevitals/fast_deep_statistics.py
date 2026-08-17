@@ -20,7 +20,6 @@ import pandas as pd
 from scipy import stats
 
 from framevitals.deep_statistics_v2 import (
-    _categorical_column_stats,
     _classify_kurtosis,
     _classify_skew,
     _fit_best_distribution,

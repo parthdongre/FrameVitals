@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from framevitals.backends import numeric_profile, resolve_numeric_backend
+from framevitals.execution import _deterministic_stratified_positions
 
 MAX_CORRELATION_COLUMNS = 100
 MAX_EXACT_DUPLICATE_CELLS = 50_000_000
@@ -77,8 +78,8 @@ def _duplicate_profile(df: pd.DataFrame) -> tuple[int, dict]:
         }
 
     sample_rows = min(rows, DUPLICATE_SAMPLE_ROWS)
-    positions = np.linspace(0, rows - 1, num=sample_rows, dtype=np.int64)
-    sample = df.iloc[np.unique(positions)]
+    positions = _deterministic_stratified_positions(rows, sample_rows)
+    sample = df.iloc[positions]
     sample_duplicates = int(sample.duplicated().sum())
     rate = sample_duplicates / max(len(sample), 1)
     estimate = int(round(rate * rows))
@@ -88,6 +89,7 @@ def _duplicate_profile(df: pd.DataFrame) -> tuple[int, dict]:
         "sample_rows": int(len(sample)),
         "source_rows": int(rows),
         "estimated_duplicate_rate": round(float(rate), 6),
+        "strategy": "stratified_jitter_global_rows",
     }
 
 
@@ -115,8 +117,9 @@ def _bounded_correlations(
             key=lambda column: (-non_missing[column], str(column)),
         )[:MAX_CORRELATION_COLUMNS]
 
+    finite_numeric = df[selected].replace([np.inf, -np.inf], np.nan)
     correlations = (
-        df[selected]
+        finite_numeric
         .corr(numeric_only=True)
         .round(3)
         .replace({np.nan: None})
@@ -148,8 +151,9 @@ def _pandas_numeric_summary(
             "approximate_quantiles": False,
         }, {}
 
+    finite_numeric = df[numeric_cols].replace([np.inf, -np.inf], np.nan)
     summary = (
-        df[numeric_cols]
+        finite_numeric
         .describe()
         .T
         .replace({np.nan: None})
@@ -160,6 +164,7 @@ def _pandas_numeric_summary(
         "backend": "pandas",
         "method": "pandas_describe",
         "approximate_quantiles": False,
+        "finite_only_moments": True,
         "columns_profiled": len(numeric_cols),
     }, {}
 

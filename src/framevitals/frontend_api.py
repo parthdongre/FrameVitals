@@ -205,8 +205,8 @@ def build_dashboard_payload(
 
     health_score = result.get("health", {}).get("overall_score", 0)
     health_label = result.get("health", {}).get("label", "Unknown")
-    ml_score = result.get("ml_readiness", {}).get("score", 0)
-    ml_label = result.get("ml_readiness", {}).get("label", "Unknown")
+    result.get("ml_readiness", {}).get("score", 0)
+    result.get("ml_readiness", {}).get("label", "Unknown")
 
     payload = {
         "id": result.get("dataset_id"),

@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import pandas as pd
 
 from framevitals.cleaning_plan import apply_cleaning_plan, infer_cleaning_plan
 from framevitals.health_score import calculate_health_score
