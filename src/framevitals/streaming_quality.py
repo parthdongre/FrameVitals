@@ -93,10 +93,10 @@ def run_streaming_quality_diagnostics(
 ) -> dict[str, Any]:
     """Run quality diagnostics without materializing a streaming source.
 
-    Full-source missingness and duplicate-row estimates come from ``profile``.
-    Value-level diagnostics operate on ``sample``. The returned execution
-    metadata describes that split so downstream consumers can distinguish
-    observed facts from sample-derived candidates.
+    Full-row profile facts may cover either the complete schema or a projected
+    ultra-wide schema. Value-level diagnostics operate on ``sample``. Execution
+    metadata records both row and column coverage so projected checks cannot be
+    mistaken for full-schema facts.
     """
     if source_rows < 1:
         raise ValueError("source_rows must be at least 1.")
@@ -114,16 +114,29 @@ def run_streaming_quality_diagnostics(
     )
 
     sample_rows = int(len(sample))
+    profiled_columns = int(
+        profile.get("streaming_metadata", {}).get(
+            "profiled_columns",
+            len(profile.get("columns", sample.columns)),
+        )
+        or len(profile.get("columns", sample.columns))
+    )
+    column_sampled = bool(
+        profile.get("streaming_metadata", {}).get("column_sampled", False)
+    ) or profiled_columns < int(source_columns)
+
     _annotate_sample_findings(
         payload,
         source_rows=int(source_rows),
         sample_rows=sample_rows,
     )
 
+    columns_checked = min(int(len(sample.columns)), int(max_columns))
     payload["rows"] = int(source_rows)
     payload["columns"] = int(source_columns)
-    payload["columns_checked"] = min(int(source_columns), int(max_columns))
-    payload["truncated_columns"] = int(source_columns) > int(max_columns)
+    payload["profiled_columns"] = profiled_columns
+    payload["columns_checked"] = columns_checked
+    payload["truncated_columns"] = columns_checked < int(source_columns)
     payload["duplicate_rows"] = int(profile.get("duplicate_rows", 0) or 0)
 
     issue_groups = (
@@ -148,15 +161,32 @@ def run_streaming_quality_diagnostics(
         "issue_count": issue_count + (1 if duplicate_rows else 0),
         "primary_key_candidate_count": len(payload.get("primary_key_candidates", [])),
     }
+
+    profile_fact_scope = (
+        "full_rows_projected_columns" if column_sampled else "full_stream"
+    )
     payload["execution"] = normalize_execution(
         {
             "method": "streaming_profile_with_bounded_quality_sample",
             "full_materialization": False,
             "source_rows": int(source_rows),
             "source_columns": int(source_columns),
+            "profiled_columns": profiled_columns,
+            "columns_checked": columns_checked,
+            "column_sampled": column_sampled,
             "sample_rows": sample_rows,
             "sampled": sample_rows < int(source_rows),
-            "full_source_inputs": ["missingness", "duplicate_row_estimate"],
+            "profile_fact_scope": profile_fact_scope,
+            "full_source_inputs": (
+                ["missingness", "duplicate_row_estimate"]
+                if not column_sampled
+                else []
+            ),
+            "projected_full_row_inputs": (
+                ["missingness", "duplicate_row_estimate"]
+                if column_sampled
+                else []
+            ),
             "sample_inputs": [
                 "column_roles",
                 "identifier_duplicates",
@@ -171,7 +201,7 @@ def run_streaming_quality_diagnostics(
             ],
             "candidate_only_checks": (
                 ["primary_key_candidates", "duplicate_columns"]
-                if sample_rows < int(source_rows)
+                if sample_rows < int(source_rows) or column_sampled
                 else []
             ),
         },
