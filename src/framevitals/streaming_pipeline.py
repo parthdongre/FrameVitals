@@ -11,19 +11,22 @@ full-data execution.
 from __future__ import annotations
 
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 from framevitals.analysis_selector import select_analyses
 from framevitals.column_roles import summarize_roles
 from framevitals.config import VALID_MODULES
 from framevitals.dataset_signals import detect_dataset_signals
-from framevitals.execution import derive_execution_budget
+from framevitals.execution import (
+    derive_execution_budget,
+    derive_streaming_profile_column_limit,
+)
 from framevitals.health_score import calculate_health_score_from_profile_sample
 from framevitals.ml_readiness import calculate_ml_readiness_from_profile
 from framevitals.pipeline import run_full_analysis
 from framevitals.signal_engine import build_signals
-from framevitals.sources import StreamingDatasetSource
+from framevitals.sources import DatasetMetadata, StreamingDatasetSource
 from framevitals.streaming_profile import build_streaming_profile
 from framevitals.streaming_quality import run_streaming_quality_diagnostics
 from framevitals.streaming_roles import infer_streaming_column_roles
@@ -52,6 +55,103 @@ def _working_sample_rows(budget) -> int:
         1,
     )
     return min(int(budget.rows), int(requested))
+
+
+def _evenly_spaced_names(names: Sequence[str], limit: int) -> list[str]:
+    total = len(names)
+    if total <= limit:
+        return list(names)
+    if limit <= 1:
+        return [str(names[0])]
+    selected = [
+        str(names[(index * (total - 1)) // (limit - 1)])
+        for index in range(limit)
+    ]
+    return list(dict.fromkeys(selected))
+
+
+def _streaming_profile_projection(
+    source: StreamingDatasetSource,
+    *,
+    source_columns: int,
+    limit: int,
+    target_column: str | None,
+) -> list[str] | None:
+    """Choose a deterministic schema-wide projection for ultra-wide sources."""
+    if source_columns <= limit:
+        return None
+
+    schema_method = getattr(source, "schema", None)
+    if not callable(schema_method):
+        raise TypeError(
+            "Ultra-wide streaming analysis requires source.schema() so FrameVitals "
+            "can project columns instead of scanning the complete width."
+        )
+    schema = schema_method()
+    names = [str(field.name) for field in schema]
+    if target_column is not None and target_column not in names:
+        raise ValueError(f"Target column not found: {target_column}")
+
+    selected = _evenly_spaced_names(names, limit)
+    if target_column is not None and target_column not in selected:
+        selected[-1] = target_column
+    return list(dict.fromkeys(selected))
+
+
+class _ProjectedStreamingSource:
+    """Projection-enforcing view over a streaming source.
+
+    The wrapped source is never asked for the complete ultra-wide width. This
+    keeps the reusable full-row profile scan bounded while preserving source
+    metadata in the outer pipeline.
+    """
+
+    def __init__(self, source: StreamingDatasetSource, columns: Sequence[str]):
+        self._source = source
+        self._columns = tuple(columns)
+
+    def inspect(self) -> DatasetMetadata:
+        metadata = self._source.inspect()
+        return DatasetMetadata(
+            name=metadata.name,
+            kind=metadata.kind,
+            format=metadata.format,
+            rows=metadata.rows,
+            columns=len(self._columns),
+            size_bytes=metadata.size_bytes,
+            materialized=metadata.materialized,
+            supports_projection=True,
+            supports_streaming=True,
+        )
+
+    def schema(self):
+        schema_method = getattr(self._source, "schema", None)
+        if not callable(schema_method):
+            raise TypeError("Projected streaming sources require schema().")
+        schema = schema_method()
+        return [schema.field(name) for name in self._columns]
+
+    def iter_batches(
+        self,
+        *,
+        batch_size: int = 65_536,
+        columns: Sequence[str] | None = None,
+    ):
+        requested = list(self._columns if columns is None else columns)
+        allowed = set(self._columns)
+        unknown = [column for column in requested if column not in allowed]
+        if unknown:
+            raise ValueError(
+                "Projected source requested columns outside its budget: "
+                + ", ".join(unknown[:5])
+            )
+        yield from self._source.iter_batches(
+            batch_size=batch_size,
+            columns=requested,
+        )
+
+    def load(self):
+        raise RuntimeError("Projected streaming source must never materialize fully.")
 
 
 def _scope_bounded_result(
@@ -140,14 +240,46 @@ def run_streaming_analysis(
 
     budget = derive_execution_budget(rows, columns, mode=analysis_mode)
     working_rows = _working_sample_rows(budget)
+    profile_column_limit = derive_streaming_profile_column_limit(
+        rows,
+        columns,
+        mode=analysis_mode,
+    )
+    profile_columns = _streaming_profile_projection(
+        source,
+        source_columns=columns,
+        limit=profile_column_limit,
+        target_column=target_column,
+    )
+    profile_source: StreamingDatasetSource = (
+        _ProjectedStreamingSource(source, profile_columns)
+        if profile_columns is not None
+        else source
+    )
 
     profile_start = time.perf_counter()
     profile, working_sample = build_streaming_profile(
-        source,
+        profile_source,
         sample_rows=working_rows,
         return_sample=True,
     )
     streaming_profile_ms = (time.perf_counter() - profile_start) * 1000
+
+    profiled_columns = int(len(working_sample.columns))
+    column_sampled = profiled_columns < columns
+    profile["shape"] = {"rows": rows, "columns": columns}
+    profile["source_metadata"] = metadata.to_dict()
+    streaming_metadata = dict(profile.get("streaming_metadata", {}))
+    streaming_metadata.update({
+        "source_columns": columns,
+        "profiled_columns": profiled_columns,
+        "column_sampled": column_sampled,
+        "column_limit": int(profile_column_limit),
+        "column_strategy": (
+            "deterministic_schema_projection" if column_sampled else "full_schema"
+        ),
+    })
+    profile["streaming_metadata"] = streaming_metadata
 
     if working_sample.empty:
         raise ValueError(f"Streaming source produced no usable rows: {metadata.name}")
@@ -197,6 +329,9 @@ def run_streaming_analysis(
         "full_materialization": False,
         "working_sample_rows": int(len(working_sample)),
         "source_rows": rows,
+        "source_columns": columns,
+        "profiled_columns": profiled_columns,
+        "column_sampled": column_sampled,
     }
 
     # Cleaning/charts are internally suppressed on the bounded sample. Charts
@@ -263,15 +398,34 @@ def run_streaming_analysis(
             module_scope[module] = (
                 "bounded_row_sample" if sample_rows < rows else "full_source"
             )
+    profile_scope = (
+        "full_rows_projected_columns" if column_sampled else "full_stream"
+    )
     module_scope.update({
-        "profile": "full_stream",
-        "column_roles": "full_stream_plus_bounded_semantic_sample",
-        "health": "full_stream_plus_bounded_outlier_sample",
-        "ml_readiness": "full_stream_profile",
+        "profile": profile_scope,
+        "column_roles": (
+            "full_rows_projected_columns_plus_bounded_semantic_sample"
+            if column_sampled
+            else "full_stream_plus_bounded_semantic_sample"
+        ),
+        "health": (
+            "full_rows_projected_columns_plus_bounded_outlier_sample"
+            if column_sampled
+            else "full_stream_plus_bounded_outlier_sample"
+        ),
+        "ml_readiness": (
+            "full_rows_projected_columns_profile"
+            if column_sampled
+            else "full_stream_profile"
+        ),
         "quality_diagnostics": (
             "disabled"
             if "quality_diagnostics" in user_disabled
-            else "full_stream_plus_bounded_value_sample"
+            else (
+                "full_rows_projected_columns_plus_bounded_value_sample"
+                if column_sampled
+                else "full_stream_plus_bounded_value_sample"
+            )
         ),
         "cleaning": "deferred_streaming" if "cleaning" not in user_disabled else "disabled",
         "charts": "not_applicable" if "charts" not in user_disabled else "disabled",
@@ -289,6 +443,12 @@ def run_streaming_analysis(
             "full_materialization": False,
             "source_rows": rows,
             "source_columns": columns,
+            "profiled_columns": profiled_columns,
+            "column_sampled": column_sampled,
+            "column_limit": int(profile_column_limit),
+            "column_strategy": (
+                "deterministic_schema_projection" if column_sampled else "full_schema"
+            ),
             "working_sample_rows": sample_rows,
             "working_sample_strategy": sample_strategy,
             "single_full_source_profile_scan": True,

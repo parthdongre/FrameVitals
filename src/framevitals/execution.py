@@ -20,6 +20,23 @@ import pandas as pd
 
 _VALID_MODES = {"quick", "standard", "deep", "research"}
 
+# Full-stream profiling is valuable, but on ultra-wide sources scanning every
+# cell defeats the purpose of streaming. These budgets cap the number of source
+# cells inspected by the reusable profile pass while preserving the true source
+# shape in execution metadata.
+_STREAMING_PROFILE_CELL_BUDGETS = {
+    "quick": 64_000_000,
+    "standard": 96_000_000,
+    "deep": 128_000_000,
+    "research": 256_000_000,
+}
+_STREAMING_PROFILE_COLUMN_CAPS = {
+    "quick": 64,
+    "standard": 96,
+    "deep": 128,
+    "research": 256,
+}
+
 
 @dataclass(frozen=True, slots=True)
 class ExecutionBudget:
@@ -56,6 +73,44 @@ def _bounded(requested: int, rows: int) -> int:
     if rows <= 0:
         return 0
     return min(int(requested), int(rows))
+
+
+def derive_streaming_profile_column_limit(
+    rows: int,
+    columns: int,
+    *,
+    mode: str = "standard",
+) -> int:
+    """Return the deterministic full-stream column budget for a source shape.
+
+    Ordinary datasets keep every column. Ultra-wide/high-cell-count sources are
+    projected before the full streaming profile pass so total scanned cells stay
+    bounded. The projection itself is selected by the caller from the source
+    schema; this function only resolves the allowed width.
+    """
+    if mode not in _VALID_MODES:
+        raise ValueError(f"Unknown analysis mode: {mode}")
+    if rows < 0 or columns < 0:
+        raise ValueError("rows and columns must be non-negative.")
+    if columns == 0:
+        return 0
+    if rows == 0:
+        return int(columns)
+
+    cells = int(rows) * int(columns)
+    cell_budget = int(_STREAMING_PROFILE_CELL_BUDGETS[mode])
+    if cells <= cell_budget and columns < 10_000:
+        return int(columns)
+
+    by_cells = max(1, cell_budget // max(int(rows), 1))
+    return max(
+        1,
+        min(
+            int(columns),
+            int(by_cells),
+            int(_STREAMING_PROFILE_COLUMN_CAPS[mode]),
+        ),
+    )
 
 
 def derive_execution_budget(

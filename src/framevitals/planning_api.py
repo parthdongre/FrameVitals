@@ -8,6 +8,7 @@ budgets exactly as the execution layer expects.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,10 @@ from framevitals.analysis_selector import select_analyses
 from framevitals.column_roles import infer_column_roles
 from framevitals.config import ConfigInput, VALID_MODULES, resolve_config
 from framevitals.dataset_signals import detect_dataset_signals
-from framevitals.execution import derive_execution_budget
+from framevitals.execution import (
+    derive_execution_budget,
+    derive_streaming_profile_column_limit,
+)
 from framevitals.planning import AnalysisPlan
 from framevitals.profiler import build_profile
 from framevitals.sources import StreamingDatasetSource, resolve_source
@@ -27,15 +31,64 @@ DataInput = str | Path | pd.DataFrame
 PLANNING_SAMPLE_ROWS = 5_000
 
 
+def _evenly_spaced_names(names: Sequence[str], limit: int) -> list[str]:
+    """Select a deterministic schema-wide column projection without NumPy."""
+    total = len(names)
+    if limit < 1:
+        raise ValueError("column projection limit must be at least 1")
+    if total <= limit:
+        return list(names)
+    if limit == 1:
+        return [str(names[0])]
+
+    selected = [
+        str(names[(index * (total - 1)) // (limit - 1)])
+        for index in range(limit)
+    ]
+    return list(dict.fromkeys(selected))
+
+
+def _streaming_projection(
+    source: StreamingDatasetSource,
+    *,
+    source_columns: int,
+    limit: int,
+    target: str | None,
+) -> list[str] | None:
+    """Resolve a bounded projection for ultra-wide streaming planning."""
+    if source_columns <= limit:
+        return None
+
+    schema_method = getattr(source, "schema", None)
+    if not callable(schema_method):
+        raise TypeError(
+            "Ultra-wide streaming planning requires source.schema() so FrameVitals "
+            "can project columns instead of materializing the complete width."
+        )
+    schema = schema_method()
+    names = [str(field.name) for field in schema]
+    if target is not None and target not in names:
+        raise ValueError(f"Target column not found: {target}")
+
+    selected = _evenly_spaced_names(names, limit)
+    if target is not None and target not in selected:
+        if selected:
+            selected[-1] = target
+        else:
+            selected = [target]
+    return list(dict.fromkeys(selected))
+
+
 def _streaming_head_sample(
     source: StreamingDatasetSource,
     *,
     max_rows: int = PLANNING_SAMPLE_ROWS,
+    columns: Sequence[str] | None = None,
 ) -> pd.DataFrame:
     """Read at most ``max_rows`` rows and stop; planning must not scan the file."""
     frames: list[pd.DataFrame] = []
     remaining = int(max_rows)
-    for batch in source.iter_batches(batch_size=max_rows):
+    for batch in source.iter_batches(batch_size=max_rows, columns=columns):
         if remaining <= 0:
             break
         take = min(remaining, int(batch.num_rows))
@@ -55,6 +108,7 @@ def _project_sample_profile_to_source(
     source_rows: int,
     source_columns: int,
     sample_rows: int,
+    profiled_columns: int,
 ) -> dict[str, Any]:
     """Scale rate-based sample metrics to the true source shape for planning."""
     projected = dict(profile)
@@ -73,6 +127,9 @@ def _project_sample_profile_to_source(
         "strategy": "bounded_head",
         "full_scan": False,
         "rate_metrics_projected": sample_rows < source_rows,
+        "profiled_columns": int(profiled_columns),
+        "source_columns": int(source_columns),
+        "column_sampled": int(profiled_columns) < int(source_columns),
     }
     return projected
 
@@ -102,14 +159,33 @@ def plan(
     source_metadata = source.inspect()
 
     if source_metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
-        dataframe = _streaming_head_sample(source)
-        source_rows = int(source_metadata.rows or len(dataframe))
-        source_columns = int(source_metadata.columns or len(dataframe.columns))
+        source_rows = int(source_metadata.rows or 0)
+        source_columns = int(source_metadata.columns or 0)
+        if source_rows < 1 or source_columns < 1:
+            raise ValueError(f"Dataset is empty or has no columns: {source_metadata.name}")
+
+        column_limit = derive_streaming_profile_column_limit(
+            source_rows,
+            source_columns,
+            mode=resolved.mode,
+        )
+        projected_columns = _streaming_projection(
+            source,
+            source_columns=source_columns,
+            limit=column_limit,
+            target=resolved.target,
+        )
+        dataframe = _streaming_head_sample(
+            source,
+            columns=projected_columns,
+        )
+        profiled_columns = int(len(dataframe.columns))
         dataset_profile = _project_sample_profile_to_source(
             build_profile(dataframe),
             source_rows=source_rows,
             source_columns=source_columns,
             sample_rows=len(dataframe),
+            profiled_columns=profiled_columns,
         )
         planning_data = {
             "materialized_full_dataset": False,
@@ -118,6 +194,15 @@ def plan(
             "source_rows": source_rows,
             "strategy": "bounded_head",
             "full_scan": False,
+            "source_columns": source_columns,
+            "sample_columns": profiled_columns,
+            "column_sampled": profiled_columns < source_columns,
+            "column_strategy": (
+                "deterministic_schema_projection"
+                if profiled_columns < source_columns
+                else "full_schema"
+            ),
+            "column_limit": int(column_limit),
         }
     else:
         dataframe = source.load()
@@ -131,6 +216,11 @@ def plan(
             "source_rows": source_rows,
             "strategy": "full_dataset",
             "full_scan": True,
+            "source_columns": source_columns,
+            "sample_columns": source_columns,
+            "column_sampled": False,
+            "column_strategy": "full_schema",
+            "column_limit": source_columns,
         }
 
     source_columns_list = list(dataset_profile.get("columns", dataframe.columns))

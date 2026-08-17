@@ -143,20 +143,28 @@ def calculate_health_score_from_profile_sample(
 ) -> dict[str, Any]:
     """Calculate a bounded health score from a full profile plus row sample.
 
-    This is intended for streaming sources. Completeness and duplicate metrics
-    come from the full streaming profile, while outlier safety is estimated from
-    the bounded sample. Constant/high-cardinality signals use full-stream profile
-    summaries when available.
+    On ultra-wide sources the profile may cover all rows but a deterministic
+    subset of columns. Completeness and consistency are then estimates over that
+    projected column sample rather than being diluted by the unprofiled width.
     """
     rows = max(int(profile.get("shape", {}).get("rows", 0) or 0), 1)
-    columns = max(int(profile.get("shape", {}).get("columns", 0) or 0), 1)
+    source_columns = max(int(profile.get("shape", {}).get("columns", 0) or 0), 1)
+    streaming_metadata = profile.get("streaming_metadata", {})
+    profiled_columns = source_columns
+    if isinstance(streaming_metadata, Mapping):
+        profiled_columns = max(
+            int(streaming_metadata.get("profiled_columns", source_columns) or source_columns),
+            1,
+        )
+    column_sampled = profiled_columns < source_columns
+
     missing_counts = profile.get("missing_counts", {})
     missing_total = sum(
         int(value)
         for value in missing_counts.values()
         if isinstance(value, (int, np.integer))
     ) if isinstance(missing_counts, Mapping) else 0
-    missing_percent = missing_total / (rows * columns) * 100
+    missing_percent = missing_total / (rows * profiled_columns) * 100
     duplicate_percent = float(profile.get("duplicate_percent", 0.0) or 0.0)
 
     outlier_percent, sample_outlier_details = calculate_outlier_percent(sample)
@@ -179,18 +187,38 @@ def calculate_health_score_from_profile_sample(
         {
             "method": "streaming_profile_with_bounded_row_sample",
             "source_rows": rows,
-            "source_columns": columns,
+            "source_columns": source_columns,
+            "profiled_columns": profiled_columns,
+            "column_sampled": column_sampled,
             "sample_rows": sample_rows,
-            "sampled": sample_rows < rows,
+            "sampled": sample_rows < rows or column_sampled,
             "full_materialization": False,
             "components": {
-                "completeness": "full_stream_exact",
-                "uniqueness": (
-                    "full_stream_sample_estimate" if duplicate_estimated else "full_stream_exact"
+                "completeness": (
+                    "full_rows_projected_columns_estimate"
+                    if column_sampled
+                    else "full_stream_exact"
                 ),
-                "consistency": "full_stream_profile",
+                "uniqueness": (
+                    "projected_columns_row_sample_estimate"
+                    if column_sampled
+                    else (
+                        "full_stream_sample_estimate"
+                        if duplicate_estimated
+                        else "full_stream_exact"
+                    )
+                ),
+                "consistency": (
+                    "full_rows_projected_columns_estimate"
+                    if column_sampled
+                    else "full_stream_profile"
+                ),
                 "outlier_safety": (
-                    "bounded_row_sample_estimate" if sample_rows < rows else "exact"
+                    "projected_columns_bounded_row_sample_estimate"
+                    if column_sampled
+                    else (
+                        "bounded_row_sample_estimate" if sample_rows < rows else "exact"
+                    )
                 ),
             },
         },
@@ -203,7 +231,7 @@ def calculate_health_score_from_profile_sample(
         outlier_percent=outlier_percent,
         constant_columns=constant_columns,
         high_cardinality_columns=high_cardinality_columns,
-        columns=columns,
+        columns=profiled_columns,
         outlier_details=outlier_details,
         execution=execution,
     )
