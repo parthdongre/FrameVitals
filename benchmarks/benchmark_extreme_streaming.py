@@ -1,13 +1,13 @@
-"""Virtual 1,000,000 x 100,000 Deep streaming benchmark.
+"""Virtual ultra-wide streaming benchmark.
 
-A dense float64 materialization of this shape would require roughly 800 GB just
-for raw cells, so the benchmark models a projection-capable streaming source.
-FrameVitals must preserve the true source shape while never requesting the full
-100,000-column width from the source.
+A dense materialization of the target shapes is intentionally avoided. The
+benchmark models a projection-capable streaming source and fails if FrameVitals
+ever requests the complete ultra-wide schema during analysis.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 import time
@@ -20,8 +20,9 @@ import framevitals as fv
 from framevitals.sources import DatasetMetadata
 
 
-ROWS = 1_000_000
-COLUMNS = 100_000
+DEFAULT_ROWS = 1_000_000
+DEFAULT_COLUMNS = 100_000
+VALID_MODES = ("quick", "standard", "deep", "research")
 
 
 class VirtualSchema:
@@ -41,7 +42,7 @@ class VirtualSchema:
 
 
 class VirtualExtremeSource:
-    def __init__(self, rows: int = ROWS, columns: int = COLUMNS):
+    def __init__(self, rows: int, columns: int):
         self.rows = int(rows)
         self.columns = int(columns)
         self.schema_view = VirtualSchema(columns)
@@ -52,7 +53,7 @@ class VirtualExtremeSource:
 
     def inspect(self):
         return DatasetMetadata(
-            name="virtual-1m-x-100k",
+            name=f"virtual-{self.rows}-x-{self.columns}",
             kind="virtual",
             format="synthetic",
             rows=self.rows,
@@ -70,7 +71,7 @@ class VirtualExtremeSource:
         if columns is None:
             self.unbounded_requests += 1
             raise RuntimeError(
-                "FrameVitals attempted an unbounded 100,000-column scan."
+                f"FrameVitals attempted an unbounded {self.columns:,}-column scan."
             )
 
         names = list(columns)
@@ -89,38 +90,41 @@ class VirtualExtremeSource:
     def load(self):
         raise RuntimeError("Virtual extreme source must never materialize fully.")
 
+    def reset_observations(self) -> None:
+        self.max_requested_columns = 0
+        self.unbounded_requests = 0
+        self.batches_yielded = 0
+        self.rows_yielded = 0
 
-def main() -> None:
-    source = VirtualExtremeSource()
+
+def run_benchmark(*, rows: int, columns: int, mode: str) -> dict:
+    source = VirtualExtremeSource(rows, columns)
 
     plan_started = time.perf_counter()
-    plan = fv.plan(source, mode="deep", workers=4)
+    plan = fv.plan(source, mode=mode, workers=4)
     plan_seconds = time.perf_counter() - plan_started
 
-    # Reset counters so execution accounting is independent of planning.
-    source.max_requested_columns = 0
-    source.unbounded_requests = 0
-    source.batches_yielded = 0
-    source.rows_yielded = 0
+    source.reset_observations()
 
     analysis_started = time.perf_counter()
     result = fv.analyze(
         source,
-        mode="deep",
+        mode=mode,
         artifacts=False,
         workers=4,
     )
     analysis_seconds = time.perf_counter() - analysis_started
 
     streaming = result.get("execution", {}).get("streaming", {})
-    payload = {
-        "benchmark_schema_version": 1,
+    working_sample_rows = int(streaming.get("working_sample_rows", 0) or 0)
+    return {
+        "benchmark_schema_version": 2,
         "workload": {
-            "rows": ROWS,
-            "columns": COLUMNS,
-            "cells": ROWS * COLUMNS,
-            "dense_float64_raw_gb": round(ROWS * COLUMNS * 8 / 1_000_000_000, 3),
-            "mode": "deep",
+            "rows": rows,
+            "columns": columns,
+            "cells": rows * columns,
+            "dense_float64_raw_gb": round(rows * columns * 8 / 1_000_000_000, 3),
+            "mode": mode,
             "source": "virtual_projection_capable_stream",
         },
         "plan_seconds": round(plan_seconds, 6),
@@ -140,14 +144,25 @@ def main() -> None:
             "column_sampled": streaming.get("column_sampled"),
             "profiled_columns": streaming.get("profiled_columns"),
             "source_columns": streaming.get("source_columns"),
-            "all_source_rows_scanned": source.rows_yielded == ROWS,
+            "working_sample_rows": working_sample_rows,
+            "all_source_rows_scanned": source.rows_yielded == rows,
             "unbounded_width_requested": source.unbounded_requests > 0,
         },
     }
 
-    output = Path("extreme-benchmark-results.json")
-    output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    print(json.dumps(payload, indent=2, sort_keys=True))
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rows", type=int, default=DEFAULT_ROWS)
+    parser.add_argument("--columns", type=int, default=DEFAULT_COLUMNS)
+    parser.add_argument("--mode", choices=VALID_MODES, default="deep")
+    parser.add_argument("--output", type=Path, default=Path("extreme-benchmark-results.json"))
+    args = parser.parse_args()
+
+    payload = run_benchmark(rows=args.rows, columns=args.columns, mode=args.mode)
+    encoded = json.dumps(payload, indent=2, sort_keys=True)
+    args.output.write_text(encoded + "\n", encoding="utf-8")
+    print(encoded)
 
 
 if __name__ == "__main__":
