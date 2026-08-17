@@ -103,6 +103,7 @@ jobs:
           cp dist-native/*.whl dist-install/
           python -m venv /tmp/framevitals-wheel-smoke
           /tmp/framevitals-wheel-smoke/bin/python -m pip install --upgrade pip
+          /tmp/framevitals-wheel-smoke/bin/python -m pip install numpy pandas
           VERSION=$(python - <<'PY'
           import tomllib
           with open("pyproject.toml", "rb") as handle:
