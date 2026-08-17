@@ -7,8 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use arrow_array::{
-    Array, Float32Array, Float64Array, Int32Array, Int64Array, RecordBatch, UInt32Array,
-    UInt64Array,
+    Array, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array,
+    RecordBatch, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
 };
 use arrow_schema::DataType;
 
@@ -25,7 +25,9 @@ impl NumericProfileState {
     pub fn observe(&mut self, value: Option<f64>, stream_id: u64, sequence: u64) {
         self.moments.observe(value);
         if let Some(value) = value {
-            self.sketches.observe(value, stream_id, sequence);
+            if value.is_finite() {
+                self.sketches.observe(value, stream_id, sequence);
+            }
         }
     }
 
@@ -110,6 +112,14 @@ pub fn profile_record_batch(batch: &RecordBatch, partition_id: u64) -> BatchProf
                 .as_any()
                 .downcast_ref::<Int32Array>()
                 .map(|values| scan_profile_primitive!(values, stream_id)),
+            DataType::Int16 => array
+                .as_any()
+                .downcast_ref::<Int16Array>()
+                .map(|values| scan_profile_primitive!(values, stream_id)),
+            DataType::Int8 => array
+                .as_any()
+                .downcast_ref::<Int8Array>()
+                .map(|values| scan_profile_primitive!(values, stream_id)),
             DataType::UInt64 => array
                 .as_any()
                 .downcast_ref::<UInt64Array>()
@@ -117,6 +127,14 @@ pub fn profile_record_batch(batch: &RecordBatch, partition_id: u64) -> BatchProf
             DataType::UInt32 => array
                 .as_any()
                 .downcast_ref::<UInt32Array>()
+                .map(|values| scan_profile_primitive!(values, stream_id)),
+            DataType::UInt16 => array
+                .as_any()
+                .downcast_ref::<UInt16Array>()
+                .map(|values| scan_profile_primitive!(values, stream_id)),
+            DataType::UInt8 => array
+                .as_any()
+                .downcast_ref::<UInt8Array>()
                 .map(|values| scan_profile_primitive!(values, stream_id)),
             _ => None,
         };
@@ -138,7 +156,9 @@ pub fn profile_record_batch(batch: &RecordBatch, partition_id: u64) -> BatchProf
 mod tests {
     use std::sync::Arc;
 
-    use arrow_array::{ArrayRef, Float64Array, Int64Array, RecordBatch, StringArray};
+    use arrow_array::{
+        ArrayRef, Float64Array, Int16Array, Int64Array, RecordBatch, StringArray, UInt8Array,
+    };
 
     use super::profile_record_batch;
 
@@ -174,6 +194,32 @@ mod tests {
         assert_eq!(value.sketches.quantiles.count(), 3);
         assert!(!value.sketches.reservoir.is_empty());
         assert!(state.skipped_columns.contains("label"));
+    }
+
+    #[test]
+    fn fused_profile_supports_compact_integer_arrays() {
+        let batch = RecordBatch::try_from_iter(vec![
+            (
+                "small_signed",
+                Arc::new(Int16Array::from(vec![Some(-2), Some(4), None, Some(8)])) as ArrayRef,
+            ),
+            (
+                "small_unsigned",
+                Arc::new(UInt8Array::from(vec![Some(1), Some(2), Some(3), Some(4)])) as ArrayRef,
+            ),
+        ])
+        .expect("valid compact integer batch");
+
+        let state = profile_record_batch(&batch, 1);
+        let signed = state.profiles.get("small_signed").unwrap();
+        let unsigned = state.profiles.get("small_unsigned").unwrap();
+
+        assert_eq!(signed.moments.count, 3);
+        assert_eq!(signed.moments.missing, 1);
+        assert_eq!(signed.moments.minimum, Some(-2.0));
+        assert_eq!(signed.moments.maximum, Some(8.0));
+        assert_eq!(unsigned.moments.count, 4);
+        assert_eq!(unsigned.moments.mean, 2.5);
     }
 
     #[test]

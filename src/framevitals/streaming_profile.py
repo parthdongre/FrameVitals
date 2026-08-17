@@ -2,8 +2,9 @@
 
 The streaming path keeps full-row work to mergeable column state and retains
 only a bounded, evenly spaced row sample for analyses that still require row
-relationships (duplicate estimation and correlation). Native builds can also
-consume Arrow UTF-8 buffers directly for full-file categorical sketches.
+relationships (duplicate estimation and correlation). Native builds consume
+Arrow RecordBatches directly for fused numeric profiling and Arrow UTF-8 buffers
+for full-file categorical sketches when those kernels are available.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import pandas as pd
 
 from framevitals.analysis_state import NumericColumnState
 from framevitals.backends import (
+    create_arrow_batch_profile_accumulator,
     create_numeric_accumulator,
     create_string_accumulator,
     numeric_state,
@@ -106,6 +108,20 @@ def _string_columns(schema) -> list[str]:
     ]
 
 
+def _native_fused_numeric_schema_supported(schema) -> bool:
+    """Return whether every Arrow numeric field is supported by the fused Rust scan."""
+    pa = _require_pyarrow()
+    for field in schema:
+        dtype = field.type
+        if pa.types.is_integer(dtype):
+            if int(dtype.bit_width) not in {8, 16, 32, 64}:
+                return False
+        elif pa.types.is_floating(dtype):
+            if int(dtype.bit_width) not in {32, 64}:
+                return False
+    return True
+
+
 def numeric_columns_for_streaming_source(source: StreamingDatasetSource) -> list[str]:
     """Return Arrow numeric column names without reading row data."""
     schema_method = getattr(source, "schema", None)
@@ -116,7 +132,11 @@ def numeric_columns_for_streaming_source(source: StreamingDatasetSource) -> list
 
 
 def _arrow_numeric_to_float64(array) -> np.ndarray:
-    """Convert one bounded Arrow numeric array to a contiguous float64 buffer."""
+    """Convert one bounded Arrow numeric array to a contiguous float64 buffer.
+
+    This is a compatibility fallback for NumPy and older native extensions. New
+    native builds profile supported Arrow primitive arrays directly in Rust.
+    """
     try:
         values = array.to_numpy(zero_copy_only=False)
         converted = np.asarray(values, dtype=np.float64)
@@ -380,6 +400,11 @@ def build_streaming_profile(
     columns = [field.name for field in schema]
     numeric_cols, categorical_cols, date_cols = _column_groups(schema)
     numeric_col_set = set(numeric_cols)
+    non_numeric_columns = [
+        (index, column)
+        for index, column in enumerate(columns)
+        if column not in numeric_col_set
+    ]
     string_cols = _string_columns(schema)
     dtypes = {field.name: str(field.type) for field in schema}
 
@@ -404,6 +429,7 @@ def build_streaming_profile(
         and should_use_full_stream_numpy_sketch(int(rows), len(numeric_cols))
     )
 
+    native_batch_accumulator = None
     native_accumulators: dict[str, Any] = {}
     native_string_accumulators: dict[str, Any] = {}
     python_states = {column: NumericColumnState() for column in numeric_cols}
@@ -413,16 +439,20 @@ def build_streaming_profile(
         else {}
     )
     if selected_backend == "rust":
-        native_accumulators = {
-            column: create_numeric_accumulator(stream_id=index)
-            for index, column in enumerate(numeric_cols)
-        }
+        if numeric_cols and _native_fused_numeric_schema_supported(schema):
+            native_batch_accumulator = create_arrow_batch_profile_accumulator()
+        if native_batch_accumulator is None:
+            native_accumulators = {
+                column: create_numeric_accumulator(stream_id=index)
+                for index, column in enumerate(numeric_cols)
+            }
         native_string_accumulators = {
             column: accumulator
             for column in string_cols
             if (accumulator := create_string_accumulator()) is not None
         }
 
+    native_arrow_fused = native_batch_accumulator is not None
     offset = 0
     batches_scanned = 0
     for batch in source.iter_batches(batch_size=effective_batch_size):
@@ -434,27 +464,36 @@ def build_streaming_profile(
         if sampled is not None and not sampled.empty:
             sample_frames.append(sampled)
 
-        for index, column in enumerate(columns):
-            array = batch.column(index)
-            if column not in numeric_col_set:
+        if native_arrow_fused:
+            native_batch_accumulator.update(batch)
+            for index, column in non_numeric_columns:
+                array = batch.column(index)
                 missing_counts[column] += int(array.null_count)
                 string_accumulator = native_string_accumulators.get(column)
                 if string_accumulator is not None:
                     _update_native_string_accumulator(string_accumulator, array)
-                continue
+        else:
+            for index, column in enumerate(columns):
+                array = batch.column(index)
+                if column not in numeric_col_set:
+                    missing_counts[column] += int(array.null_count)
+                    string_accumulator = native_string_accumulators.get(column)
+                    if string_accumulator is not None:
+                        _update_native_string_accumulator(string_accumulator, array)
+                    continue
 
-            values = _arrow_numeric_to_float64(array)
-            accumulator = native_accumulators.get(column)
-            if accumulator is not None:
-                accumulator.update_f64(values)
-            else:
-                numeric_payload = numeric_state(values, backend="numpy")
-                python_states[column] = python_states[column].merge(
-                    _state_from_payload(numeric_payload)
-                )
-                quantile_sketch = numpy_quantile_sketches.get(column)
-                if quantile_sketch is not None:
-                    quantile_sketch.update(values)
+                values = _arrow_numeric_to_float64(array)
+                accumulator = native_accumulators.get(column)
+                if accumulator is not None:
+                    accumulator.update_f64(values)
+                else:
+                    numeric_payload = numeric_state(values, backend="numpy")
+                    python_states[column] = python_states[column].merge(
+                        _state_from_payload(numeric_payload)
+                    )
+                    quantile_sketch = numpy_quantile_sketches.get(column)
+                    if quantile_sketch is not None:
+                        quantile_sketch.update(values)
 
         offset += int(batch.num_rows)
 
@@ -474,8 +513,32 @@ def build_streaming_profile(
     numeric_summary: dict[str, dict[str, Any]] = {}
     quantile_accuracy = None
     if selected_backend == "rust":
+        if native_arrow_fused:
+            batch_payload = dict(native_batch_accumulator.snapshot())
+            if int(batch_payload.get("rows", -1)) != int(rows):
+                raise ValueError(
+                    "Native Arrow profiler row count did not match streaming source metadata."
+                )
+            native_profiles = {
+                str(column): dict(profile)
+                for column, profile in dict(batch_payload.get("profiles", {})).items()
+            }
+            missing_numeric = [
+                column for column in numeric_cols if column not in native_profiles
+            ]
+            if missing_numeric:
+                raise RuntimeError(
+                    "Native Arrow profiler skipped supported numeric columns: "
+                    + ", ".join(missing_numeric[:5])
+                )
+        else:
+            native_profiles = {
+                column: dict(native_accumulators[column].snapshot())
+                for column in numeric_cols
+            }
+
         for column in numeric_cols:
-            numeric_payload = dict(native_accumulators[column].snapshot())
+            numeric_payload = native_profiles[column]
             numeric_summary[column] = _summary_from_native_snapshot(numeric_payload)
             missing_counts[column] = int(numeric_payload["missing"])
             quantile_accuracy = numeric_payload.get("quantiles", {}).get(
@@ -484,7 +547,12 @@ def build_streaming_profile(
             )
         numeric_metadata = {
             "backend": "rust",
-            "method": "native_streaming_accumulator",
+            "method": (
+                "native_arrow_fused_record_batch"
+                if native_arrow_fused
+                else "native_streaming_accumulator"
+            ),
+            "zero_copy_arrow_input": bool(native_arrow_fused),
             "approximate_quantiles": True,
             "quantile_relative_accuracy": quantile_accuracy,
             "quantile_source": "full_stream_sketch",
@@ -642,6 +710,7 @@ def build_streaming_profile(
             ),
             "sample_strategy": "evenly_spaced_global_rows",
             "numeric_backend": selected_backend,
+            "native_arrow_fused_numeric": bool(native_arrow_fused),
             "numpy_full_stream_quantile_sketches": bool(use_numpy_quantile_sketches),
             "numpy_numeric_sketch_cell_budget": int(PYTHON_NUMERIC_SKETCH_CELL_BUDGET),
             "native_string_sketch_columns": native_categorical_columns,

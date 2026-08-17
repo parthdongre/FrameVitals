@@ -1,8 +1,8 @@
 """Backend routing for FrameVitals native and NumPy kernels.
 
-The router keeps optional native/GPU dependencies behind lazy imports. Normal
-installations remain NumPy-first, while a compiled ``framevitals._native``
-extension can transparently accelerate compatible streaming scans.
+The router keeps optional native/GPU dependencies behind lazy imports. Compiled
+FrameVitals native kernels are preferred when available; NumPy remains the
+portable reference/fallback backend for compatible primitives.
 """
 
 from __future__ import annotations
@@ -137,6 +137,19 @@ def create_numeric_accumulator(*, stream_id: int = 0):
         return None
     native = import_module("framevitals._native")
     return native.NumericAccumulator(stream_id=int(stream_id))
+
+
+def create_arrow_batch_profile_accumulator():
+    """Create the zero-copy native Arrow RecordBatch profiler when available.
+
+    Returning ``None`` for an older native extension preserves compatibility
+    with installations that only expose the per-column float64 accumulator.
+    """
+    if resolve_numeric_backend() != "rust":
+        return None
+    native = import_module("framevitals._native")
+    accumulator = getattr(native, "ArrowBatchProfileAccumulator", None)
+    return accumulator() if accumulator is not None else None
 
 
 def create_string_accumulator():

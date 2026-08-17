@@ -2,12 +2,14 @@
 
 mod string_accumulator;
 
+use framevitals_core::fused_profile::{profile_record_batch, BatchProfileState};
 use framevitals_core::sketches::NumericSketchState;
 use framevitals_core::NumericState;
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::PyBufferError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_arrow::PyRecordBatch;
 use string_accumulator::StringAccumulator;
 
 fn exact_state_dict<'py>(py: Python<'py>, state: &NumericState) -> PyResult<Bound<'py, PyDict>> {
@@ -63,6 +65,30 @@ fn profile_dict<'py>(
     Ok(payload)
 }
 
+fn batch_profile_dict<'py>(
+    py: Python<'py>,
+    state: &BatchProfileState,
+) -> PyResult<Bound<'py, PyDict>> {
+    let payload = PyDict::new(py);
+    payload.set_item("backend", "rust")?;
+    payload.set_item("rows", state.rows)?;
+
+    let profiles = PyDict::new(py);
+    for (name, profile) in &state.profiles {
+        let observations = profile.moments.count + profile.moments.missing + profile.moments.infinite;
+        profiles.set_item(
+            name,
+            profile_dict(py, &profile.moments, &profile.sketches, observations)?,
+        )?;
+    }
+    payload.set_item("profiles", profiles)?;
+    payload.set_item(
+        "skipped_columns",
+        state.skipped_columns.iter().cloned().collect::<Vec<_>>(),
+    )?;
+    Ok(payload)
+}
+
 fn checked_buffer<'py>(values: &Bound<'py, PyAny>) -> PyResult<PyBuffer<f64>> {
     let buffer = PyBuffer::<f64>::get(values)?;
     if buffer.dimensions() != 1 {
@@ -96,7 +122,9 @@ fn update_states(
     for value in slice {
         let value = value.get();
         state.observe(Some(value));
-        sketches.observe(value, stream_id, *sequence);
+        if value.is_finite() {
+            sketches.observe(value, stream_id, *sequence);
+        }
         *sequence = sequence.wrapping_add(1);
     }
     Ok(buffer.item_count() as u64)
@@ -155,6 +183,49 @@ impl NumericAccumulator {
     }
 }
 
+/// Persistent zero-copy Arrow batch profiler.
+///
+/// ``pyo3-arrow`` imports ``pyarrow.RecordBatch`` through the Arrow PyCapsule
+/// interface. Numeric primitive arrays are scanned directly in Rust without
+/// constructing NumPy float64 copies or dispatching once per column in Python.
+#[pyclass]
+struct ArrowBatchProfileAccumulator {
+    state: BatchProfileState,
+    next_partition_id: u64,
+}
+
+#[pymethods]
+impl ArrowBatchProfileAccumulator {
+    #[new]
+    fn new() -> Self {
+        Self {
+            state: BatchProfileState::default(),
+            next_partition_id: 0,
+        }
+    }
+
+    fn update(&mut self, batch: PyRecordBatch) {
+        let partition = profile_record_batch(batch.as_ref(), self.next_partition_id);
+        let current = std::mem::take(&mut self.state);
+        self.state = current.merge(partition);
+        self.next_partition_id = self.next_partition_id.wrapping_add(1);
+    }
+
+    fn snapshot(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        Ok(batch_profile_dict(py, &self.state)?.unbind())
+    }
+
+    fn reset(&mut self) {
+        self.state = BatchProfileState::default();
+        self.next_partition_id = 0;
+    }
+
+    #[getter]
+    fn rows(&self) -> u64 {
+        self.state.rows
+    }
+}
+
 #[pyfunction]
 fn numeric_state_f64(py: Python<'_>, values: &Bound<'_, PyAny>) -> PyResult<Py<PyDict>> {
     let buffer = checked_buffer(values)?;
@@ -203,6 +274,7 @@ fn backend_info() -> (&'static str, &'static str) {
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NumericAccumulator>()?;
+    module.add_class::<ArrowBatchProfileAccumulator>()?;
     module.add_class::<StringAccumulator>()?;
     module.add_function(wrap_pyfunction!(numeric_state_f64, module)?)?;
     module.add_function(wrap_pyfunction!(numeric_profile_f64, module)?)?;
