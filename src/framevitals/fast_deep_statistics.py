@@ -214,15 +214,28 @@ def _numeric_bivariate(
     return numeric_pairs, binary_numeric_pairs, group_difference_tests
 
 
+def _categorical_columns(df: pd.DataFrame) -> list[str]:
+    """Select non-numeric categorical/string columns without dtype migration warnings."""
+    columns: list[str] = []
+    for column in df.columns:
+        dtype = df[column].dtype
+        if (
+            pd.api.types.is_object_dtype(dtype)
+            or pd.api.types.is_string_dtype(dtype)
+            or isinstance(dtype, pd.CategoricalDtype)
+            or pd.api.types.is_bool_dtype(dtype)
+        ):
+            columns.append(str(column))
+    return columns
+
+
 def run_fast_deep_statistics_v2(
     df: pd.DataFrame,
     max_pairs: int = 20,
 ) -> dict[str, Any]:
     """Run the v2 diagnostic battery with O(n) confidence intervals."""
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    categorical_cols = df.select_dtypes(
-        include=["object", "category", "bool"]
-    ).columns.tolist()
+    categorical_cols = _categorical_columns(df)
 
     categorical_view = (
         df.loc[:, categorical_cols]
