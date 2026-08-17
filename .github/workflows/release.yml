@@ -48,6 +48,7 @@ jobs:
           with Path("rust/framevitals-py/Cargo.toml").open("rb") as handle:
               bridge_version = tomllib.load(handle)["package"]["version"]
           package_version = framevitals.__version__
+          assert Path("rust/Cargo.lock").is_file(), "Rust workspace lockfile is missing"
 
           versions = {
               "release tag": release_version,
@@ -116,6 +117,7 @@ jobs:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
           args: >-
+            --locked
             --release
             --manifest-path rust/framevitals-py/Cargo.toml
             --interpreter python
