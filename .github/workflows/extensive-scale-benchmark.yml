@@ -34,6 +34,10 @@ jobs:
             rows: 100000
             columns: 25000
             row_group_rows: 10000
+          - label: tall-500k-x-10k
+            rows: 500000
+            columns: 10000
+            row_group_rows: 10000
 
     steps:
       - name: Checkout repository
