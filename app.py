@@ -5,39 +5,21 @@ Provides JSON endpoints for the React dashboard while keeping the existing
 server-rendered report routes available for local use.
 """
 
-import os
 import math
-from pathlib import Path
+import os
 from copy import deepcopy
-from time import perf_counter
+from pathlib import Path
 from threading import Lock, Thread
+from time import perf_counter
 
-from flask import Flask, render_template, request, redirect, url_for, send_file, session, jsonify
+from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.exceptions import ClientDisconnected
 
-from framevitals.loader import (
-    load_dataset,
-    save_uploaded_file,
-)
-from framevitals.pipeline import (
-    run_full_analysis,
-)
-from framevitals.ai_insights import (
-    answer_dataset_question,
-)
-from framevitals.ai_agent import (
-    answer_with_agent,
-)
-from framevitals.report_generator import (
-    generate_pdf_report,
-)
-from framevitals.frontend_api import (
-    build_dashboard_payload,
-)
-from framevitals.drift_analysis import (
-    compare_datasets,
-    split_by_date,
-)
+from framevitals.ai_insights import answer_dataset_question
+from framevitals.drift_analysis import split_by_date
+from framevitals.frontend_api import build_dashboard_payload
+from framevitals.loader import load_dataset, save_uploaded_file
+from framevitals.pipeline import run_full_analysis
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +30,6 @@ from framevitals.drift_analysis import (
 # JSON.parse both do), which makes the frontend silently fall back to an
 # empty payload. We walk every payload recursively and replace those values
 # with None so the wire format is RFC-8259 compliant.
-
 def _is_nonfinite(v) -> bool:
     return isinstance(v, float) and not math.isfinite(v)
 
@@ -73,7 +54,7 @@ def safe_jsonify(payload):
 app = Flask(__name__)
 app.secret_key = os.environ.get(
     "FRAMEVITALS_SECRET_KEY",
-    "development-only-secret"
+    "development-only-secret",
 )
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
@@ -90,6 +71,7 @@ REPORT_LOCK = Lock()
 
 class DotDict(dict):
     """Allow dict.key access for Jinja templates."""
+
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
@@ -112,7 +94,12 @@ def _get_report_job(dataset_id: str) -> dict:
         return dict(REPORT_JOBS.get(dataset_id, {}))
 
 
-def _set_report_job(dataset_id: str, status: str, pdf_path: Path | None = None, error: str | None = None) -> dict:
+def _set_report_job(
+    dataset_id: str,
+    status: str,
+    pdf_path: Path | None = None,
+    error: str | None = None,
+) -> dict:
     job = {
         "status": status,
         "pdf_path": str(pdf_path) if pdf_path else None,
@@ -142,6 +129,10 @@ def _queue_pdf_generation(dataset_id: str, result: dict | None = None) -> dict:
     def worker():
         _set_report_job(dataset_id, "running")
         try:
+            # PDF/report dependencies are intentionally optional for the Flask
+            # runtime. Import them only when a report is actually requested.
+            from framevitals.report_generator import generate_pdf_report
+
             pdf_path = generate_pdf_report(deepcopy(cached_result))
             _set_report_job(dataset_id, "ready", pdf_path=pdf_path)
         except Exception as exc:
@@ -198,7 +189,10 @@ def analyze():
         except ClientDisconnected:
             return render_template(
                 "error.html",
-                message="The upload was interrupted before Flask finished reading the file. Please try again.",
+                message=(
+                    "The upload was interrupted before Flask finished reading the file. "
+                    "Please try again."
+                ),
             ), 400
 
         if not uploaded_file or uploaded_file.filename == "":
@@ -220,7 +214,7 @@ def analyze():
         with REPORT_LOCK:
             ANALYSIS_CACHE[dataset_id] = deepcopy(result)
 
-        report_job = _queue_pdf_generation(dataset_id, result)
+        _queue_pdf_generation(dataset_id, result)
         result["report_status"] = _report_status_payload(dataset_id)
 
         session["dataset_id"] = dataset_id
@@ -229,13 +223,12 @@ def analyze():
         session["analysis_mode"] = analysis_mode
         session["target_column"] = target_column
 
-        # Convert to DotDict for Jinja template dot-access
         result_dot = DotDict.from_dict(result)
-
         return render_template("report.html", result=result_dot)
 
     except Exception as exc:
         import traceback
+
         traceback.print_exc()
         return render_template("error.html", message=str(exc))
 
@@ -249,7 +242,12 @@ def api_analyze():
             analysis_mode = request.form.get("analysis_mode", "standard")
             target_column = request.form.get("target_column") or None
         except ClientDisconnected:
-            return jsonify({"error": "The upload was interrupted before the server finished reading it. Please try again."}), 400
+            return jsonify({
+                "error": (
+                    "The upload was interrupted before the server finished reading it. "
+                    "Please try again."
+                )
+            }), 400
 
         if analysis_mode not in {"quick", "standard", "deep", "research"}:
             analysis_mode = "standard"
@@ -331,9 +329,11 @@ def ask():
         _queue_pdf_generation(dataset_id, result)
         result["report_status"] = _report_status_payload(dataset_id)
 
-        # Try agentic answer first; fall back to the legacy single-shot answerer
-        # if anything goes wrong (Ollama offline, model errors, etc.).
+        # Agentic AI is an optional capability. If it is not installed or the
+        # model is unavailable, fall back to the lightweight answerer.
         try:
+            from framevitals.ai_agent import answer_with_agent
+
             agent_response = answer_with_agent(
                 question=question,
                 df=load_dataset(Path(file_path)),
@@ -375,7 +375,6 @@ def api_ask():
         if not question:
             return jsonify({"error": "Missing 'question' in request body."}), 400
 
-        # Look up the cached analysis result first
         with REPORT_LOCK:
             cached_result = ANALYSIS_CACHE.get(dataset_id)
 
@@ -384,7 +383,6 @@ def api_ask():
                 "error": "No cached analysis was found for this dataset. Run /api/analyze first.",
             }), 404
 
-        # Reload dataframe (cheap; uploaded files live under uploads/)
         file_path = session.get("file_path")
         df = None
         if file_path:
@@ -394,9 +392,8 @@ def api_ask():
                 df = None
 
         try:
-            # Fast mode by default (single writer call, no critic/repair).
-            # Pass {"mode": "full"} in the body to opt back in to the full
-            # planner→executor→critic→writer loop.
+            from framevitals.ai_agent import answer_with_agent
+
             mode = (body.get("mode") or "fast").lower().strip()
             response = answer_with_agent(
                 question=question,
@@ -413,7 +410,11 @@ def api_ask():
                 ml_readiness=cached_result["ml_readiness"],
                 advanced=cached_result.get("advanced"),
             )
-            response = {"source": response.get("source", "fallback"), "answer": response.get("answer", str(exc)), "trace": {}}
+            response = {
+                "source": response.get("source", "fallback"),
+                "answer": response.get("answer", str(exc)),
+                "trace": {},
+            }
 
         return safe_jsonify({
             "question": question,
@@ -425,6 +426,7 @@ def api_ask():
 
     except Exception as exc:
         import traceback
+
         traceback.print_exc()
         return jsonify({"error": str(exc)}), 500
 
@@ -450,11 +452,11 @@ def api_ai_report():
             cached = ANALYSIS_CACHE.get(dataset_id)
 
         if cached is None:
-            return jsonify({"error": "No cached analysis for this dataset. Re-run /api/analyze."}), 404
+            return jsonify({
+                "error": "No cached analysis for this dataset. Re-run /api/analyze."
+            }), 404
 
-        from framevitals.ai_insights import (
-            generate_ai_report,
-        )
+        from framevitals.ai_insights import generate_ai_report
 
         try:
             ai_report = generate_ai_report(
@@ -469,7 +471,6 @@ def api_ai_report():
         except Exception as exc:
             ai_report = {"source": f"error: {exc}", "text": str(exc)}
 
-        # Re-cache so subsequent /api/analyze calls (or PDF regen) include it.
         with REPORT_LOCK:
             cached["ai_report"] = ai_report
             ANALYSIS_CACHE[dataset_id] = cached
@@ -478,6 +479,7 @@ def api_ai_report():
 
     except Exception as exc:
         import traceback
+
         traceback.print_exc()
         return jsonify({"error": str(exc)}), 500
 
@@ -539,19 +541,23 @@ def api_compare():
         _, ref_path, _ = save_uploaded_file(ref_file)
         _, cur_path, _ = save_uploaded_file(cur_file)
 
-        df_ref = load_dataset(ref_path)
-        df_cur = load_dataset(cur_path)
-
         columns_param = request.form.get("columns", "").strip()
-        columns = [c.strip() for c in columns_param.split(",") if c.strip()] if columns_param else None
+        columns = (
+            [c.strip() for c in columns_param.split(",") if c.strip()]
+            if columns_param
+            else None
+        )
 
-        report = compare_datasets(df_ref, df_cur, columns=columns)
+        from framevitals.operations import compare
+
+        report = compare(ref_path, cur_path, columns=columns)
         report["reference_filename"] = ref_file.filename
         report["current_filename"] = cur_file.filename
         return safe_jsonify(report)
 
     except Exception as exc:
         import traceback
+
         traceback.print_exc()
         return jsonify({"error": str(exc)}), 500
 
@@ -592,7 +598,9 @@ def api_compare_self():
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
-        report = compare_datasets(df_ref, df_cur)
+        from framevitals.operations import compare
+
+        report = compare(df_ref, df_cur)
         report["reference_filename"] = f"{ds_name} (older {ratio:.0%})"
         report["current_filename"] = f"{ds_name} (newer {1 - ratio:.0%})"
         report["split_by"] = date_column
@@ -601,6 +609,7 @@ def api_compare_self():
 
     except Exception as exc:
         import traceback
+
         traceback.print_exc()
         return jsonify({"error": str(exc)}), 500
 
@@ -639,11 +648,17 @@ def download_report(dataset_id):
         if report_status["ready"] and pdf_path.exists() and pdf_path.stat().st_size > 0:
             return send_file(pdf_path, as_attachment=True)
 
-        message = "The PDF report is generating in the background. Please try again in a few seconds."
+        message = (
+            "The PDF report is generating in the background. "
+            "Please try again in a few seconds."
+        )
         if report_status["status"] == "failed":
             message = f"PDF generation failed: {report_status.get('error', 'Unknown error')}"
         elif result is None:
-            message = "No cached analysis was found for this dataset. Please run analysis again first."
+            message = (
+                "No cached analysis was found for this dataset. "
+                "Please run analysis again first."
+            )
 
         return render_template("error.html", message=message), 202
 

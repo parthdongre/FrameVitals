@@ -1,81 +1,68 @@
 """
 Dataset Signal Detector
 ========================
-Produces a flat dictionary of boolean + numeric signals describing
-the structural characteristics of the dataset.
+Produces a flat dictionary of boolean + numeric signals describing the
+structural characteristics of the dataset.
 
-These signals drive the analysis selector engine — they answer
-questions like "does this dataset have missing values?" or
-"are there ID-like columns?" without hardcoding domain logic.
+Signals reuse the role map and profile when available so semantic/type scans
+and numeric correlation work are performed once per pipeline run.
 """
-
-import re
-
-import pandas as pd
 
 from framevitals.column_roles import (
     get_columns_with_role,
-    get_meaningful_numeric_columns,
     infer_column_roles,
 )
 
 
-_EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-_TEXT_DTYPES = ["object", "string", "category"]
+def _detect_potential_leakage(profile: dict, column_roles: dict) -> tuple[bool, bool]:
+    """Inspect cached profiler correlations for very high non-ID relationships."""
+    correlations = profile.get("correlations", {}) or {}
+    correlation_metadata = profile.get("correlation_metadata", {}) or {}
+    truncated = bool(correlation_metadata.get("truncated", False))
 
+    excluded = {"id_like", "time_like", "sequence_like", "constant"}
+    meaningful = {
+        column
+        for column, info in column_roles.items()
+        if info.get("is_numeric") and not set(info.get("roles", [])).intersection(excluded)
+    }
 
-def _detect_long_text_columns(df: pd.DataFrame) -> list:
-    result = []
-    for col in df.select_dtypes(include=_TEXT_DTYPES).columns:
-        lengths = df[col].dropna().astype(str).str.len()
-        if len(lengths) == 0:
+    for left, values in correlations.items():
+        if left not in meaningful or not isinstance(values, dict):
             continue
-        if float(lengths.mean()) > 50 or int(lengths.max()) > 200:
-            result.append(col)
-    return result
-
-
-def _detect_email_columns(df: pd.DataFrame) -> list:
-    result = []
-    for col in df.select_dtypes(include=_TEXT_DTYPES).columns:
-        sample = df[col].dropna().astype(str).head(100)
-        if sample.empty:
-            continue
-        match_ratio = sample.apply(lambda v: bool(_EMAIL_PATTERN.match(v))).mean()
-        if match_ratio >= 0.5:
-            result.append(col)
-    return result
-
-
-def _detect_potential_leakage(df: pd.DataFrame, column_roles: dict) -> bool:
-    """Return whether a very high non-ID numeric correlation suggests leakage."""
-    meaningful = get_meaningful_numeric_columns(df, column_roles)
-    if len(meaningful) < 2:
-        return False
-    try:
-        corr = df[meaningful].corr(numeric_only=True).abs()
-        for i, a in enumerate(meaningful):
-            for b in meaningful[i + 1 :]:
-                val = corr.loc[a, b]
-                if pd.notna(val) and val >= 0.98:
-                    return True
-    except Exception:
-        pass
-    return False
+        for right, value in values.items():
+            if right == left or right not in meaningful or value is None:
+                continue
+            try:
+                if abs(float(value)) >= 0.98:
+                    return True, truncated
+            except (TypeError, ValueError):
+                continue
+    return False, truncated
 
 
 def detect_dataset_signals(
-    df: pd.DataFrame,
+    df,
     profile: dict,
     column_roles: dict | None = None,
+    source_shape: tuple[int, int] | None = None,
 ) -> dict:
     """Produce structural signals, reusing cached pipeline metadata when supplied.
 
     ``column_roles`` is optional for backward compatibility. The main analysis
     pipeline passes its already-computed role map so this stage does not repeat
-    the most expensive per-column semantic scan.
+    per-column semantic scans.
+
+    ``source_shape`` lets streaming/planning callers infer value-based roles on
+    a bounded row sample while preserving true full-dataset row/column counts
+    for scale signals and missingness percentages.
     """
-    rows, cols = df.shape
+    if source_shape is None:
+        rows, cols = df.shape
+    else:
+        rows, cols = (int(source_shape[0]), int(source_shape[1]))
+        if rows < 0 or cols < 0:
+            raise ValueError("source_shape values must be non-negative.")
 
     numeric_cols = profile.get("numeric_columns", [])
     categorical_cols = profile.get("categorical_columns", [])
@@ -108,16 +95,26 @@ def detect_dataset_signals(
     high_card = get_columns_with_role(column_roles, "high_cardinality")
     unique_like = get_columns_with_role(column_roles, "unique_like")
     target_candidates = get_columns_with_role(column_roles, "target_candidate")
-
-    # Column-role inference already computes the same full-column text-length
-    # rule, so reuse it instead of scanning text columns a second time.
     long_text = get_columns_with_role(column_roles, "long_text")
-    email_like = _detect_email_columns(df)
-    has_leakage_risk = _detect_potential_leakage(df, column_roles)
 
-    lower_map = {c.lower(): c for c in df.columns}
+    email_like = get_columns_with_role(column_roles, "email_like")
+    url_like = get_columns_with_role(column_roles, "url_like")
+    uuid_like = get_columns_with_role(column_roles, "uuid_like")
+    ip_address_like = get_columns_with_role(column_roles, "ip_address_like")
+    phone_like = get_columns_with_role(column_roles, "phone_like")
+    percentage_like = get_columns_with_role(column_roles, "percentage_like")
+    currency_like = get_columns_with_role(column_roles, "currency_like")
+    json_like = get_columns_with_role(column_roles, "json_like")
+    boolean_token_like = get_columns_with_role(column_roles, "boolean_token_like")
+
+    has_leakage_risk, leakage_scan_truncated = _detect_potential_leakage(
+        profile,
+        column_roles,
+    )
+
+    source_columns = profile.get("columns", list(df.columns))
+    lower_map = {str(column).lower(): column for column in source_columns}
     has_bid_ask = "bid" in lower_map and "ask" in lower_map
-
     has_time_series = len(time_like) > 0 and len(numeric_cols) >= 1 and rows >= 20
 
     return {
@@ -149,7 +146,16 @@ def detect_dataset_signals(
         "has_time_series_structure": has_time_series,
         "has_sensitive_column_candidates": len(sensitive) > 0,
         "has_email_like_columns": len(email_like) > 0,
+        "has_url_like_columns": len(url_like) > 0,
+        "has_uuid_like_columns": len(uuid_like) > 0,
+        "has_ip_address_like_columns": len(ip_address_like) > 0,
+        "has_phone_like_columns": len(phone_like) > 0,
+        "has_percentage_like_columns": len(percentage_like) > 0,
+        "has_currency_like_columns": len(currency_like) > 0,
+        "has_json_like_columns": len(json_like) > 0,
+        "has_boolean_token_like_columns": len(boolean_token_like) > 0,
         "has_potential_leakage": has_leakage_risk,
+        "leakage_scan_truncated": leakage_scan_truncated,
         "has_target_candidates": len(target_candidates) > 0,
         "is_small_dataset": rows < 200,
         "is_large_dataset": rows >= 100000,
@@ -163,6 +169,14 @@ def detect_dataset_signals(
         "sensitive_columns": sensitive,
         "constant_columns": constant,
         "email_like_columns": email_like,
+        "url_like_columns": url_like,
+        "uuid_like_columns": uuid_like,
+        "ip_address_like_columns": ip_address_like,
+        "phone_like_columns": phone_like,
+        "percentage_like_columns": percentage_like,
+        "currency_like_columns": currency_like,
+        "json_like_columns": json_like,
+        "boolean_token_like_columns": boolean_token_like,
         "long_text_columns": long_text,
         "binary_columns": binary,
         "low_cardinality_columns": low_card,

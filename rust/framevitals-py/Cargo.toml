@@ -1,0 +1,17 @@
+[package]
+name = "framevitals-py"
+version = "0.2.0"
+edition = "2021"
+description = "PyO3 bridge for FrameVitals native kernels"
+license = "MIT"
+publish = false
+
+[lib]
+name = "_native"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+framevitals-core = { path = "../framevitals-core", features = ["arrow"] }
+pyo3 = { version = "0.29", features = ["abi3-py311"] }
+pyo3-arrow = "0.19"

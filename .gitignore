@@ -30,6 +30,7 @@ frontend/vite.config.js
 frontend/vite.config.d.ts
 
 # Runtime artifacts
+.framevitals/
 uploads/*
 !uploads/.gitkeep
 cleaned/*

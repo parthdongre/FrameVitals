@@ -1,0 +1,57 @@
+name: Developer Guardrails
+
+on:
+  pull_request:
+    paths:
+      - ".pre-commit-config.yaml"
+      - "pyproject.toml"
+      - "src/framevitals/**"
+      - "tests/**"
+      - ".github/workflows/developer-guardrails.yml"
+  push:
+    branches: [main, dev, "develop/august"]
+    paths:
+      - ".pre-commit-config.yaml"
+      - "pyproject.toml"
+      - "src/framevitals/**"
+      - "tests/**"
+      - ".github/workflows/developer-guardrails.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hooks:
+    name: pre-commit + pre-push contracts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install development environment
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Verify dependency consistency
+        run: python -m pip check
+
+      - name: Run commit-stage hooks
+        run: pre-commit run --all-files --hook-stage pre-commit --show-diff-on-failure
+
+      - name: Run pre-push public contract hooks
+        run: pre-commit run --all-files --hook-stage pre-push --show-diff-on-failure

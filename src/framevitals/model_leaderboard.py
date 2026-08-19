@@ -1,30 +1,9 @@
-"""
-Model Leaderboard (WS-3)
-========================
-Cross-validated leaderboard of multiple ML models for a given target.
+"""Cross-validated baseline model leaderboard for FrameVitals.
 
-For classification:
-    DummyClassifier, LogisticRegression, KNeighborsClassifier,
-    RandomForestClassifier, GradientBoostingClassifier,
-    XGBClassifier (optional), LGBMClassifier (optional)
-
-For regression:
-    DummyRegressor, Ridge, Lasso, KNeighborsRegressor,
-    RandomForestRegressor, GradientBoostingRegressor,
-    XGBRegressor (optional), LGBMRegressor (optional)
-
-Each model is wrapped in a Pipeline with the shared preprocessor from
-modules.ml_preprocessing.prepare_ml_matrix + build_sklearn_preprocessor.
-
-Validation:
-    StratifiedKFold(5) for classification, KFold(5) for regression.
-    XGBoost / LightGBM are imported lazily and skipped if missing.
-
-The winner is also fit on the full training data and a calibration check
-(classification) or residual summary (regression) is computed on a hold-out.
-
-Public entry point:
-    run_model_leaderboard(df, target_column, task_type=None) -> dict
+The leaderboard is a diagnostic for dataset learnability, not an AutoML system.
+It compares several lightweight/classical models (plus optional XGBoost and
+LightGBM), keeps preprocessing inside each CV fold, records failures, and
+compares the best real model against a dummy baseline.
 """
 
 from __future__ import annotations
@@ -63,9 +42,6 @@ from framevitals.ml_preprocessing import (
     prepare_ml_matrix,
 )
 
-# ---------------------------------------------------------------------------
-# Optional heavy models — imported lazily so missing libs don't break import
-# ---------------------------------------------------------------------------
 
 def _maybe_xgb_classifier():
     try:
@@ -134,31 +110,25 @@ def _maybe_lgbm_regressor():
         return None
 
 
-# ---------------------------------------------------------------------------
-# Task auto-detection
-# ---------------------------------------------------------------------------
-
 def _infer_task_type(y: pd.Series) -> str:
     """Best-effort: classification if dtype is non-numeric or low-cardinality."""
     if pd.api.types.is_numeric_dtype(y):
         n = len(y)
         unique = int(y.nunique(dropna=True))
-        # Heuristic: integer-like with few unique values is classification
         if unique <= 20 and unique <= max(2, int(n * 0.05)):
             return "classification"
         return "regression"
     return "classification"
 
 
-# ---------------------------------------------------------------------------
-# Model registries
-# ---------------------------------------------------------------------------
-
 def _classification_registry(class_count: int) -> dict[str, Any]:
     registry: dict[str, Any] = {
         "DummyClassifier": DummyClassifier(strategy="most_frequent"),
         "LogisticRegression": LogisticRegression(
-            max_iter=2000, n_jobs=-1, class_weight="balanced", random_state=42
+            max_iter=2000,
+            n_jobs=-1,
+            class_weight="balanced",
+            random_state=42,
         ),
         "KNeighborsClassifier": KNeighborsClassifier(n_neighbors=7),
         "RandomForestClassifier": RandomForestClassifier(
@@ -169,7 +139,9 @@ def _classification_registry(class_count: int) -> dict[str, Any]:
             class_weight="balanced",
         ),
         "GradientBoostingClassifier": GradientBoostingClassifier(
-            n_estimators=150, max_depth=4, random_state=42
+            n_estimators=150,
+            max_depth=4,
+            random_state=42,
         ),
     }
     xgb = _maybe_xgb_classifier()
@@ -188,10 +160,15 @@ def _regression_registry() -> dict[str, Any]:
         "Lasso": Lasso(alpha=0.01, max_iter=20000, random_state=42),
         "KNeighborsRegressor": KNeighborsRegressor(n_neighbors=7),
         "RandomForestRegressor": RandomForestRegressor(
-            n_estimators=200, max_depth=10, random_state=42, n_jobs=-1
+            n_estimators=200,
+            max_depth=10,
+            random_state=42,
+            n_jobs=-1,
         ),
         "GradientBoostingRegressor": GradientBoostingRegressor(
-            n_estimators=150, max_depth=4, random_state=42
+            n_estimators=150,
+            max_depth=4,
+            random_state=42,
         ),
     }
     xgb = _maybe_xgb_regressor()
@@ -202,10 +179,6 @@ def _regression_registry() -> dict[str, Any]:
         registry["LGBMRegressor"] = lgbm
     return registry
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _safe_round(value, ndigits: int = 4) -> float | None:
     if value is None:
@@ -220,55 +193,147 @@ def _safe_round(value, ndigits: int = 4) -> float | None:
 
 
 def _cv_for(task_type: str, y: pd.Series, n_splits: int = 5):
+    if n_splits < 2:
+        raise ValueError("n_splits must be at least 2.")
+
+    n_rows = len(y)
+    if n_rows < 2:
+        raise ValueError("At least 2 target rows are required for cross-validation.")
+
     if task_type == "classification":
-        # Reduce splits if smallest class is too tiny
-        min_class = int(y.value_counts().min()) if len(y) else 0
-        actual_splits = max(2, min(n_splits, min_class))
-        return StratifiedKFold(n_splits=actual_splits, shuffle=True, random_state=42), actual_splits
-    return KFold(n_splits=n_splits, shuffle=True, random_state=42), n_splits
+        counts = y.value_counts()
+        min_class = int(counts.min()) if len(counts) else 0
+        if min_class < 2:
+            raise ValueError(
+                "Each classification class needs at least 2 rows for stratified cross-validation."
+            )
+        actual_splits = min(n_splits, min_class)
+        return (
+            StratifiedKFold(
+                n_splits=actual_splits,
+                shuffle=True,
+                random_state=42,
+            ),
+            actual_splits,
+        )
+
+    # R² is undefined for a test fold containing fewer than two observations.
+    # Because ML preprocessing already requires >=20 rows, capping KFold at
+    # floor(n/2) guarantees every test fold has at least two rows while still
+    # honouring smaller user-requested fold counts.
+    max_r2_splits = max(2, n_rows // 2)
+    actual_splits = min(n_splits, max_r2_splits)
+    if actual_splits < 2:
+        raise ValueError("Regression cross-validation needs at least 2 folds.")
+    return (
+        KFold(n_splits=actual_splits, shuffle=True, random_state=42),
+        actual_splits,
+    )
 
 
 def _scoring_for(task_type: str) -> tuple[dict[str, str], str]:
     if task_type == "classification":
-        scoring = {
+        return {
             "accuracy": "accuracy",
             "f1_weighted": "f1_weighted",
             "precision_weighted": "precision_weighted",
             "recall_weighted": "recall_weighted",
-        }
-        return scoring, "f1_weighted"
-    scoring = {
+        }, "f1_weighted"
+    return {
         "r2": "r2",
         "neg_mae": "neg_mean_absolute_error",
         "neg_rmse": "neg_root_mean_squared_error",
-    }
-    return scoring, "r2"
+    }, "r2"
 
 
-def _coerce_classification_target(y: pd.Series) -> pd.Series:
-    """XGBoost requires integer-encoded class labels; encode safely."""
-    if pd.api.types.is_numeric_dtype(y):
-        return y
-    return y.astype("category").cat.codes
+def _json_safe_label(value: Any) -> Any:
+    """Preserve ordinary class-label types while keeping metadata JSON-safe."""
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 
-# ---------------------------------------------------------------------------
-# Hold-out diagnostics for the winner
-# ---------------------------------------------------------------------------
+def _encode_classification_target(
+    y: pd.Series,
+) -> tuple[pd.Series, list[dict[str, Any]]]:
+    """Encode every classification target to stable consecutive integer labels."""
+    # sort=False also supports heterogeneous object labels that cannot be
+    # ordered against one another (for example a mix of strings and integers).
+    codes, uniques = pd.factorize(y, sort=False)
+    encoded = pd.Series(codes, index=y.index, name=y.name, dtype="int64")
+    mapping = [
+        {
+            "encoded": int(index),
+            "label": _json_safe_label(value),
+        }
+        for index, value in enumerate(uniques.tolist())
+    ]
+    return encoded, mapping
+
+
+def _set_estimator_jobs(estimator: Any, jobs: int) -> Any:
+    """Avoid nested process/thread explosions inside parallel CV folds."""
+    try:
+        params = estimator.get_params(deep=False)
+        if "n_jobs" in params:
+            estimator.set_params(n_jobs=jobs)
+    except Exception:
+        pass
+    return estimator
+
+
+def _adapt_knn_neighbors(registry: dict[str, Any], n_rows: int, n_splits: int) -> int:
+    largest_test_fold = int(np.ceil(n_rows / n_splits))
+    smallest_train_fold = max(1, n_rows - largest_test_fold)
+    neighbors = max(1, min(7, smallest_train_fold))
+    for name in ("KNeighborsClassifier", "KNeighborsRegressor"):
+        estimator = registry.get(name)
+        if estimator is not None:
+            try:
+                estimator.set_params(n_neighbors=neighbors)
+            except Exception:
+                pass
+    return neighbors
+
+
+def _score_stability(std: float | None) -> str:
+    if std is None:
+        return "unknown"
+    if std <= 0.02:
+        return "stable"
+    if std <= 0.05:
+        return "moderate"
+    return "variable"
+
 
 def _classification_holdout(
-    pipeline: Pipeline, X: pd.DataFrame, y: pd.Series
-) -> dict:
+    pipeline: Pipeline,
+    X: pd.DataFrame,
+    y: pd.Series,
+) -> dict[str, Any]:
     n = len(y)
     test_size = max(50, int(n * 0.25)) if n >= 200 else max(20, int(n * 0.25))
     test_size = min(test_size, n - 20)
     if test_size <= 0:
         return {"available": False, "reason": "not enough rows for holdout"}
 
-    stratify = y if y.nunique() > 1 and y.value_counts().min() >= 2 else None
+    class_count = int(y.nunique())
+    stratify = y if class_count > 1 and y.value_counts().min() >= 2 else None
+    if stratify is not None:
+        test_size = max(test_size, class_count)
+        if n - test_size < class_count:
+            stratify = None
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=42, stratify=stratify
+        X,
+        y,
+        test_size=test_size,
+        random_state=42,
+        stratify=stratify,
     )
 
     pipeline.fit(X_train, y_train)
@@ -279,7 +344,9 @@ def _classification_holdout(
         "n_train": int(len(X_train)),
         "n_test": int(len(X_test)),
         "accuracy": _safe_round(accuracy_score(y_test, y_pred)),
-        "f1_weighted": _safe_round(f1_score(y_test, y_pred, average="weighted", zero_division=0)),
+        "f1_weighted": _safe_round(
+            f1_score(y_test, y_pred, average="weighted", zero_division=0)
+        ),
         "precision_weighted": _safe_round(
             precision_score(y_test, y_pred, average="weighted", zero_division=0)
         ),
@@ -288,23 +355,27 @@ def _classification_holdout(
         ),
     }
 
-    # Brier score for binary calibration
     try:
         if hasattr(pipeline, "predict_proba"):
             proba = pipeline.predict_proba(X_test)
             classes = pipeline.classes_ if hasattr(pipeline, "classes_") else None
             if proba.shape[1] == 2 and classes is not None:
-                # Binary: pick positive-class column
                 pos_idx = 1
                 y_bin = (y_test == classes[pos_idx]).astype(int).values
-                out["brier_score"] = _safe_round(brier_score_loss(y_bin, proba[:, pos_idx]))
+                out["brier_score"] = _safe_round(
+                    brier_score_loss(y_bin, proba[:, pos_idx])
+                )
     except Exception as exc:
         out["brier_error"] = str(exc)
 
     return out
 
 
-def _regression_holdout(pipeline: Pipeline, X: pd.DataFrame, y: pd.Series) -> dict:
+def _regression_holdout(
+    pipeline: Pipeline,
+    X: pd.DataFrame,
+    y: pd.Series,
+) -> dict[str, Any]:
     n = len(y)
     test_size = max(50, int(n * 0.25)) if n >= 200 else max(20, int(n * 0.25))
     test_size = min(test_size, n - 20)
@@ -312,11 +383,13 @@ def _regression_holdout(pipeline: Pipeline, X: pd.DataFrame, y: pd.Series) -> di
         return {"available": False, "reason": "not enough rows for holdout"}
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=42
+        X,
+        y,
+        test_size=test_size,
+        random_state=42,
     )
     pipeline.fit(X_train, y_train)
     y_pred = pipeline.predict(X_test)
-
     residuals = y_test.values - y_pred
 
     return {
@@ -335,30 +408,25 @@ def _regression_holdout(pipeline: Pipeline, X: pd.DataFrame, y: pd.Series) -> di
     }
 
 
-# ---------------------------------------------------------------------------
-# Public entry point
-# ---------------------------------------------------------------------------
-
 def run_model_leaderboard(
     df: pd.DataFrame,
     target_column: str,
     task_type: str | None = None,
     n_splits: int = 5,
-) -> dict:
-    """
-    Run a CV-validated model leaderboard.
-
-    Args:
-        df: Dataframe.
-        target_column: Target column name.
-        task_type: "classification" | "regression" | None (auto-detect).
-        n_splits: CV folds (capped by smallest class for classification).
-
-    Returns:
-        JSON-safe dict with leaderboard rows, winner card, and holdout metrics.
-    """
+    n_jobs: int = 1,
+) -> dict[str, Any]:
+    """Run a CV-validated diagnostic model leaderboard."""
     if not target_column or target_column not in df.columns:
-        return {"available": False, "message": f"Target '{target_column}' not in dataframe."}
+        return {
+            "available": False,
+            "message": f"Target '{target_column}' not in dataframe.",
+        }
+    if task_type is not None and task_type not in {"classification", "regression"}:
+        raise ValueError("task_type must be 'classification', 'regression', or None.")
+    if n_splits < 2:
+        raise ValueError("n_splits must be at least 2.")
+    if n_jobs == 0:
+        raise ValueError("n_jobs cannot be 0.")
 
     prep = prepare_ml_matrix(df, target=target_column)
     if not prep["usable"]:
@@ -366,6 +434,7 @@ def run_model_leaderboard(
             "available": False,
             "message": "; ".join(prep["warnings"]) or "Insufficient data for ML.",
             "dropped_columns": prep["dropped_columns"],
+            "warnings": prep["warnings"],
         }
 
     X = prep["X"]
@@ -376,28 +445,68 @@ def run_model_leaderboard(
     if task_type is None:
         task_type = _infer_task_type(y)
 
-    # XGBoost requires integer-encoded labels for classification
-    y_for_models = _coerce_classification_target(y) if task_type == "classification" else y
-
-    if task_type == "classification" and y_for_models.nunique() < 2:
-        return {"available": False, "message": "Target has <2 classes."}
-
-    cv, actual_splits = _cv_for(task_type, y_for_models, n_splits=n_splits)
-    scoring, primary = _scoring_for(task_type)
-
+    target_encoding: list[dict[str, Any]] | None = None
     if task_type == "classification":
-        registry = _classification_registry(class_count=int(y_for_models.nunique()))
+        y_for_models, target_encoding = _encode_classification_target(y)
+        if y_for_models.nunique() < 2:
+            return {"available": False, "message": "Target has <2 classes."}
+    else:
+        if not pd.api.types.is_numeric_dtype(y):
+            return {
+                "available": False,
+                "message": "Regression requires a numeric target.",
+            }
+        y_for_models = pd.to_numeric(y, errors="coerce")
+        if not np.isfinite(y_for_models.to_numpy(dtype=float)).all():
+            return {
+                "available": False,
+                "message": "Regression target contains non-finite values after preprocessing.",
+            }
+
+    try:
+        cv, actual_splits = _cv_for(
+            task_type,
+            y_for_models,
+            n_splits=n_splits,
+        )
+    except ValueError as exc:
+        return {
+            "available": False,
+            "task_type": task_type,
+            "target_column": target_column,
+            "message": str(exc),
+        }
+
+    scoring, primary = _scoring_for(task_type)
+    if task_type == "classification":
+        registry = _classification_registry(
+            class_count=int(y_for_models.nunique())
+        )
     else:
         registry = _regression_registry()
 
-    leaderboard: list[dict] = []
+    knn_neighbors = _adapt_knn_neighbors(
+        registry,
+        n_rows=len(y_for_models),
+        n_splits=actual_splits,
+    )
+    for estimator in registry.values():
+        _set_estimator_jobs(estimator, 1)
+
+    leaderboard: list[dict[str, Any]] = []
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
 
-        for name, est in registry.items():
-            preprocessor = build_sklearn_preprocessor(numeric_features, categorical_features)
-            pipeline = Pipeline([("pre", preprocessor), ("model", est)])
+        for name, estimator in registry.items():
+            preprocessor = build_sklearn_preprocessor(
+                numeric_features,
+                categorical_features,
+            )
+            pipeline = Pipeline([
+                ("pre", preprocessor),
+                ("model", estimator),
+            ])
 
             t0 = time.perf_counter()
             try:
@@ -407,95 +516,164 @@ def run_model_leaderboard(
                     y_for_models,
                     cv=cv,
                     scoring=scoring,
-                    n_jobs=-1,
+                    n_jobs=n_jobs,
                     return_train_score=False,
                     error_score=np.nan,
                 )
-                fit_time_s = float(np.mean(cv_results["fit_time"]))
                 row: dict[str, Any] = {
                     "model": name,
-                    "fit_time_s": _safe_round(fit_time_s, ndigits=3),
-                    "cv_total_s": _safe_round(time.perf_counter() - t0, ndigits=3),
+                    "fit_time_s": _safe_round(
+                        np.nanmean(cv_results["fit_time"]),
+                        ndigits=3,
+                    ),
+                    "cv_total_s": _safe_round(
+                        time.perf_counter() - t0,
+                        ndigits=3,
+                    ),
                     "n_splits": actual_splits,
                 }
-                for metric_key in scoring.keys():
-                    arr = cv_results[f"test_{metric_key}"]
+                for metric_key in scoring:
+                    arr = np.asarray(cv_results[f"test_{metric_key}"], dtype=float)
+                    valid_folds = int(np.isfinite(arr).sum())
                     if metric_key.startswith("neg_"):
                         clean_key = metric_key[4:]
                         row[f"{clean_key}_mean"] = _safe_round(-np.nanmean(arr))
                         row[f"{clean_key}_std"] = _safe_round(np.nanstd(arr))
+                        row[f"{clean_key}_valid_folds"] = valid_folds
                     else:
                         row[f"{metric_key}_mean"] = _safe_round(np.nanmean(arr))
                         row[f"{metric_key}_std"] = _safe_round(np.nanstd(arr))
-                row["primary_score"] = (
-                    row.get(f"{primary}_mean")
-                    if not primary.startswith("neg_")
-                    else row.get(f"{primary[4:]}_mean")
-                )
+                        row[f"{metric_key}_valid_folds"] = valid_folds
+
+                row["primary_score"] = row.get(f"{primary}_mean")
+                row["primary_std"] = row.get(f"{primary}_std")
+                row["score_stability"] = _score_stability(row["primary_std"])
+                if row["primary_score"] is None:
+                    row["error"] = "No valid cross-validation score was produced."
                 leaderboard.append(row)
             except Exception as exc:
-                leaderboard.append({"model": name, "error": str(exc)})
+                leaderboard.append({
+                    "model": name,
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
 
-    # Sort by primary metric (higher is better for accuracy/f1/r2; for MAE/RMSE we use neg_)
-    def _sort_key(row: dict) -> float:
-        val = row.get("primary_score")
-        return -float("inf") if val is None else float(val)
+    def _sort_key(row: dict[str, Any]) -> float:
+        value = row.get("primary_score")
+        return -float("inf") if value is None else float(value)
 
     leaderboard.sort(key=_sort_key, reverse=True)
 
-    # Pick best non-dummy model
-    candidates = [
-        r for r in leaderboard
-        if r.get("primary_score") is not None and "Dummy" not in r["model"]
+    successful_rows = [
+        row for row in leaderboard if row.get("primary_score") is not None
     ]
+    failed_rows = [row for row in leaderboard if row.get("primary_score") is None]
+    dummy_row = next(
+        (row for row in successful_rows if "Dummy" in row["model"]),
+        None,
+    )
+    candidates = [
+        row for row in successful_rows if "Dummy" not in row["model"]
+    ]
+
+    base_payload: dict[str, Any] = {
+        "available": True,
+        "task_type": task_type,
+        "target_column": target_column,
+        "primary_metric": primary,
+        "n_rows": int(len(y_for_models)),
+        "n_features": len(numeric_features) + len(categorical_features),
+        "numeric_features": numeric_features,
+        "categorical_features": categorical_features,
+        "dropped_columns": prep["dropped_columns"],
+        "warnings": list(prep["warnings"]),
+        "target_encoding": target_encoding,
+        "cv": {
+            "requested_splits": int(n_splits),
+            "actual_splits": int(actual_splits),
+            "n_jobs": int(n_jobs),
+            "knn_neighbors": int(knn_neighbors),
+        },
+        "models_succeeded": len(successful_rows),
+        "models_failed": len(failed_rows),
+        "model_failures": [
+            {"model": row["model"], "error": row.get("error")}
+            for row in failed_rows
+        ],
+        "leaderboard": leaderboard,
+        "baseline": (
+            {
+                "model": dummy_row["model"],
+                "primary_score": dummy_row["primary_score"],
+            }
+            if dummy_row is not None
+            else None
+        ),
+    }
+
     if not candidates:
         return {
-            "available": True,
-            "task_type": task_type,
-            "target_column": target_column,
-            "n_rows": int(len(y)),
-            "n_features": len(numeric_features) + len(categorical_features),
-            "numeric_features": numeric_features,
-            "categorical_features": categorical_features,
-            "leaderboard": leaderboard,
+            **base_payload,
             "winner": None,
             "message": "No non-dummy model produced a usable score.",
         }
 
     winner = candidates[0]
+    baseline_score = (
+        float(dummy_row["primary_score"])
+        if dummy_row is not None and dummy_row.get("primary_score") is not None
+        else None
+    )
+    winner_score = float(winner["primary_score"])
+    lift = winner_score - baseline_score if baseline_score is not None else None
+    beats_baseline = bool(lift is not None and lift > 0)
 
-    # Refit winner on full data and run holdout
+    if baseline_score is not None and not beats_baseline:
+        base_payload["warnings"].append(
+            "Best non-dummy model did not outperform the dummy baseline on the primary CV metric."
+        )
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-
         winner_estimator = registry[winner["model"]]
-        winner_preprocessor = build_sklearn_preprocessor(numeric_features, categorical_features)
-        winner_pipeline = Pipeline([("pre", winner_preprocessor), ("model", winner_estimator)])
+        winner_preprocessor = build_sklearn_preprocessor(
+            numeric_features,
+            categorical_features,
+        )
+        winner_pipeline = Pipeline([
+            ("pre", winner_preprocessor),
+            ("model", winner_estimator),
+        ])
 
         try:
             if task_type == "classification":
-                holdout = _classification_holdout(winner_pipeline, X, y_for_models)
+                holdout = _classification_holdout(
+                    winner_pipeline,
+                    X,
+                    y_for_models,
+                )
             else:
-                holdout = _regression_holdout(winner_pipeline, X, y_for_models)
+                holdout = _regression_holdout(
+                    winner_pipeline,
+                    X,
+                    y_for_models,
+                )
         except Exception as exc:
-            holdout = {"available": False, "error": str(exc)}
+            holdout = {
+                "available": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
 
     return {
-        "available": True,
-        "task_type": task_type,
-        "target_column": target_column,
-        "primary_metric": primary,
-        "n_rows": int(len(y)),
-        "n_features": len(numeric_features) + len(categorical_features),
-        "numeric_features": numeric_features,
-        "categorical_features": categorical_features,
-        "dropped_columns": prep["dropped_columns"],
-        "warnings": prep["warnings"],
-        "leaderboard": leaderboard,
+        **base_payload,
         "winner": {
             "model": winner["model"],
             "primary_score": winner["primary_score"],
-            "fit_time_s": winner["fit_time_s"],
+            "primary_std": winner.get("primary_std"),
+            "score_stability": winner.get("score_stability"),
+            "fit_time_s": winner.get("fit_time_s"),
+            "baseline_score": _safe_round(baseline_score),
+            "lift_over_baseline": _safe_round(lift),
+            "beats_baseline": beats_baseline if baseline_score is not None else None,
             "holdout": holdout,
         },
     }

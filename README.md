@@ -4,7 +4,7 @@
 
 ### Know if your data is healthy, stable, and ML-ready — before your model finds out.
 
-**A Python toolkit for data-quality diagnostics, drift detection, anomaly analysis, and ML-readiness checks on pandas and tabular data.**
+**FrameVitals is a source-aware Python toolkit for data health, drift detection, anomaly analysis, data contracts, quality gates, and ML-readiness diagnostics on tabular data.**
 
 [![Tests](https://github.com/parthdongre/FrameVitals/actions/workflows/test.yml/badge.svg)](https://github.com/parthdongre/FrameVitals/actions/workflows/test.yml)
 [![PyPI](https://img.shields.io/pypi/v/framevitals.svg)](https://pypi.org/project/framevitals/)
@@ -12,75 +12,65 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/parthdongre/FrameVitals?style=social)](https://github.com/parthdongre/FrameVitals)
 
-[Install](#installation) · [Quick start](#quick-start) · [CLI](#command-line-interface) · [Roadmap](#roadmap) · [Contributing](#contributing)
+[Installation](#installation) · [Quick Start](#quick-start) · [Workflows](#common-workflows) · [CLI](#command-line) · [Docs](docs/) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
 ---
 
-FrameVitals turns a pandas DataFrame or tabular dataset into a **structured health report** you can inspect, serialize, compare, and eventually enforce in CI.
+FrameVitals helps you decide whether a dataset is **healthy enough to trust** before it reaches a model, analytics workflow, dashboard, or production pipeline.
 
-Instead of stitching together separate profiling, quality, drift, anomaly, and ML-readiness tools, FrameVitals gives you one deliberately small entry point:
+It provides one consistent API for inspecting data quality, ML readiness, anomalies, drift, contracts, validation, snapshots, and CI-friendly quality gates.
 
 ```python
 import framevitals as fv
 
-report = fv.analyze(df)
-drift = fv.compare(reference_df, current_df)
-contract = fv.infer_contract(reference_df)
-validation = fv.validate(current_df, contract)
+report = fv.analyze(data)
+drift = fv.compare(reference, current)
+contract = fv.infer_contract(reference)
+validation = fv.validate(current, contract)
+gate = fv.gate(current, reference=reference, contract=contract)
 ```
 
-The goal is simple: **catch bad data before it becomes a bad model, a broken dashboard, or a production incident.**
-
-```text
-                  ┌──────────────────────────┐
-DataFrame / file ─►        ANALYZE           │
-                  │ profile · health · ML    │
-                  │ stats · anomalies · risk │
-                  └────────────┬─────────────┘
-                               │
-                               ▼
-                        structured report
-
-Reference + current ───────────► COMPARE ─────► drift verdict
-```
-
-## Why FrameVitals?
-
-Most data checks answer one narrow question. FrameVitals is designed around the questions that show up repeatedly in real data and ML workflows:
-
-| Question | FrameVitals |
-| --- | --- |
-| Is this dataset structurally healthy? | Missingness, duplicates, cardinality, schema and quality diagnostics |
-| Is it ready for modelling? | ML-readiness scoring, target-aware checks and model diagnostics |
-| Are there suspicious rows or features? | Statistical diagnostics, anomaly detection, leakage and multicollinearity checks |
-| Has production data changed? | Reference-vs-current drift analysis with numeric and categorical tests |
-| Can I use the result in code? | JSON-friendly structured output through a Python API and CLI |
-| Will analysis unexpectedly write files? | No — filesystem artifacts are opt-in |
-
-FrameVitals is **package-first**. The core library lives under `src/framevitals/`; the Flask API and React dashboard are optional interfaces around the same analysis engine.
+The goal is simple: **catch bad data before it becomes a bad model, broken dashboard, or production incident.**
 
 ## Installation
 
-FrameVitals supports **Python 3.11, 3.12, and 3.13**. The current public release is **0.1.0 (alpha)** and is available on PyPI.
+Install the package from PyPI:
 
 ```bash
 pip install framevitals
 ```
 
-Optional feature groups keep heavier dependencies out of the default install:
+FrameVitals supports **Python 3.11, 3.12, and 3.13**.
+
+Optional capabilities are available as extras:
 
 ```bash
-pip install "framevitals[ml]"   # XGBoost, LightGBM, PyOD, SHAP
-pip install "framevitals[ai]"   # Ollama-backed AI features
-pip install "framevitals[web]"  # Flask web runtime
-pip install "framevitals[all]"  # all optional runtime features
+pip install "framevitals[arrow]"   # Arrow and Parquet interoperability
+pip install "framevitals[duckdb]"  # DuckDB relations
+pip install "framevitals[plot]"    # plotting and report charts
+pip install "framevitals[ml]"      # optional ML diagnostics
+pip install "framevitals[ai]"      # Ollama-backed AI capabilities
+pip install "framevitals[web]"     # Flask web runtime
+pip install "framevitals[all]"     # all optional runtime capabilities
 ```
 
-## Quick start
+## Quick Start
 
-### Analyze a DataFrame
+Analyze a file directly:
+
+```python
+import framevitals as fv
+
+report = fv.analyze("customers.csv")
+
+print(report.health["overall_score"])
+print(report.ml_readiness)
+print(report.findings[:3])
+```
+
+Or pass a pandas DataFrame:
 
 ```python
 import pandas as pd
@@ -88,318 +78,250 @@ import framevitals as fv
 
 customers = pd.read_csv("customers.csv")
 report = fv.analyze(customers)
-
-print(report["health"]["overall_score"])
-print(report["ml_readiness"])
 ```
 
-File paths work too:
+FrameVitals also supports Parquet, PyArrow data, and lazy DuckDB relations when the corresponding optional dependencies are installed.
+
+## Common Workflows
+
+### Run only the diagnostic you need
+
+The focused APIs let you inspect one part of a dataset without running the complete analysis pipeline:
 
 ```python
-report = fv.analyze("customers.csv", mode="quick")
+fv.profile(data)
+fv.health(data)
+fv.quality(data)
+fv.ml_readiness(data)
+fv.statistics(data)
+fv.anomalies(data)
+fv.relationships(data)
 ```
-
-FrameVitals supports pandas DataFrames and common tabular file formats including CSV, TSV, Excel, and JSON.
-
-### Add a supervised-learning target
-
-```python
-report = fv.analyze(
-    customers,
-    target="churn",
-    mode="deep",
-)
-
-print(report["model_leaderboard"])
-print(report["explainability"])
-```
-
-Target-aware analysis can surface modelling risks such as leakage, imbalance, redundant features, unstable relationships, and weak baselines.
 
 ### Compare datasets for drift
 
 ```python
-reference = pd.read_csv("training_data.csv")
-current = pd.read_csv("production_batch.csv")
-
 result = fv.compare(reference, current)
 
-print(result["summary"]["overall_verdict"])
+print(result.severity)
 print(result["columns"][:3])
 ```
 
-Numeric drift uses **PSI, Kolmogorov-Smirnov statistics, and standardized mean shift**. Categorical drift uses **PSI and chi-square diagnostics**.
+Use this to compare training and production data, historical batches, pipeline outputs, or any reference/current pair.
 
-### Validate a data contract
-
-Infer a contract once from a trusted reference dataset, then validate later
-batches before they reach downstream jobs:
+### Infer and validate a data contract
 
 ```python
 contract = fv.infer_contract(reference)
 result = fv.validate(current, contract)
 
-if not result["valid"]:
-    for finding in result["errors"]:
+if result.status == "fail":
+    for finding in result.findings:
         print(finding["message"])
 ```
 
-Contracts capture required columns, broad data types, nullability, and finite
-numeric bounds. They are plain JSON-friendly dictionaries, so a contract can
-be committed with a pipeline or stored with a dataset baseline.
+Contracts can capture expectations such as schema, data types, nullability, numeric bounds, allowed values, and uniqueness.
 
-## The public API
-
-The public API is intentionally small while FrameVitals is in alpha.
-
-| API | Status | Purpose |
-| --- | --- | --- |
-| `framevitals.analyze(...)` | Available in `0.1.0` | Profile and diagnose one dataset |
-| `framevitals.compare(...)` | Available in `0.1.0` | Compare reference and current data for drift |
-| `framevitals.infer_contract(...)` | Available on `dev` | Infer a reusable data contract from reference data |
-| `framevitals.validate(...)` | Available on `dev` | Validate data against an inferred or explicit contract |
-| snapshots / monitoring | Roadmap | Reuse baselines for recurring schema and drift checks |
-
-This keeps the library easy to learn while leaving room for the result model and validation system to mature before `1.0`.
-
-## What FrameVitals checks
-
-| Area | Examples |
-| --- | --- |
-| **Structure** | shape, dtypes, semantic column roles, date/text detection |
-| **Data quality** | missingness, duplicates, constants, cardinality, outliers |
-| **Health scoring** | overall dataset health plus component-level diagnostics |
-| **ML readiness** | modelling readiness, risky columns, preprocessing recommendations |
-| **Statistics** | distribution checks, normality, correlations, effect-size style diagnostics |
-| **Anomalies** | multivariate and robust outlier detectors, optional ensemble methods |
-| **Target intelligence** | task inference, leakage hints, multicollinearity, feature/model diagnostics |
-| **Drift** | PSI, KS, chi-square, mean shift, new or disappearing categories |
-| **Time series** | date-aware diagnostics, stationarity, decomposition and forecast previews |
-| **Text** | text-column profiling, vocabulary and lightweight semantic diagnostics |
-| **Explainability** | model feature importance and SHAP when the optional ML stack is installed |
-
-Not every analysis runs on every dataset. FrameVitals uses dataset signals, selected mode, target availability, and installed optional dependencies to decide what is useful and safe to execute.
-
-## Analysis modes
+### Add a quality gate
 
 ```python
-fv.analyze(df, mode="quick")
-fv.analyze(df, mode="standard")
-fv.analyze(df, mode="deep")
-fv.analyze(df, mode="research")
+result = fv.gate(
+    current,
+    reference=reference,
+    contract=contract,
+)
+
+print(result.status)  # pass / warn / fail
+print(result.passed)
 ```
 
-| Mode | Best for |
-| --- | --- |
-| `quick` | Fast structural, quality, and ML-readiness checks |
-| `standard` | Everyday analysis with broader diagnostics |
-| `deep` | Target-aware and heavier statistical analysis |
-| `research` | Largest analysis budget for exploratory work |
+A gate combines the checks you choose into one verdict that can be used in scripts, pipelines, and CI.
 
-## Filesystem artifacts are opt-in
-
-FrameVitals is designed to behave like a library first. Calling the Python API does not need to scatter reports and cleaned files around your working directory.
+### Add domain-specific checks
 
 ```python
-report = fv.analyze(df)
-assert report["cleaning"]["output_path"] is None
+@fv.check("positive revenue", severity="error")
+def positive_revenue(df):
+    return {
+        "passed": bool((df["revenue"] >= 0).all()),
+        "message": "Negative revenue values were found.",
+    }
 
-report = fv.analyze(df, artifacts=True)
-print(report["cleaning"]["output_path"])
+result = fv.gate(data, custom_checks=[positive_revenue])
 ```
 
-## Command-line interface
+Custom checks make it possible to enforce application-specific rules without modifying FrameVitals itself.
 
-FrameVitals also ships with a CLI for scripts, terminals, and future CI workflows.
+### Run target-aware analysis
 
-Start by discovering the available commands and options:
-
-```bash
-framevitals --help
-framevitals analyze --help
-framevitals compare --help
-framevitals --version
+```python
+report = fv.analyze(
+    data,
+    target="churn",
+    mode="deep",
+)
 ```
+
+Target-aware analysis can surface modelling risks such as leakage, imbalance, redundant features, multicollinearity, and weak baseline relationships.
+
+### Create monitoring snapshots
+
+```python
+report = fv.analyze(current)
+snapshot = report.snapshot("snapshot.json")
+```
+
+Compare compact snapshots later without retaining every raw dataset:
+
+```python
+previous = fv.load_snapshot("previous.json")
+latest = fv.load_snapshot("snapshot.json")
+change = fv.compare_snapshots(previous, latest)
+```
+
+## Analysis Modes
+
+Choose how much work FrameVitals should perform:
+
+```python
+fv.analyze(data, mode="quick")
+fv.analyze(data, mode="standard")
+fv.analyze(data, mode="deep")
+fv.analyze(data, mode="research")
+```
+
+Use `quick` for fast checks and the deeper modes when you want broader statistical or modelling diagnostics.
+
+## Source-Aware Execution
+
+FrameVitals is designed to work with more than pandas alone. Supported sources can include DataFrames, files, Arrow-native data, and DuckDB relations.
+
+Where semantics allow it, large or lazy sources can use bounded or streaming execution instead of being loaded fully into pandas. Operations that require exact results can still materialize the full dataset, and execution metadata reports those decisions.
+
+## Command Line
+
+The Python package also includes a CLI.
 
 Analyze a dataset:
 
 ```bash
-framevitals analyze dataset.csv
-framevitals analyze dataset.csv --mode quick
-framevitals analyze dataset.csv --target churn --mode deep
-framevitals analyze dataset.csv --output report.json
-framevitals analyze dataset.csv --artifacts
+framevitals analyze customers.csv
 ```
 
-A useful end-to-end smoke test is:
+Compare two datasets:
 
 ```bash
-framevitals analyze dataset.csv --target churn --mode deep --artifacts --output report.json
+framevitals compare reference.csv current.csv
 ```
 
-Compare two datasets for drift:
+Infer a contract:
 
 ```bash
-framevitals compare train.csv production.csv
-framevitals compare train.csv production.csv --columns age,income
-framevitals compare train.csv production.csv --output drift.json
+framevitals infer-contract reference.csv
 ```
 
-Create and use a contract from the terminal:
+Create a monitoring snapshot:
 
 ```bash
-framevitals infer-contract training_data.csv --output contract.json
-framevitals validate production_batch.csv --contract contract.json
+framevitals snapshot customers.csv
 ```
 
-The validation command exits with status `1` when the contract has errors,
-which makes it suitable for CI jobs and scheduled ingestion checks.
-
-In `0.1.0`, `framevitals analyze` prints a compact analysis summary to the terminal. `--output report.json` writes that CLI summary to the requested path. `--artifacts` enables generated files in the current working directory, including a cleaned dataset under `cleaned/` and generated charts under `static/charts/`. The full structured analysis result is available through the Python API with `framevitals.analyze(...)`.
-
-## Optional ML and AI features
-
-The default package contains the core data-health engine. Heavier features are separated into extras so a simple install stays predictable.
+Inspect dataset execution capabilities:
 
 ```bash
-pip install "framevitals[ml]"
+framevitals inspect customers.csv
 ```
 
-Adds optional integrations including XGBoost, LightGBM, PyOD and SHAP.
+See all commands and options with:
 
 ```bash
-pip install "framevitals[ai]"
+framevitals --help
 ```
 
-Adds Ollama-backed interpretation and question-answering features. AI is treated as an optional explanation layer; computed diagnostics remain usable without a reachable model.
+## CI and GitHub Actions
 
-## Web dashboard
-
-The repository includes an optional **Flask API + React/TypeScript dashboard** for interactive exploration.
-
-```bash
-pip install -e ".[web]"
-python app.py
-```
-
-Then in another terminal:
-
-```bash
-cd frontend
-npm ci
-npm run dev
-```
-
-Typical local endpoints:
-
-- Flask API: `http://127.0.0.1:5055`
-- React dashboard: `http://127.0.0.1:5173`
-
-The public project website will remain separate from the package runtime so the library does not depend on a hosted service.
-
-## Design principles
-
-FrameVitals is being built around a few constraints that are easy to lose in analytics projects:
-
-- **DataFrame first** — use it directly from Python without routing through a web app.
-- **Structured results** — return reusable data, not only screenshots or prose.
-- **Safe defaults** — no unexpected artifact writes and graceful optional-feature fallbacks.
-- **Small public API** — make the common path obvious before exposing every internal module.
-- **Optional heavy dependencies** — ML, AI, and web features should not bloat a basic install.
-- **Production direction** — drift, contracts, snapshots, and CI quality gates are first-class roadmap items.
-
-## Project layout
+FrameVitals can sit between your data pipeline and downstream work:
 
 ```text
-.
-├── src/framevitals/          # canonical installable Python package
-├── tests/                    # automated test suite
-├── frontend/                 # optional React + TypeScript dashboard
-├── templates/                # Flask report pages
-├── static/                   # web/report assets
-├── app.py                    # optional Flask API/server
-├── pyproject.toml            # package metadata and dependency groups
-└── .github/workflows/        # CI, package validation and publishing
+Data / ETL
+    ↓
+FrameVitals Gate
+    ↓
+PASS / WARN / FAIL
+    ↓
+Training / Analytics / Production
 ```
 
-New reusable Python code belongs in `src/framevitals/` and should import through the `framevitals.*` namespace.
+The repository includes a reusable GitHub Action:
+
+```yaml
+- uses: parthdongre/FrameVitals@v0.2.0
+  id: framevitals
+  with:
+    current: data/production.parquet
+    reference: data/training.parquet
+    contract: data/contract.json
+    output: framevitals-gate.json
+```
+
+For production workflows, pin the action to a released tag or commit.
+
+## Python API
+
+The main workflow entry points are available directly from `framevitals`:
+
+```python
+fv.analyze(...)
+fv.plan(...)
+fv.profile(...)
+fv.health(...)
+fv.quality(...)
+fv.ml_readiness(...)
+fv.statistics(...)
+fv.anomalies(...)
+fv.relationships(...)
+fv.compare(...)
+fv.infer_contract(...)
+fv.validate(...)
+fv.check(...)
+fv.run_checks(...)
+fv.gate(...)
+fv.create_snapshot(...)
+fv.compare_snapshots(...)
+```
+
+For detailed API behaviour, configuration, source semantics, performance notes, and advanced usage, see [`docs/`](docs/).
 
 ## Development
+
+Clone the repository and install it in development mode:
 
 ```bash
 git clone https://github.com/parthdongre/FrameVitals.git
 cd FrameVitals
-git switch dev
-
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
 pip install -e ".[all,dev]"
+```
 
+Run the test suite:
+
+```bash
 pytest
-python -m build
-python -m twine check dist/*
 ```
-
-On Windows PowerShell:
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-CI validates the core package across Python 3.11–3.13, optional features, the React build, wheel contents, distribution metadata, and a clean-wheel install.
-
-Development is integrated through `dev`; `main` is kept release-ready.
-
-## Roadmap
-
-FrameVitals is moving toward a complete data-health quality gate:
-
-```text
-0.1  ANALYZE + COMPARE
-     data health · ML readiness · target diagnostics · drift
-
-0.2  VALIDATE + SNAPSHOTS
-     data contracts · CI gates · reusable baselines
-
-0.3  RESULT OBJECTS + ADVANCED DRIFT
-     stronger result model · large-data handling · richer monitoring
-
-0.4  EXTENSIBILITY + INTEGRATIONS
-     configurable checks · adapters · monitoring workflows
-
-1.0  STABLE DATA-HEALTH API
-     dependable analyze → compare → validate → monitor workflow
-```
-
-Near-term work is tracked through issues and the `dev` branch.
-
-## Project status
-
-FrameVitals `0.1.x` is **alpha software**. The core API is usable, but the project is intentionally still refining naming, result schemas, thresholds, and extension points before `1.0`.
-
-If you are using FrameVitals in a project, feedback about real datasets, false positives, missing diagnostics, performance, and API ergonomics is especially valuable.
 
 ## Contributing
 
-Contributions are welcome.
+Contributions are welcome, including bug fixes, diagnostics, tests, documentation, integrations, and performance improvements.
 
-A good contribution is focused, tested, and improves either the reliability of a diagnostic or the clarity of the public workflow.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md), and please read the [Code of Conduct](CODE_OF_CONDUCT.md) and [Security Policy](SECURITY.md).
+## Documentation
 
-## Releases
+Detailed documentation lives in [`docs/`](docs/).
 
-Releases are built and validated in GitHub Actions and published through PyPI Trusted Publishing. See [RELEASING.md](RELEASING.md) and [CHANGELOG.md](CHANGELOG.md).
+- [Changelog](CHANGELOG.md)
+- [Contributing Guide](CONTRIBUTING.md)
+- [Issue Tracker](https://github.com/parthdongre/FrameVitals/issues)
 
 ## License
 
-FrameVitals is open source under the [MIT License](LICENSE).
-
----
-
-<div align="center">
-
-**If FrameVitals is useful to you, consider starring the repository — it helps the project grow.**
-
-</div>
+FrameVitals is released under the [MIT License](LICENSE).

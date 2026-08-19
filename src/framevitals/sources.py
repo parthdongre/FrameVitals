@@ -1,0 +1,480 @@
+"""Dataset source abstractions for FrameVitals.
+
+Sources expose cheap metadata before analysis. Streaming-capable sources can
+additionally yield bounded record batches, allowing focused operations to avoid
+materializing the complete dataset in pandas.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator, Sequence
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
+
+import pandas as pd
+
+from framevitals.loader import load_dataset
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetMetadata:
+    """Cheap source metadata available before deep analysis."""
+
+    name: str
+    kind: str
+    format: str
+    rows: int | None
+    columns: int | None
+    size_bytes: int | None
+    materialized: bool
+    supports_projection: bool
+    supports_streaming: bool
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@runtime_checkable
+class DatasetSource(Protocol):
+    """Minimal contract implemented by FrameVitals data sources."""
+
+    def inspect(self) -> DatasetMetadata: ...
+
+    def load(self) -> pd.DataFrame: ...
+
+
+@runtime_checkable
+class StreamingDatasetSource(DatasetSource, Protocol):
+    """Optional extension for sources that can yield bounded record batches."""
+
+    def iter_batches(
+        self,
+        *,
+        batch_size: int = 65_536,
+        columns: Sequence[str] | None = None,
+    ) -> Iterator[Any]: ...
+
+
+@dataclass(slots=True)
+class PandasSource:
+    dataframe: pd.DataFrame
+    name: str = "<dataframe>"
+
+    def inspect(self) -> DatasetMetadata:
+        rows, columns = self.dataframe.shape
+        size_bytes = int(self.dataframe.memory_usage(index=True, deep=True).sum())
+        return DatasetMetadata(
+            name=self.name,
+            kind="memory",
+            format="pandas",
+            rows=int(rows),
+            columns=int(columns),
+            size_bytes=size_bytes,
+            materialized=True,
+            supports_projection=True,
+            supports_streaming=False,
+        )
+
+    def load(self) -> pd.DataFrame:
+        if self.dataframe.empty:
+            raise ValueError("Dataset DataFrame is empty.")
+        return self.dataframe.copy()
+
+
+def _normalize_arrow_table_types(table: Any) -> Any:
+    """Cast Arrow view types to compute-compatible equivalents without pandas."""
+    try:
+        import pyarrow as pa
+    except ImportError:
+        return table
+
+    fields = []
+    changed = False
+    for field in table.schema:
+        target_type = field.type
+        if pa.types.is_string_view(target_type):
+            target_type = pa.string()
+        elif pa.types.is_binary_view(target_type):
+            target_type = pa.binary()
+
+        changed = changed or target_type != field.type
+        fields.append(
+            pa.field(
+                field.name,
+                target_type,
+                nullable=field.nullable,
+                metadata=field.metadata,
+            )
+        )
+
+    if not changed:
+        return table
+
+    target_schema = pa.schema(fields, metadata=table.schema.metadata)
+    return table.cast(target_schema)
+
+
+@dataclass(slots=True)
+class ArrowTableSource:
+    """Projection-aware in-memory Arrow source without eager pandas conversion."""
+
+    table: Any
+    name: str = "<arrow_table>"
+
+    def __post_init__(self) -> None:
+        self.table = _normalize_arrow_table_types(self.table)
+
+    def inspect(self) -> DatasetMetadata:
+        return DatasetMetadata(
+            name=self.name,
+            kind="memory",
+            format="arrow",
+            rows=int(self.table.num_rows),
+            columns=int(self.table.num_columns),
+            size_bytes=int(self.table.nbytes),
+            materialized=True,
+            supports_projection=True,
+            supports_streaming=True,
+        )
+
+    def schema(self):
+        """Return the native Arrow schema without converting row data."""
+        return self.table.schema
+
+    def iter_batches(
+        self,
+        *,
+        batch_size: int = 65_536,
+        columns: Sequence[str] | None = None,
+    ) -> Iterator[Any]:
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1.")
+        projected = self.table
+        if columns is not None:
+            projected = projected.select(list(columns))
+        yield from projected.to_batches(max_chunksize=int(batch_size))
+
+    def load(self) -> pd.DataFrame:
+        dataframe = self.table.to_pandas()
+        if dataframe.empty:
+            raise ValueError(f"Dataset is empty: {self.name}")
+        return dataframe
+
+
+@dataclass(slots=True)
+class FileSource:
+    path: Path
+
+    def inspect(self) -> DatasetMetadata:
+        _validate_file_path(self.path)
+        suffix = self.path.suffix.lower().lstrip(".") or "unknown"
+        return DatasetMetadata(
+            name=self.path.name,
+            kind="file",
+            format=suffix,
+            rows=None,
+            columns=None,
+            size_bytes=int(self.path.stat().st_size),
+            materialized=False,
+            supports_projection=False,
+            supports_streaming=False,
+        )
+
+    def load(self) -> pd.DataFrame:
+        dataframe = load_dataset(self.path)
+        if dataframe.empty:
+            raise ValueError(f"Dataset is empty: {self.path}")
+        return dataframe
+
+
+@dataclass(slots=True)
+class DelimitedTextSource(FileSource):
+    """CSV/TSV file source with optional Arrow streaming acceleration.
+
+    This remains a :class:`FileSource` for compatibility. Without the Arrow
+    extra it advertises the same non-streaming behaviour as a normal file
+    source and falls back to the existing pandas loader. With Arrow it performs
+    one bounded-memory metadata scan to obtain an exact row count, caches that
+    metadata, and then yields projected Arrow record batches.
+    """
+
+    delimiter: str = ","
+    _metadata_cache: DatasetMetadata | None = field(default=None, init=False, repr=False)
+    _schema_cache: Any = field(default=None, init=False, repr=False)
+    _arrow_compatible: bool | None = field(default=None, init=False, repr=False)
+
+    @property
+    def format(self) -> str:
+        return "tsv" if self.delimiter == "\t" else "csv"
+
+    def _pyarrow_csv(self):
+        try:
+            import pyarrow.csv as pacsv
+        except ImportError:
+            return None
+        return pacsv
+
+    def _arrow_reader(self, *, columns: Sequence[str] | None = None):
+        pacsv = self._pyarrow_csv()
+        if pacsv is None:
+            raise ImportError(
+                "CSV/TSV streaming requires the optional Arrow capability. "
+                'Install it with: pip install "framevitals[arrow]"'
+            )
+
+        read_options = pacsv.ReadOptions(use_threads=True)
+        parse_options = pacsv.ParseOptions(delimiter=self.delimiter)
+        convert_options = pacsv.ConvertOptions(
+            include_columns=list(columns) if columns is not None else None,
+        )
+        return pacsv.open_csv(
+            str(self.path),
+            read_options=read_options,
+            parse_options=parse_options,
+            convert_options=convert_options,
+        )
+
+    def inspect(self) -> DatasetMetadata:
+        _validate_file_path(self.path)
+        if self._metadata_cache is not None:
+            return self._metadata_cache
+
+        if self._pyarrow_csv() is None:
+            self._arrow_compatible = False
+            # Avoid zero-argument super() here: @dataclass(slots=True) may
+            # replace the class object, which breaks the implicit __class__
+            # cell on Python versions where this fallback path is exercised.
+            self._metadata_cache = FileSource.inspect(self)
+            return self._metadata_cache
+
+        try:
+            reader = self._arrow_reader()
+            schema = reader.schema
+            rows = 0
+            while True:
+                try:
+                    batch = reader.read_next_batch()
+                except StopIteration:
+                    break
+                rows += int(batch.num_rows)
+        except Exception:
+            # Preserve existing CSV/TSV compatibility if Arrow cannot parse a
+            # file that the pandas loader may still understand.
+            self._arrow_compatible = False
+            self._metadata_cache = FileSource.inspect(self)
+            return self._metadata_cache
+
+        self._arrow_compatible = True
+        self._schema_cache = schema
+        self._metadata_cache = DatasetMetadata(
+            name=self.path.name,
+            kind="file",
+            format=self.format,
+            rows=int(rows),
+            columns=int(len(schema)),
+            size_bytes=int(self.path.stat().st_size),
+            materialized=False,
+            supports_projection=True,
+            supports_streaming=True,
+        )
+        return self._metadata_cache
+
+    def schema(self):
+        """Return the inferred Arrow schema without materializing row data."""
+        metadata = self.inspect()
+        if not metadata.supports_streaming:
+            raise TypeError(
+                f"{self.format.upper()} source is not Arrow-streamable: {self.path}"
+            )
+        if self._schema_cache is None:
+            self._schema_cache = self._arrow_reader().schema
+        return self._schema_cache
+
+    def iter_batches(
+        self,
+        *,
+        batch_size: int = 65_536,
+        columns: Sequence[str] | None = None,
+    ) -> Iterator[Any]:
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1.")
+        metadata = self.inspect()
+        if not metadata.supports_streaming:
+            raise TypeError(
+                f"{self.format.upper()} source cannot stream without a compatible Arrow reader."
+            )
+
+        reader = self._arrow_reader(columns=columns)
+        while True:
+            try:
+                batch = reader.read_next_batch()
+            except StopIteration:
+                break
+            for offset in range(0, int(batch.num_rows), int(batch_size)):
+                yield batch.slice(offset, min(int(batch_size), int(batch.num_rows) - offset))
+
+    def load(self) -> pd.DataFrame:
+        return FileSource.load(self)
+
+
+@dataclass(slots=True)
+class ParquetSource:
+    """Projection-aware, streaming Parquet source backed by optional PyArrow.
+
+    A single source object owns one ``ParquetFile`` instance plus cached schema
+    and metadata. Ultra-wide files can have expensive footer/schema parsing, so
+    repeatedly reopening the same file inside ``inspect()``, ``schema()`` and
+    ``iter_batches()`` wastes work without improving correctness.
+    """
+
+    path: Path
+    _parquet_file_cache: Any = field(default=None, init=False, repr=False)
+    _metadata_cache: DatasetMetadata | None = field(default=None, init=False, repr=False)
+    _schema_cache: Any = field(default=None, init=False, repr=False)
+
+    def _parquet_file(self):
+        if self._parquet_file_cache is not None:
+            return self._parquet_file_cache
+
+        _validate_file_path(self.path)
+        try:
+            import pyarrow.parquet as pq
+        except ImportError as exc:
+            raise ImportError(
+                "Parquet streaming requires the optional Arrow capability. "
+                'Install it with: pip install "framevitals[arrow]"'
+            ) from exc
+        self._parquet_file_cache = pq.ParquetFile(self.path)
+        return self._parquet_file_cache
+
+    def inspect(self) -> DatasetMetadata:
+        if self._metadata_cache is not None:
+            return self._metadata_cache
+
+        parquet_file = self._parquet_file()
+        metadata = parquet_file.metadata
+        self._metadata_cache = DatasetMetadata(
+            name=self.path.name,
+            kind="file",
+            format="parquet",
+            rows=int(metadata.num_rows),
+            columns=int(metadata.num_columns),
+            size_bytes=int(self.path.stat().st_size),
+            materialized=False,
+            supports_projection=True,
+            supports_streaming=True,
+        )
+        return self._metadata_cache
+
+    def schema(self):
+        """Return the cached Arrow schema without reading row data."""
+        if self._schema_cache is None:
+            self._schema_cache = self._parquet_file().schema_arrow
+        return self._schema_cache
+
+    def iter_batches(
+        self,
+        *,
+        batch_size: int = 65_536,
+        columns: Sequence[str] | None = None,
+    ) -> Iterator[Any]:
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1.")
+        yield from self._parquet_file().iter_batches(
+            batch_size=int(batch_size),
+            columns=list(columns) if columns is not None else None,
+            use_threads=True,
+        )
+
+    def load(self) -> pd.DataFrame:
+        table = self._parquet_file().read(use_threads=True)
+        dataframe = table.to_pandas()
+        if dataframe.empty:
+            raise ValueError(f"Dataset is empty: {self.path}")
+        return dataframe
+
+
+def _validate_file_path(path: Path) -> None:
+    if not path.exists():
+        raise FileNotFoundError(f"Dataset not found: {path}")
+    if not path.is_file():
+        raise ValueError(f"Expected a dataset file, got: {path}")
+
+
+def _arrow_memory_source(data: Any) -> ArrowTableSource | None:
+    """Recognize Arrow containers/producers without importing Arrow at package import."""
+    try:
+        import pyarrow as pa
+    except ImportError:
+        return None
+
+    if isinstance(data, pa.Table):
+        return ArrowTableSource(data)
+    if isinstance(data, pa.RecordBatch):
+        return ArrowTableSource(
+            pa.Table.from_batches([data]),
+            name="<arrow_record_batch>",
+        )
+    if isinstance(data, pa.RecordBatchReader):
+        raise TypeError(
+            "Arrow RecordBatchReader inputs do not expose a cheap exact row count. "
+            "Pass a PyArrow Table/RecordBatch or another materialized Arrow-compatible "
+            "table object instead."
+        )
+
+    arrow_stream = getattr(data, "__arrow_c_stream__", None)
+    if callable(arrow_stream):
+        return ArrowTableSource(
+            pa.table(data),
+            name="<arrow_capsule_table>",
+        )
+    return None
+
+
+def _duckdb_relation_source(data: Any):
+    """Recognize lazy DuckDB relations before generic Arrow conversion."""
+    data_type = type(data)
+    if data_type.__name__ != "DuckDBPyRelation":
+        return None
+    if not data_type.__module__.startswith(("duckdb", "_duckdb")):
+        return None
+
+    from framevitals.duckdb_source import resolve_duckdb_source
+
+    return resolve_duckdb_source(data)
+
+
+def resolve_source(data: Any) -> DatasetSource:
+    """Normalize supported user inputs into a DatasetSource implementation."""
+    if isinstance(data, pd.DataFrame):
+        return PandasSource(data)
+    if isinstance(data, (str, Path)):
+        path = Path(data)
+        suffix = path.suffix.lower()
+        if suffix == ".parquet":
+            return ParquetSource(path)
+        if suffix == ".csv":
+            return DelimitedTextSource(path, delimiter=",")
+        if suffix == ".tsv":
+            return DelimitedTextSource(path, delimiter="\t")
+        return FileSource(path)
+
+    duckdb_source = _duckdb_relation_source(data)
+    if duckdb_source is not None:
+        return duckdb_source
+
+    arrow_source = _arrow_memory_source(data)
+    if arrow_source is not None:
+        return arrow_source
+    if isinstance(data, DatasetSource):
+        return data
+    raise TypeError(
+        "data must be a pandas DataFrame, Arrow-compatible table, DuckDB relation, "
+        "dataset path, or DatasetSource."
+    )
+
+
+def inspect_source(data: Any) -> dict[str, Any]:
+    """Return source metadata/capabilities without running analysis diagnostics."""
+    return resolve_source(data).inspect().to_dict()

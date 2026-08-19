@@ -114,6 +114,58 @@ def _outlier_flags(series: pd.Series) -> dict:
     return {"iqr": iqr_count, "z3": z3_count, "mad_z": mad_count, "n": n}
 
 
+def _legacy_anderson_critical_5pct(result: Any) -> float | int | None:
+    """Extract the legacy 5% critical value without assuming a fixed table index."""
+    critical_values = getattr(result, "critical_values", None)
+    significance_levels = getattr(result, "significance_level", None)
+    if critical_values is None:
+        return None
+
+    if significance_levels is not None:
+        try:
+            levels = np.asarray(significance_levels, dtype=float)
+            values = np.asarray(critical_values, dtype=float)
+            if levels.size and values.size == levels.size:
+                index = int(np.argmin(np.abs(levels - 5.0)))
+                return _safe_float(values[index])
+        except (TypeError, ValueError):
+            pass
+
+    try:
+        return _safe_float(critical_values[2])
+    except (IndexError, TypeError):
+        return None
+
+
+def _anderson_normality(series: pd.Series) -> dict[str, Any]:
+    """Run Anderson-Darling using the modern p-value API when available.
+
+    SciPy 1.17 introduced ``method`` and deprecated the legacy critical-value
+    result attributes. FrameVitals supports older SciPy releases too, so this
+    helper opts into the modern interpolated p-value and falls back only when
+    the installed SciPy does not recognize the keyword.
+    """
+    try:
+        result = stats.anderson(series, dist="norm", method="interpolate")
+    except TypeError as exc:
+        if "method" not in str(exc):
+            raise
+        result = stats.anderson(series, dist="norm")
+        return {
+            "statistic": _safe_float(result.statistic),
+            "p_value": None,
+            "critical_5pct": _legacy_anderson_critical_5pct(result),
+            "method": "legacy_critical_values",
+        }
+
+    return {
+        "statistic": _safe_float(result.statistic),
+        "p_value": _safe_float(result.pvalue),
+        "critical_5pct": None,
+        "method": "interpolate",
+    }
+
+
 def _normality(series: pd.Series) -> dict:
     """Run multiple normality tests, prefer Shapiro for small n, D'Agostino for medium."""
     s = series.dropna()
@@ -138,13 +190,9 @@ def _normality(series: pd.Series) -> dict:
         except Exception as exc:
             out["dagostino"] = {"error": str(exc)}
 
-    # Anderson-Darling
+    # Anderson-Darling. Explicit p-value method avoids SciPy >=1.17 deprecation warnings.
     try:
-        result = stats.anderson(s, dist="norm")
-        out["anderson"] = {
-            "statistic": _safe_float(result.statistic),
-            "critical_5pct": _safe_float(result.critical_values[2]),
-        }
+        out["anderson"] = _anderson_normality(s)
     except Exception as exc:
         out["anderson"] = {"error": str(exc)}
 

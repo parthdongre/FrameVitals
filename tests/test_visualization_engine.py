@@ -1,16 +1,13 @@
 import pandas as pd
+import pytest
+
+pytest.importorskip("matplotlib")
+pytest.importorskip("seaborn")
 
 import framevitals.visualizer as visualizer_module
-
-from framevitals.chart_planner import (
-    build_chart_plan,
-)
-from framevitals.column_roles import (
-    infer_column_roles,
-)
-from framevitals.profiler import (
-    build_profile,
-)
+from framevitals.chart_planner import build_chart_plan
+from framevitals.column_roles import infer_column_roles
+from framevitals.profiler import build_profile
 
 
 def make_dataset():
