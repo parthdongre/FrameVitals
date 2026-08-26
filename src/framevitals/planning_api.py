@@ -14,14 +14,8 @@ from typing import Any
 
 import pandas as pd
 
-from framevitals.analysis_selector import select_analyses
 from framevitals.column_roles import infer_column_roles
-from framevitals.config import (
-    AnalysisConfig,
-    ConfigInput,
-    VALID_MODULES,
-    resolve_config,
-)
+from framevitals.config import AnalysisConfig, ConfigInput, resolve_config
 from framevitals.dataset_signals import detect_dataset_signals
 from framevitals.execution import (
     ExecutionPolicy,
@@ -29,6 +23,7 @@ from framevitals.execution import (
     derive_streaming_profile_column_limit,
     use_execution_policy,
 )
+from framevitals.planner import build_execution_plan
 from framevitals.planning import AnalysisPlan
 from framevitals.profiler import build_profile
 from framevitals.sources import StreamingDatasetSource, resolve_source
@@ -244,16 +239,13 @@ def _build_plan(
         mode=resolved.mode,
     )
 
-    selection = select_analyses(
+    selection = build_execution_plan(
         signals=dataset_signals,
         analysis_mode=resolved.mode,
         target_column=resolved.target,
+        disabled_modules=resolved.disabled_modules,
+        artifacts=resolved.artifacts,
     )
-    disabled = set(resolved.disabled_modules)
-    selection["execution_modules"] = {
-        "disabled": sorted(disabled),
-        "enabled": sorted(VALID_MODULES - disabled),
-    }
     selection["execution_budget"] = budget.to_dict()
 
     public_signals = {

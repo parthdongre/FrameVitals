@@ -44,7 +44,23 @@ class AnalysisPlan(dict):
         value = self.get("execution_budget", {})
         return value if isinstance(value, dict) else {}
 
+    @property
+    def execution_modules(self) -> dict[str, Any]:
+        value = self.selection.get("execution_modules", {})
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def module_decisions(self) -> dict[str, dict[str, Any]]:
+        value = self.execution_modules.get("decisions", {})
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def planner_schema_version(self) -> str | None:
+        value = self.selection.get("planner_schema_version")
+        return str(value) if value is not None else None
+
     def summary(self) -> dict[str, Any]:
+        module_summary = self.execution_modules.get("summary", {})
         return {
             "dataset_name": self.get("dataset_name"),
             "analysis_mode": self.get("analysis_mode"),
@@ -53,6 +69,10 @@ class AnalysisPlan(dict):
             "selected_count": len(self.selected),
             "skipped_count": len(self.skipped),
             "recommended_count": len(self.recommended),
+            "planner_schema_version": self.planner_schema_version,
+            "module_summary": (
+                dict(module_summary) if isinstance(module_summary, dict) else {}
+            ),
         }
 
     def explain_text(self) -> str:
@@ -70,6 +90,8 @@ class AnalysisPlan(dict):
                 f"{shape.get('columns', '?')} columns"
             ),
         ]
+        if self.planner_schema_version is not None:
+            lines.append(f"Planner       schema v{self.planner_schema_version}")
 
         configured = [
             f"{name}={value}"
@@ -95,6 +117,20 @@ class AnalysisPlan(dict):
                 f"heavy_workers<= "
                 f"{budget.get('max_memory_heavy_parallelism', '?')}"
             )
+
+        module_summary = self.execution_modules.get("summary", {})
+        if isinstance(module_summary, dict) and module_summary:
+            rendered = ", ".join(
+                f"{status}={count}"
+                for status, count in sorted(module_summary.items())
+            )
+            lines.extend(["", "Execution modules", f"  {rendered}"])
+            for name, decision in self.module_decisions.items():
+                status = str(decision.get("status", "unknown")).upper()
+                reason = " ".join(str(decision.get("reason", "")).split())
+                if len(reason) > 58:
+                    reason = reason[:57].rstrip() + "…"
+                lines.append(f"  [{status:<18}] {name:<24} {reason}")
 
         lines.extend(["", f"Selected      {len(self.selected)}"])
         for item in self.selected:

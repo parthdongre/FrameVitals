@@ -17,51 +17,12 @@ import pandas as pd
 from framevitals.config import ConfigInput, resolve_config
 from framevitals.execution import ExecutionPolicy, use_execution_policy
 from framevitals.pipeline import run_full_analysis
+from framevitals.planner import effective_disabled_modules
 from framevitals.result import AnalysisResult
 from framevitals.sources import StreamingDatasetSource, resolve_source
 
 
 DataInput = Any
-
-
-_MODE_DISABLED_MODULES: dict[str, frozenset[str]] = {
-    # Quick is intentionally an overview. Keep explicit target intelligence and
-    # artifact cleaning available for backwards compatibility, while omitting
-    # the heavier anomaly/time-series/research/modeling layers.
-    "quick": frozenset({
-        "deep_statistics",
-        "anomaly_detection",
-        "time_series",
-        "text_profile",
-        "modeling",
-        "explainability",
-    }),
-    # Standard is the operational default. It keeps practical anomaly,
-    # time-series and target diagnostics, but leaves research-grade statistics,
-    # free-text profiling and model training/explainability to deeper tiers.
-    "standard": frozenset({
-        "deep_statistics",
-        "text_profile",
-        "modeling",
-        "explainability",
-    }),
-    # Deep is the advanced diagnostic tier: research-grade statistics and text
-    # profiling are enabled, while repeated model CV/refitting is reserved for
-    # research mode where the extra runtime is an explicit user choice.
-    "deep": frozenset({"modeling", "explainability"}),
-    "research": frozenset(),
-}
-
-
-def _effective_disabled_modules(
-    mode: str,
-    user_disabled: tuple[str, ...],
-) -> tuple[str, ...]:
-    """Merge explicit disables with the stable module policy for a mode."""
-    implicit = _MODE_DISABLED_MODULES.get(mode)
-    if implicit is None:
-        raise ValueError(f"Unknown analysis mode: {mode}")
-    return tuple(sorted(set(user_disabled) | set(implicit)))
 
 
 def analyze(
@@ -85,7 +46,7 @@ def analyze(
         workers=workers,
         disabled_modules=disabled_modules,
     )
-    effective_disabled = _effective_disabled_modules(
+    effective_disabled = effective_disabled_modules(
         resolved.mode,
         resolved.disabled_modules,
     )
@@ -179,4 +140,5 @@ def analyze(
     if isinstance(execution, dict):
         execution["disabled_modules"] = sorted(resolved.disabled_modules)
         execution["resource_policy"] = execution_policy.to_dict()
+        execution["effective_disabled_modules"] = list(effective_disabled)
     return AnalysisResult(payload)
