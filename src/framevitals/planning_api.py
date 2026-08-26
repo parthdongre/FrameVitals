@@ -16,11 +16,18 @@ import pandas as pd
 
 from framevitals.analysis_selector import select_analyses
 from framevitals.column_roles import infer_column_roles
-from framevitals.config import ConfigInput, VALID_MODULES, resolve_config
+from framevitals.config import (
+    AnalysisConfig,
+    ConfigInput,
+    VALID_MODULES,
+    resolve_config,
+)
 from framevitals.dataset_signals import detect_dataset_signals
 from framevitals.execution import (
+    ExecutionPolicy,
     derive_execution_budget,
     derive_streaming_profile_column_limit,
+    use_execution_policy,
 )
 from framevitals.planning import AnalysisPlan
 from framevitals.profiler import build_profile
@@ -134,35 +141,24 @@ def _project_sample_profile_to_source(
     return projected
 
 
-def plan(
+def _build_plan(
     data: DataInput,
     *,
-    target: str | None = None,
-    mode: str | None = None,
-    workers: int | None = None,
-    preset: str | None = None,
-    config: ConfigInput = None,
-    disabled_modules: list[str] | tuple[str, ...] | None = None,
+    resolved: AnalysisConfig,
+    execution_policy: ExecutionPolicy,
 ) -> AnalysisPlan:
-    """Preview planned analyses, scale policy, and execution constraints."""
-    resolved = resolve_config(
-        config,
-        preset=preset,
-        mode=mode,
-        target=target,
-        workers=workers,
-        artifacts=False,
-        disabled_modules=disabled_modules,
-    )
-
     source = resolve_source(data)
     source_metadata = source.inspect()
 
-    if source_metadata.supports_streaming and isinstance(source, StreamingDatasetSource):
+    if source_metadata.supports_streaming and isinstance(
+        source, StreamingDatasetSource
+    ):
         source_rows = int(source_metadata.rows or 0)
         source_columns = int(source_metadata.columns or 0)
         if source_rows < 1 or source_columns < 1:
-            raise ValueError(f"Dataset is empty or has no columns: {source_metadata.name}")
+            raise ValueError(
+                f"Dataset is empty or has no columns: {source_metadata.name}"
+            )
 
         column_limit = derive_streaming_profile_column_limit(
             source_rows,
@@ -175,8 +171,15 @@ def plan(
             limit=column_limit,
             target=resolved.target,
         )
+        planning_sample_rows = PLANNING_SAMPLE_ROWS
+        if execution_policy.max_sample_rows is not None:
+            planning_sample_rows = min(
+                planning_sample_rows,
+                int(execution_policy.max_sample_rows),
+            )
         dataframe = _streaming_head_sample(
             source,
+            max_rows=planning_sample_rows,
             columns=projected_columns,
         )
         profiled_columns = int(len(dataframe.columns))
@@ -267,7 +270,37 @@ def plan(
         "target": resolved.target,
         "shape": dict(dataset_profile.get("shape", {})),
         "config": resolved.to_dict(),
+        "resource_policy": execution_policy.to_dict(),
         "execution_budget": budget.to_dict(),
         "signals": public_signals,
         "selection": selection,
     })
+
+
+def plan(
+    data: DataInput,
+    *,
+    target: str | None = None,
+    mode: str | None = None,
+    workers: int | None = None,
+    preset: str | None = None,
+    config: ConfigInput = None,
+    disabled_modules: list[str] | tuple[str, ...] | None = None,
+) -> AnalysisPlan:
+    """Preview planned analyses, scale policy, and execution constraints."""
+    resolved = resolve_config(
+        config,
+        preset=preset,
+        mode=mode,
+        target=target,
+        workers=workers,
+        artifacts=False,
+        disabled_modules=disabled_modules,
+    )
+    execution_policy = ExecutionPolicy(**resolved.execution_policy())
+    with use_execution_policy(execution_policy):
+        return _build_plan(
+            data,
+            resolved=resolved,
+            execution_policy=execution_policy,
+        )

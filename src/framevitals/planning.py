@@ -34,6 +34,16 @@ class AnalysisPlan(dict):
         value = self.selection.get("recommended_analyses", [])
         return value if isinstance(value, list) else []
 
+    @property
+    def resource_policy(self) -> dict[str, Any]:
+        value = self.get("resource_policy", {})
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def execution_budget(self) -> dict[str, Any]:
+        value = self.get("execution_budget", {})
+        return value if isinstance(value, dict) else {}
+
     def summary(self) -> dict[str, Any]:
         return {
             "dataset_name": self.get("dataset_name"),
@@ -43,6 +53,7 @@ class AnalysisPlan(dict):
             "selected_count": len(self.selected),
             "skipped_count": len(self.skipped),
             "recommended_count": len(self.recommended),
+            "resource_policy": dict(self.resource_policy),
         }
 
     def explain_text(self) -> str:
@@ -54,11 +65,39 @@ class AnalysisPlan(dict):
             f"Dataset       {self.get('dataset_name', '<unknown>')}",
             f"Mode          {self.get('analysis_mode', 'unknown')}",
             f"Target        {self.get('target') or '<none>'}",
-            f"Shape         {shape.get('rows', '?')} rows x {shape.get('columns', '?')} columns",
-            "",
-            f"Selected      {len(self.selected)}",
+            (
+                "Shape         "
+                f"{shape.get('rows', '?')} rows x "
+                f"{shape.get('columns', '?')} columns"
+            ),
         ]
 
+        configured = [
+            f"{name}={value}"
+            for name, value in self.resource_policy.items()
+            if value is not None
+        ]
+        if configured:
+            lines.append("Resource caps " + ", ".join(configured))
+
+        budget = self.execution_budget
+        if budget:
+            sample_keys = (
+                "quality_sample_rows",
+                "deep_statistics_sample_rows",
+                "anomaly_sample_rows",
+                "time_series_sample_rows",
+            )
+            max_sample = max((budget.get(key, 0) or 0) for key in sample_keys)
+            lines.append(
+                "Budget        "
+                f"sample<= {max_sample}, "
+                f"pairs<= {budget.get('relationship_pair_budget', '?')}, "
+                f"heavy_workers<= "
+                f"{budget.get('max_memory_heavy_parallelism', '?')}"
+            )
+
+        lines.extend(["", f"Selected      {len(self.selected)}"])
         for item in self.selected:
             lines.append(
                 f"  [RUN]  {item.get('id', ''):<28} {item.get('name', '')}"

@@ -11,8 +11,10 @@ is deterministic and must be disclosed in result metadata.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Iterator
 
 import numpy as np
 import pandas as pd
@@ -37,6 +39,60 @@ _STREAMING_PROFILE_COLUMN_CAPS = {
     "deep": 128,
     "research": 256,
 }
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionPolicy:
+    """Per-call hard caps layered on top of adaptive mode defaults.
+
+    Policy values can only reduce work. They never increase a mode's built-in
+    sampling or parallelism limits. A context variable carries the policy across
+    the existing pipeline without mutable process-wide globals, so concurrent
+    analyses can safely use different limits.
+    """
+
+    max_sample_rows: int | None = None
+    max_relationship_pairs: int | None = None
+    max_memory_heavy_parallelism: int | None = None
+    max_streaming_profile_columns: int | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "max_sample_rows",
+            "max_relationship_pairs",
+            "max_memory_heavy_parallelism",
+            "max_streaming_profile_columns",
+        ):
+            value = getattr(self, name)
+            if value is not None and int(value) < 1:
+                raise ValueError(f"{name} must be at least 1 when provided.")
+
+    def to_dict(self) -> dict[str, int | None]:
+        return asdict(self)
+
+
+_DEFAULT_EXECUTION_POLICY = ExecutionPolicy()
+_EXECUTION_POLICY: ContextVar[ExecutionPolicy] = ContextVar(
+    "framevitals_execution_policy",
+    default=_DEFAULT_EXECUTION_POLICY,
+)
+
+
+def current_execution_policy() -> ExecutionPolicy:
+    """Return the resource caps active for the current analysis context."""
+    return _EXECUTION_POLICY.get()
+
+
+@contextmanager
+def use_execution_policy(policy: ExecutionPolicy) -> Iterator[None]:
+    """Apply ``policy`` to nested budget derivation for one logical run."""
+    if not isinstance(policy, ExecutionPolicy):
+        raise TypeError("policy must be an ExecutionPolicy.")
+    token = _EXECUTION_POLICY.set(policy)
+    try:
+        yield
+    finally:
+        _EXECUTION_POLICY.reset(token)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +130,13 @@ def _bounded(requested: int, rows: int) -> int:
     if rows <= 0:
         return 0
     return min(int(requested), int(rows))
+
+
+def _policy_row_cap(requested: int, rows: int, policy: ExecutionPolicy) -> int:
+    bounded = _bounded(requested, rows)
+    if policy.max_sample_rows is None:
+        return bounded
+    return min(bounded, int(policy.max_sample_rows))
 
 
 def _deterministic_stratified_positions(
@@ -134,8 +197,7 @@ def derive_streaming_profile_column_limit(
 
     Ordinary datasets keep every column. Ultra-wide/high-cell-count sources are
     projected before the full streaming profile pass so total scanned cells stay
-    bounded. The projection itself is selected by the caller from the source
-    schema; this function only resolves the allowed width.
+    bounded. An active execution policy may lower the resulting width further.
     """
     if mode not in _VALID_MODES:
         raise ValueError(f"Unknown analysis mode: {mode}")
@@ -143,23 +205,31 @@ def derive_streaming_profile_column_limit(
         raise ValueError("rows and columns must be non-negative.")
     if columns == 0:
         return 0
+
+    policy = current_execution_policy()
+    explicit_cap = policy.max_streaming_profile_columns
+
     if rows == 0:
-        return int(columns)
+        derived = int(columns)
+    else:
+        cells = int(rows) * int(columns)
+        cell_budget = int(_STREAMING_PROFILE_CELL_BUDGETS[mode])
+        if cells <= cell_budget and columns < 10_000:
+            derived = int(columns)
+        else:
+            by_cells = max(1, cell_budget // max(int(rows), 1))
+            derived = max(
+                1,
+                min(
+                    int(columns),
+                    int(by_cells),
+                    int(_STREAMING_PROFILE_COLUMN_CAPS[mode]),
+                ),
+            )
 
-    cells = int(rows) * int(columns)
-    cell_budget = int(_STREAMING_PROFILE_CELL_BUDGETS[mode])
-    if cells <= cell_budget and columns < 10_000:
-        return int(columns)
-
-    by_cells = max(1, cell_budget // max(int(rows), 1))
-    return max(
-        1,
-        min(
-            int(columns),
-            int(by_cells),
-            int(_STREAMING_PROFILE_COLUMN_CAPS[mode]),
-        ),
-    )
+    if explicit_cap is not None:
+        derived = min(derived, int(explicit_cap))
+    return max(1, int(derived))
 
 
 def derive_execution_budget(
@@ -170,16 +240,16 @@ def derive_execution_budget(
 ) -> ExecutionBudget:
     """Derive a conservative execution policy from shape and analysis mode.
 
-    The thresholds are deliberately simple and deterministic for now. They are
-    a compatibility layer for the future cost-based planner, where RAM, storage
-    metadata, native throughput, GPU availability, and user accuracy budgets can
-    refine the same object without changing analysis APIs.
+    The thresholds are deliberately simple and deterministic for now. Per-call
+    :class:`ExecutionPolicy` caps are layered on top so callers can request less
+    work without mutating global defaults or widening any adaptive budget.
     """
     if mode not in _VALID_MODES:
         raise ValueError(f"Unknown analysis mode: {mode}")
     if rows < 0 or columns < 0:
         raise ValueError("rows and columns must be non-negative.")
 
+    policy = current_execution_policy()
     cells = int(rows) * int(columns)
     large_dataset = rows >= 100_000 or cells >= 10_000_000
     wide_dataset = columns >= 1_000
@@ -238,19 +308,23 @@ def derive_execution_budget(
     }
     selected = presets[mode]
 
-    # Ultra-wide data must spend relationship budget more carefully. The future
-    # sparse feature-graph engine will replace this fixed cap with candidate
-    # generation rather than dense pair enumeration.
     relationship_budget = int(selected["relationships"])
     if ultra_wide_dataset:
         relationship_budget = min(relationship_budget, 10)
     elif wide_dataset:
         relationship_budget = min(relationship_budget, 20)
+    if policy.max_relationship_pairs is not None:
+        relationship_budget = min(
+            relationship_budget,
+            int(policy.max_relationship_pairs),
+        )
 
-    # Memory-heavy modules should not be launched four-at-a-time simply because
-    # a machine exposes four Python workers. Large inputs default to sequential
-    # heavy execution until the scheduler gains RAM-aware token accounting.
     heavy_parallelism = 1 if large_dataset or wide_dataset else 2
+    if policy.max_memory_heavy_parallelism is not None:
+        heavy_parallelism = min(
+            heavy_parallelism,
+            int(policy.max_memory_heavy_parallelism),
+        )
 
     return ExecutionBudget(
         mode=mode,
@@ -261,13 +335,15 @@ def derive_execution_budget(
         large_dataset=large_dataset,
         wide_dataset=wide_dataset,
         ultra_wide_dataset=ultra_wide_dataset,
-        quality_sample_rows=_bounded(selected["quality"], rows),
-        deep_statistics_sample_rows=_bounded(selected["deep"], rows),
-        bootstrap_sample_rows=_bounded(selected["bootstrap"], rows),
-        distribution_sample_rows=_bounded(selected["distribution"], rows),
-        pair_sample_rows=_bounded(selected["pair"], rows),
-        anomaly_sample_rows=_bounded(selected["anomaly"], rows),
-        time_series_sample_rows=_bounded(selected["time_series"], rows),
+        quality_sample_rows=_policy_row_cap(selected["quality"], rows, policy),
+        deep_statistics_sample_rows=_policy_row_cap(selected["deep"], rows, policy),
+        bootstrap_sample_rows=_policy_row_cap(selected["bootstrap"], rows, policy),
+        distribution_sample_rows=_policy_row_cap(
+            selected["distribution"], rows, policy
+        ),
+        pair_sample_rows=_policy_row_cap(selected["pair"], rows, policy),
+        anomaly_sample_rows=_policy_row_cap(selected["anomaly"], rows, policy),
+        time_series_sample_rows=_policy_row_cap(selected["time_series"], rows, policy),
         relationship_pair_budget=relationship_budget,
         max_memory_heavy_parallelism=heavy_parallelism,
     )
