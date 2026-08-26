@@ -20,6 +20,7 @@ from framevitals.config import VALID_MODULES
 
 PLANNER_SCHEMA_VERSION = "1"
 _ALL_MODES = ("quick", "standard", "deep", "research")
+_RUNNABLE_STATUSES = frozenset({"run", "conditional"})
 
 
 MODE_DISABLED_MODULES: dict[str, frozenset[str]] = {
@@ -112,6 +113,14 @@ if set(MODULE_RULES) != VALID_MODULES:
         f"(missing={missing}, extra={extra})."
     )
 
+for _module_name, _module_rule in MODULE_RULES.items():
+    unknown_dependencies = sorted(set(_module_rule.depends_on) - VALID_MODULES)
+    if unknown_dependencies:
+        raise RuntimeError(
+            f"Planner module {_module_name} has unknown dependencies: "
+            + ", ".join(unknown_dependencies)
+        )
+
 
 def effective_disabled_modules(
     mode: str,
@@ -143,6 +152,75 @@ def _missing_signal_reason(
     return None
 
 
+def _apply_dependency_constraints(
+    decisions: dict[str, dict[str, Any]],
+) -> None:
+    """Block modules whose declared upstream dependencies cannot run."""
+    changed = True
+    while changed:
+        changed = False
+        for module in sorted(decisions):
+            decision = decisions[module]
+            if decision["status"] not in _RUNNABLE_STATUSES:
+                continue
+
+            blockers = [
+                dependency
+                for dependency in MODULE_RULES[module].depends_on
+                if decisions[dependency]["status"] not in _RUNNABLE_STATUSES
+            ]
+            if not blockers:
+                continue
+
+            decision["status"] = "not_applicable"
+            decision["blocked_by"] = blockers
+            rendered = ", ".join(
+                f"{dependency} ({decisions[dependency]['status']})"
+                for dependency in blockers
+            )
+            decision["reason"] = f"Blocked by dependency: {rendered}."
+            changed = True
+
+
+def _execution_stages(
+    decisions: Mapping[str, Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Topologically group runnable modules into dependency-safe stages."""
+    pending = {
+        module
+        for module, decision in decisions.items()
+        if decision.get("status") in _RUNNABLE_STATUSES
+    }
+    scheduled: set[str] = set()
+    stages: list[dict[str, Any]] = []
+
+    while pending:
+        ready = sorted(
+            module
+            for module in pending
+            if all(
+                dependency in scheduled or dependency not in pending
+                for dependency in MODULE_RULES[module].depends_on
+            )
+        )
+        if not ready:
+            cycle = ", ".join(sorted(pending))
+            raise RuntimeError(f"Planner dependency cycle detected among: {cycle}")
+
+        stages.append({
+            "stage": len(stages),
+            "modules": ready,
+            "resource_classes": sorted({
+                str(decisions[module]["resource_class"])
+                for module in ready
+            }),
+        })
+        scheduled.update(ready)
+        pending.difference_update(ready)
+
+    return stages
+
+
 def plan_execution_modules(
     *,
     signals: Mapping[str, Any],
@@ -162,7 +240,6 @@ def plan_execution_modules(
     implicit_disabled = effective_disabled - explicit_disabled
 
     decisions: dict[str, dict[str, Any]] = {}
-    counts: dict[str, int] = {}
 
     for module in sorted(VALID_MODULES):
         rule = MODULE_RULES[module]
@@ -196,19 +273,35 @@ def plan_execution_modules(
                 status = "run"
                 reason = "Applicable under the resolved mode, signals, and configuration."
 
-        counts[status] = counts.get(status, 0) + 1
         decisions[module] = {
             "status": status,
             "reason": reason,
             "resource_class": rule.resource_class,
             "depends_on": list(rule.depends_on),
+            "blocked_by": [],
         }
+
+    _apply_dependency_constraints(decisions)
+
+    counts: dict[str, int] = {}
+    for decision in decisions.values():
+        status = str(decision["status"])
+        counts[status] = counts.get(status, 0) + 1
+
+    stages = _execution_stages(decisions)
+    runnable_modules = [
+        module
+        for stage in stages
+        for module in stage["modules"]
+    ]
 
     return {
         "explicit_disabled": sorted(explicit_disabled),
         "effective_disabled": sorted(effective_disabled),
         "decisions": decisions,
         "summary": dict(sorted(counts.items())),
+        "execution_stages": stages,
+        "runnable_modules": runnable_modules,
     }
 
 
