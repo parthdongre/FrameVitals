@@ -174,6 +174,10 @@ def analyze(
     preset: str | None = None,
     config: Any = None,
     disabled_modules: list[str] | tuple[str, ...] | None = None,
+    max_sample_rows: int | None = None,
+    max_relationship_pairs: int | None = None,
+    max_memory_heavy_parallelism: int | None = None,
+    max_streaming_profile_columns: int | None = None,
 ) -> AnalysisResult:
     """Analyze a supported tabular source through the canonical dispatcher."""
     from framevitals.analysis_api import analyze as _analyze
@@ -187,6 +191,10 @@ def analyze(
         preset=preset,
         config=config,
         disabled_modules=disabled_modules,
+        max_sample_rows=max_sample_rows,
+        max_relationship_pairs=max_relationship_pairs,
+        max_memory_heavy_parallelism=max_memory_heavy_parallelism,
+        max_streaming_profile_columns=max_streaming_profile_columns,
     )
 
 
@@ -199,6 +207,10 @@ def plan(
     preset: str | None = None,
     config: Any = None,
     disabled_modules: list[str] | tuple[str, ...] | None = None,
+    max_sample_rows: int | None = None,
+    max_relationship_pairs: int | None = None,
+    max_memory_heavy_parallelism: int | None = None,
+    max_streaming_profile_columns: int | None = None,
 ) -> AnalysisPlan:
     """Preview analyses, scale policy, and execution constraints without running them."""
     from framevitals.planning_api import plan as _plan
@@ -211,6 +223,10 @@ def plan(
         preset=preset,
         config=config,
         disabled_modules=disabled_modules,
+        max_sample_rows=max_sample_rows,
+        max_relationship_pairs=max_relationship_pairs,
+        max_memory_heavy_parallelism=max_memory_heavy_parallelism,
+        max_streaming_profile_columns=max_streaming_profile_columns,
     )
 
 

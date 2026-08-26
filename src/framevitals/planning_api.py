@@ -320,6 +320,10 @@ def plan(
     preset: str | None = None,
     config: ConfigInput = None,
     disabled_modules: list[str] | tuple[str, ...] | None = None,
+    max_sample_rows: int | None = None,
+    max_relationship_pairs: int | None = None,
+    max_memory_heavy_parallelism: int | None = None,
+    max_streaming_profile_columns: int | None = None,
 ) -> AnalysisPlan:
     """Preview planned analyses, scale policy, and execution constraints."""
     resolved = resolve_config(
@@ -330,6 +334,10 @@ def plan(
         workers=workers,
         artifacts=False,
         disabled_modules=disabled_modules,
+        max_sample_rows=max_sample_rows,
+        max_relationship_pairs=max_relationship_pairs,
+        max_memory_heavy_parallelism=max_memory_heavy_parallelism,
+        max_streaming_profile_columns=max_streaming_profile_columns,
     )
     execution_policy = ExecutionPolicy(**resolved.execution_policy())
     with use_execution_policy(execution_policy):

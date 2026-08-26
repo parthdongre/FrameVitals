@@ -35,6 +35,10 @@ def analyze(
     preset: str | None = None,
     config: ConfigInput = None,
     disabled_modules: list[str] | tuple[str, ...] | None = None,
+    max_sample_rows: int | None = None,
+    max_relationship_pairs: int | None = None,
+    max_memory_heavy_parallelism: int | None = None,
+    max_streaming_profile_columns: int | None = None,
 ) -> AnalysisResult:
     """Analyze a tabular dataset through the appropriate execution source."""
     resolved = resolve_config(
@@ -45,6 +49,10 @@ def analyze(
         artifacts=artifacts,
         workers=workers,
         disabled_modules=disabled_modules,
+        max_sample_rows=max_sample_rows,
+        max_relationship_pairs=max_relationship_pairs,
+        max_memory_heavy_parallelism=max_memory_heavy_parallelism,
+        max_streaming_profile_columns=max_streaming_profile_columns,
     )
     effective_disabled = effective_disabled_modules(
         resolved.mode,

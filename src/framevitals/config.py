@@ -46,6 +46,13 @@ PRESETS: dict[str, dict[str, Any]] = {
     },
 }
 
+_RESOURCE_KEYS = (
+    "max_sample_rows",
+    "max_relationship_pairs",
+    "max_memory_heavy_parallelism",
+    "max_streaming_profile_columns",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class AnalysisConfig:
@@ -75,12 +82,7 @@ class AnalysisConfig:
         if self.workers < 1:
             raise ValueError("workers must be at least 1.")
 
-        for name in (
-            "max_sample_rows",
-            "max_relationship_pairs",
-            "max_memory_heavy_parallelism",
-            "max_streaming_profile_columns",
-        ):
+        for name in _RESOURCE_KEYS:
             value = getattr(self, name)
             if value is not None and value < 1:
                 raise ValueError(f"{name} must be at least 1 when provided.")
@@ -98,12 +100,7 @@ class AnalysisConfig:
         payload = asdict(self)
         # Preserve the 0.2.x serialized config shape unless a 0.3 resource cap
         # is explicitly configured. This keeps existing integrations stable.
-        for name in (
-            "max_sample_rows",
-            "max_relationship_pairs",
-            "max_memory_heavy_parallelism",
-            "max_streaming_profile_columns",
-        ):
+        for name in _RESOURCE_KEYS:
             if payload.get(name) is None:
                 payload.pop(name, None)
         return payload
@@ -115,12 +112,7 @@ class AnalysisConfig:
 
     def execution_policy(self) -> dict[str, int | None]:
         """Return the resource caps understood by the adaptive execution layer."""
-        return {
-            "max_sample_rows": self.max_sample_rows,
-            "max_relationship_pairs": self.max_relationship_pairs,
-            "max_memory_heavy_parallelism": self.max_memory_heavy_parallelism,
-            "max_streaming_profile_columns": self.max_streaming_profile_columns,
-        }
+        return {name: getattr(self, name) for name in _RESOURCE_KEYS}
 
 
 ConfigInput = AnalysisConfig | Mapping[str, Any] | str | Path | None
@@ -199,14 +191,7 @@ def _extract_values(
         elif key in mapping:
             values[key] = mapping[key]
 
-    resource_keys = (
-        "workers",
-        "max_sample_rows",
-        "max_relationship_pairs",
-        "max_memory_heavy_parallelism",
-        "max_streaming_profile_columns",
-    )
-    for key in resource_keys:
+    for key in ("workers", *_RESOURCE_KEYS):
         if key in resources:
             values[key] = resources[key]
         elif key in mapping:
@@ -317,8 +302,12 @@ def resolve_config(
     artifacts: bool | None = None,
     workers: int | None = None,
     disabled_modules: list[str] | tuple[str, ...] | None = None,
+    max_sample_rows: int | None = None,
+    max_relationship_pairs: int | None = None,
+    max_memory_heavy_parallelism: int | None = None,
+    max_streaming_profile_columns: int | None = None,
 ) -> AnalysisConfig:
-    """Resolve defaults, preset, config file/object, then explicit overrides.
+    """Resolve defaults, preset, environment, config, then explicit overrides.
 
     Precedence, from lowest to highest, is:
 
@@ -328,9 +317,8 @@ def resolve_config(
     4. configuration file/mapping/object (including ``[modules]`` booleans)
     5. explicit function/CLI arguments
 
-    Resource caps live in ``[resources]`` and matching ``FRAMEVITALS_*``
-    environment variables. They are strict upper bounds, not requests to
-    increase work above the selected mode's adaptive defaults.
+    Resource caps are strict upper bounds, not requests to increase work above
+    the selected mode's adaptive defaults.
     """
     values: dict[str, Any] = AnalysisConfig().to_dict()
     values.update(_preset_values(preset))
@@ -369,6 +357,10 @@ def resolve_config(
         "disabled_modules": (
             tuple(disabled_modules) if disabled_modules is not None else None
         ),
+        "max_sample_rows": max_sample_rows,
+        "max_relationship_pairs": max_relationship_pairs,
+        "max_memory_heavy_parallelism": max_memory_heavy_parallelism,
+        "max_streaming_profile_columns": max_streaming_profile_columns,
     }
     values.update({key: value for key, value in explicit.items() if value is not None})
 
@@ -385,12 +377,7 @@ def resolve_config(
     values["disabled_modules"] = _coerce_disabled_modules(
         values.get("disabled_modules", ())
     )
-    for name in (
-        "max_sample_rows",
-        "max_relationship_pairs",
-        "max_memory_heavy_parallelism",
-        "max_streaming_profile_columns",
-    ):
+    for name in _RESOURCE_KEYS:
         values[name] = _coerce_optional_positive_int(name, values.get(name))
 
     return AnalysisConfig(**values)
