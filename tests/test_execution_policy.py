@@ -150,3 +150,38 @@ def test_analyze_applies_policy_to_pipeline_budget(monkeypatch):
     assert budget.relationship_pair_budget == 2
     assert budget.max_memory_heavy_parallelism == 1
     assert result["execution"]["resource_policy"]["max_sample_rows"] == 17
+
+
+def test_environment_precedence_is_deterministic(monkeypatch):
+    monkeypatch.setenv("FRAMEVITALS_PRESET", "deep")
+    monkeypatch.setenv("FRAMEVITALS_MODE", "research")
+    monkeypatch.setenv("FRAMEVITALS_WORKERS", "2")
+    monkeypatch.setenv("FRAMEVITALS_ARTIFACTS", "true")
+    monkeypatch.setenv("FRAMEVITALS_MAX_SAMPLE_ROWS", "900")
+    monkeypatch.setenv(
+        "FRAMEVITALS_DISABLED_MODULES",
+        "modeling, explainability",
+    )
+
+    from_environment = resolve_config(preset="quick")
+    assert from_environment.mode == "research"
+    assert from_environment.workers == 2
+    assert from_environment.artifacts is True
+    assert from_environment.max_sample_rows == 900
+    assert from_environment.disabled_modules == ("modeling", "explainability")
+
+    configured = resolve_config(
+        config={
+            "analysis": {"mode": "standard", "artifacts": False},
+            "resources": {"workers": 3, "max_sample_rows": 400},
+        },
+        mode="deep",
+    )
+    assert configured.mode == "deep"
+    assert configured.workers == 3
+    assert configured.artifacts is False
+    assert configured.max_sample_rows == 400
+
+    monkeypatch.setenv("FRAMEVITALS_ARTIFACTS", "sometimes")
+    with pytest.raises(ValueError, match="FRAMEVITALS_ARTIFACTS"):
+        resolve_config()

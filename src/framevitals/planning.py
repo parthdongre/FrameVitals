@@ -53,7 +53,6 @@ class AnalysisPlan(dict):
             "selected_count": len(self.selected),
             "skipped_count": len(self.skipped),
             "recommended_count": len(self.recommended),
-            "resource_policy": dict(self.resource_policy),
         }
 
     def explain_text(self) -> str:

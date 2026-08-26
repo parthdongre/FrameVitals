@@ -9,9 +9,10 @@ maintaining a second configuration system.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
+import os
 from pathlib import Path
-from typing import Any, Mapping
 import tomllib
+from typing import Any, Mapping
 
 
 VALID_MODES = {"quick", "standard", "deep", "research"}
@@ -125,6 +126,19 @@ class AnalysisConfig:
 ConfigInput = AnalysisConfig | Mapping[str, Any] | str | Path | None
 
 
+_ENV_VALUE_KEYS = {
+    "FRAMEVITALS_MODE": "mode",
+    "FRAMEVITALS_TARGET": "target",
+    "FRAMEVITALS_ARTIFACTS": "artifacts",
+    "FRAMEVITALS_WORKERS": "workers",
+    "FRAMEVITALS_DISABLED_MODULES": "disabled_modules",
+    "FRAMEVITALS_MAX_SAMPLE_ROWS": "max_sample_rows",
+    "FRAMEVITALS_MAX_RELATIONSHIP_PAIRS": "max_relationship_pairs",
+    "FRAMEVITALS_MAX_MEMORY_HEAVY_PARALLELISM": "max_memory_heavy_parallelism",
+    "FRAMEVITALS_MAX_STREAMING_PROFILE_COLUMNS": "max_streaming_profile_columns",
+}
+
+
 def available_presets() -> tuple[str, ...]:
     """Return built-in preset names in deterministic order."""
     return tuple(PRESETS)
@@ -218,6 +232,44 @@ def _extract_values(
     return str(preset) if preset is not None else None, values, module_overrides
 
 
+def _coerce_environment_bool(name: str, value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(
+        f"{name} must be one of: true, false, 1, 0, yes, no, on, off."
+    )
+
+
+def _environment_values(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[str | None, dict[str, Any]]:
+    """Read deterministic FrameVitals runtime overrides from the environment."""
+    source = os.environ if environ is None else environ
+    preset = source.get("FRAMEVITALS_PRESET")
+    if preset is not None:
+        preset = preset.strip() or None
+
+    values: dict[str, Any] = {}
+    for env_name, config_name in _ENV_VALUE_KEYS.items():
+        if env_name not in source:
+            continue
+        raw = str(source[env_name])
+        if config_name == "artifacts":
+            values[config_name] = _coerce_environment_bool(env_name, raw)
+        elif config_name == "disabled_modules":
+            values[config_name] = tuple(
+                item.strip() for item in raw.split(",") if item.strip()
+            )
+        elif config_name == "target":
+            values[config_name] = raw.strip() or None
+        else:
+            values[config_name] = raw.strip()
+    return preset, values
+
+
 def _preset_values(name: str | None) -> dict[str, Any]:
     if name is None:
         return {}
@@ -271,16 +323,22 @@ def resolve_config(
     Precedence, from lowest to highest, is:
 
     1. FrameVitals defaults
-    2. explicit ``preset=`` argument
-    3. configuration file/mapping/object (including ``[modules]`` booleans)
-    4. explicit function/CLI arguments
+    2. preset defaults
+    3. ``FRAMEVITALS_*`` environment overrides
+    4. configuration file/mapping/object (including ``[modules]`` booleans)
+    5. explicit function/CLI arguments
 
-    Resource caps currently live in ``[resources]`` and are intentionally only
-    configurable through the config object/file. They are strict upper bounds,
-    not requests to increase work above the selected mode's adaptive defaults.
+    Resource caps live in ``[resources]`` and matching ``FRAMEVITALS_*``
+    environment variables. They are strict upper bounds, not requests to
+    increase work above the selected mode's adaptive defaults.
     """
     values: dict[str, Any] = AnalysisConfig().to_dict()
     values.update(_preset_values(preset))
+
+    environment_preset, environment_values = _environment_values()
+    if environment_preset is not None:
+        values.update(_preset_values(environment_preset))
+    values.update(environment_values)
 
     if isinstance(config, AnalysisConfig):
         values.update(config.to_dict())
