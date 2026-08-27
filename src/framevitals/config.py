@@ -329,7 +329,10 @@ def resolve_config(
     values.update(environment_values)
 
     if isinstance(config, AnalysisConfig):
-        values.update(config.to_dict())
+        # A resolved config object is authoritative, including explicit None
+        # resource caps that clear lower-precedence environment overrides. Keep
+        # public to_dict() compatibility separate from internal resolution.
+        values.update(asdict(config))
     elif isinstance(config, (str, Path)):
         config_preset, config_values, module_overrides = _extract_values(
             _read_toml(config)
