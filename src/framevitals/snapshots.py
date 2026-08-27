@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,11 +20,12 @@ def _as_mapping(value: Any) -> Mapping[str, Any]:
 
 def _number(value: Any) -> float | None:
     try:
-        if value is None:
+        if value is None or isinstance(value, bool):
             return None
-        return float(value)
+        converted = float(value)
     except (TypeError, ValueError):
         return None
+    return converted if math.isfinite(converted) else None
 
 
 def _state_payload(result: Mapping[str, Any]) -> dict[str, Any]:
@@ -86,6 +88,28 @@ def _created_at(snapshot: Mapping[str, Any]) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _validate_snapshot_payload(snapshot: Mapping[str, Any]) -> None:
+    if snapshot.get("snapshot_schema_version") != SNAPSHOT_SCHEMA_VERSION:
+        raise ValueError(
+            "Unsupported FrameVitals snapshot schema version: "
+            f"{snapshot.get('snapshot_schema_version')!r}"
+        )
+    state = snapshot.get("state")
+    if not isinstance(state, Mapping):
+        raise ValueError("Snapshot is missing a valid state object.")
+    _created_at(snapshot)
+
+    fingerprint = snapshot.get("fingerprint")
+    if not isinstance(fingerprint, str) or not fingerprint:
+        raise ValueError("Snapshot is missing a valid fingerprint.")
+    expected = _fingerprint(state)
+    if fingerprint != expected:
+        raise ValueError(
+            "Snapshot fingerprint does not match its stored state; "
+            "the snapshot may be corrupted or modified."
+        )
+
+
 def _safe_label(value: str | None) -> str | None:
     if value is None:
         return None
@@ -122,6 +146,8 @@ class AnalysisSnapshot(dict):
 
 def create_snapshot(result: Mapping[str, Any]) -> AnalysisSnapshot:
     """Create a deterministic compact state snapshot from an analysis result."""
+    if not isinstance(result, Mapping):
+        raise TypeError("result must be a mapping.")
     state = _state_payload(result)
     return AnalysisSnapshot({
         "snapshot_schema_version": SNAPSHOT_SCHEMA_VERSION,
@@ -140,6 +166,8 @@ def load_snapshot(path: str | Path) -> AnalysisSnapshot:
     source = Path(path)
     if not source.exists():
         raise FileNotFoundError(f"Snapshot not found: {source}")
+    if not source.is_file():
+        raise ValueError(f"Expected a snapshot file, got: {source}")
     try:
         payload = json.loads(source.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -147,14 +175,7 @@ def load_snapshot(path: str | Path) -> AnalysisSnapshot:
 
     if not isinstance(payload, dict):
         raise ValueError("Snapshot JSON must contain an object.")
-    if payload.get("snapshot_schema_version") != SNAPSHOT_SCHEMA_VERSION:
-        raise ValueError(
-            "Unsupported FrameVitals snapshot schema version: "
-            f"{payload.get('snapshot_schema_version')!r}"
-        )
-    if not isinstance(payload.get("state"), dict):
-        raise ValueError("Snapshot is missing a valid state object.")
-    _created_at(payload)
+    _validate_snapshot_payload(payload)
     return AnalysisSnapshot(payload)
 
 
@@ -230,12 +251,7 @@ def compare_snapshots(
 
 
 class SnapshotHistory:
-    """Filesystem-backed history of compact FrameVitals snapshots.
-
-    The history store never writes raw datasets. It persists only the compact
-    snapshot representation and provides lightweight timeline/latest/diff
-    helpers for local monitoring and CI workflows.
-    """
+    """Filesystem-backed history of compact FrameVitals snapshots."""
 
     def __init__(self, directory: str | Path = ".framevitals/history") -> None:
         self.directory = Path(directory)
@@ -262,14 +278,11 @@ class SnapshotHistory:
         label: str | None = None,
     ) -> Path:
         """Persist an analysis result or an existing snapshot and return its path."""
+        if not isinstance(result_or_snapshot, Mapping):
+            raise TypeError("result_or_snapshot must be a mapping.")
+
         if result_or_snapshot.get("snapshot_schema_version") is not None:
-            if result_or_snapshot.get("snapshot_schema_version") != SNAPSHOT_SCHEMA_VERSION:
-                raise ValueError(
-                    "Unsupported FrameVitals snapshot schema version: "
-                    f"{result_or_snapshot.get('snapshot_schema_version')!r}"
-                )
-            if not isinstance(result_or_snapshot.get("state"), Mapping):
-                raise ValueError("Snapshot is missing a valid state object.")
+            _validate_snapshot_payload(result_or_snapshot)
             snapshot = AnalysisSnapshot(dict(result_or_snapshot))
             created_at = _created_at(snapshot)
         else:
