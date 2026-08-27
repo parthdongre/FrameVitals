@@ -9,6 +9,7 @@ maintaining a second configuration system.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
+from numbers import Integral
 import os
 from pathlib import Path
 import tomllib
@@ -54,6 +55,40 @@ _RESOURCE_KEYS = (
 )
 
 
+def _coerce_disabled_modules(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str) or not isinstance(value, (list, tuple, set)):
+        raise ValueError("disabled_modules must be a list/tuple of module names.")
+    modules = tuple(value)
+    if any(not isinstance(item, str) or not item for item in modules):
+        raise ValueError("disabled_modules must contain non-empty module name strings.")
+    return modules
+
+
+def _coerce_positive_int(name: str, value: Any) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be an integer.")
+    if isinstance(value, Integral):
+        converted = int(value)
+    elif isinstance(value, str):
+        try:
+            converted = int(value.strip())
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be an integer.") from exc
+    else:
+        raise ValueError(f"{name} must be an integer.")
+    if converted < 1:
+        raise ValueError(f"{name} must be at least 1.")
+    return converted
+
+
+def _coerce_optional_positive_int(name: str, value: Any) -> int | None:
+    if value is None:
+        return None
+    return _coerce_positive_int(name, value)
+
+
 @dataclass(frozen=True, slots=True)
 class AnalysisConfig:
     """Resolved configuration consumed by the analysis pipeline.
@@ -74,20 +109,29 @@ class AnalysisConfig:
     max_streaming_profile_columns: int | None = None
 
     def __post_init__(self) -> None:
-        if self.mode not in VALID_MODES:
+        if not isinstance(self.mode, str) or self.mode not in VALID_MODES:
             raise ValueError(
                 f"Invalid analysis mode '{self.mode}'. "
                 f"Choose from: {', '.join(sorted(VALID_MODES))}"
             )
-        if self.workers < 1:
-            raise ValueError("workers must be at least 1.")
+        if self.target is not None and not isinstance(self.target, str):
+            raise ValueError("target must be a column name string or null.")
+        if not isinstance(self.artifacts, bool):
+            raise ValueError("artifacts must be true or false.")
 
+        object.__setattr__(
+            self,
+            "workers",
+            _coerce_positive_int("workers", self.workers),
+        )
         for name in _RESOURCE_KEYS:
-            value = getattr(self, name)
-            if value is not None and value < 1:
-                raise ValueError(f"{name} must be at least 1 when provided.")
+            object.__setattr__(
+                self,
+                name,
+                _coerce_optional_positive_int(name, getattr(self, name)),
+            )
 
-        modules = tuple(dict.fromkeys(self.disabled_modules))
+        modules = tuple(dict.fromkeys(_coerce_disabled_modules(self.disabled_modules)))
         unknown = sorted(set(modules) - VALID_MODULES)
         if unknown:
             raise ValueError(
@@ -157,14 +201,6 @@ def _read_toml(path: str | Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("FrameVitals config must contain a TOML table.")
     return payload
-
-
-def _coerce_disabled_modules(value: Any) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if isinstance(value, str) or not isinstance(value, (list, tuple, set)):
-        raise ValueError("disabled_modules must be a list/tuple of module names.")
-    return tuple(str(item) for item in value)
 
 
 def _extract_values(
@@ -279,20 +315,6 @@ def _apply_module_overrides(
     values["disabled_modules"] = tuple(disabled)
 
 
-def _coerce_optional_positive_int(name: str, value: Any) -> int | None:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        raise ValueError(f"{name} must be an integer when provided.")
-    try:
-        converted = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be an integer when provided.") from exc
-    if converted < 1:
-        raise ValueError(f"{name} must be at least 1 when provided.")
-    return converted
-
-
 def resolve_config(
     config: ConfigInput = None,
     *,
@@ -367,11 +389,7 @@ def resolve_config(
     }
     values.update({key: value for key, value in explicit.items() if value is not None})
 
-    try:
-        values["workers"] = int(values["workers"])
-    except (TypeError, ValueError) as exc:
-        raise ValueError("workers must be an integer.") from exc
-
+    values["workers"] = _coerce_positive_int("workers", values["workers"])
     if not isinstance(values["artifacts"], bool):
         raise ValueError("artifacts must be true or false.")
     if values["target"] is not None and not isinstance(values["target"], str):
