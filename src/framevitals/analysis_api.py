@@ -17,12 +17,18 @@ import pandas as pd
 from framevitals.config import ConfigInput, resolve_config
 from framevitals.execution import ExecutionPolicy, use_execution_policy
 from framevitals.pipeline import run_full_analysis
-from framevitals.planner import effective_disabled_modules
+from framevitals.planner import MODE_DISABLED_MODULES, effective_disabled_modules
 from framevitals.result import AnalysisResult
 from framevitals.sources import StreamingDatasetSource, resolve_source
 
 
 DataInput = Any
+
+# Compatibility aliases retained for internal callers/tests that imported the
+# pre-0.3 private policy names. The planner remains the single source of truth;
+# these aliases deliberately do not duplicate policy data or behavior.
+_MODE_DISABLED_MODULES = MODE_DISABLED_MODULES
+_effective_disabled_modules = effective_disabled_modules
 
 
 def analyze(
