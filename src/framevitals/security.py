@@ -40,7 +40,7 @@ def validate_file(filename: str) -> None:
 def _safe_ascii_stem(stem: str) -> str:
     normalized = unicodedata.normalize("NFKD", stem)
     ascii_name = normalized.encode("ascii", "ignore").decode("ascii")
-    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", ascii_name).strip("._")
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", ascii_name).strip(".")
     return safe or "dataset"
 
 
