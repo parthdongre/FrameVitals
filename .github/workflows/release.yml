@@ -3,194 +3,73 @@ name: Publish FrameVitals to PyPI
 on:
   release:
     types: [published]
+  push:
+    branches: ["release/0.3.0"]
+    paths:
+      - ".github/workflows/release.yml"
 
 permissions:
   contents: read
 
 jobs:
-  build-fallback:
-    name: Build portable fallback
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install build tools
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install build twine
-
-      - name: Verify release version across Python and Rust packages
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          PYTHONPATH=src python - <<'PY'
-          import os
-          import tomllib
-          from pathlib import Path
-
-          import framevitals
-
-          tag = os.environ["RELEASE_TAG"]
-          release_version = tag[1:] if tag.startswith("v") else tag
-          with Path("pyproject.toml").open("rb") as handle:
-              project_version = tomllib.load(handle)["project"]["version"]
-          with Path("rust/framevitals-core/Cargo.toml").open("rb") as handle:
-              core_version = tomllib.load(handle)["package"]["version"]
-          with Path("rust/framevitals-py/Cargo.toml").open("rb") as handle:
-              bridge_version = tomllib.load(handle)["package"]["version"]
-          package_version = framevitals.__version__
-          assert Path("rust/Cargo.lock").is_file(), "Rust workspace lockfile is missing"
-
-          versions = {
-              "release tag": release_version,
-              "pyproject": project_version,
-              "python package": package_version,
-              "rust core": core_version,
-              "rust bridge": bridge_version,
-          }
-          assert len(set(versions.values())) == 1, f"Release versions disagree: {versions}"
-          print(f"Release version verified across Python/Rust packages: {project_version}")
-          PY
-
-      - name: Build portable fallback wheel and sdist
-        run: python -m build --outdir dist
-
-      - name: Validate fallback distributions
-        run: python -m twine check dist/*
-
-      - name: Store fallback distributions
-        uses: actions/upload-artifact@v6
-        with:
-          name: python-package-fallback
-          path: dist/
-          if-no-files-found: error
-
-  build-native:
-    name: Native wheel — ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux-x86_64
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            manylinux: "2_28"
-          - name: macos-arm64
-            os: macos-latest
-            target: aarch64-apple-darwin
-            manylinux: "off"
-          - name: macos-x86_64
-            os: macos-15-intel
-            target: x86_64-apple-darwin
-            manylinux: "off"
-          - name: windows-x86_64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            manylinux: "off"
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Set up Python 3.11 ABI floor
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-
-      - name: Build native abi3 wheel
-        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
-        with:
-          command: build
-          maturin-version: v1.14.1
-          target: ${{ matrix.target }}
-          manylinux: ${{ matrix.manylinux }}
-          args: >-
-            --locked
-            --release
-            --manifest-path rust/framevitals-py/Cargo.toml
-            --interpreter python
-            --out dist
-            --compatibility pypi
-
-      - name: Verify native wheel payload
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import zipfile
-
-          wheels = list(Path("dist").glob("*.whl"))
-          assert len(wheels) == 1, f"Expected one native wheel, found {len(wheels)}"
-          wheel = wheels[0]
-          with zipfile.ZipFile(wheel) as archive:
-              names = archive.namelist()
-          suffixes = (".so", ".pyd", ".dylib")
-          assert "framevitals/py.typed" in names, f"PEP 561 marker missing from {wheel.name}"
-          assert any(
-              name.startswith("framevitals/_native") and name.endswith(suffixes)
-              for name in names
-          ), f"Native extension missing from {wheel.name}"
-          print(f"Verified native distribution: {wheel.name}")
-          PY
-
-      - name: Store native wheel
-        uses: actions/upload-artifact@v6
-        with:
-          name: python-package-native-${{ matrix.name }}
-          path: dist/*.whl
-          if-no-files-found: error
-
-  publish:
-    name: Publish distributions to PyPI
-    needs: [build-fallback, build-native]
+  publish-linux-abi3-correction:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'release: add corrected Linux ABI3 wheel to 0.3.0' }}"
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/framevitals
+      url: https://pypi.org/p/framevitals/0.3.0/
     permissions:
       id-token: write
       contents: read
 
     steps:
-      - name: Download all release distributions
-        uses: actions/download-artifact@v6
+      - name: Checkout exact released source
+        uses: actions/checkout@v6
         with:
-          pattern: python-package-*
-          path: dist/
-          merge-multiple: true
+          ref: 3f73877d41c3ab30b8c73747bff36841e0bbcab2
+          persist-credentials: false
 
-      - name: Show release payload
-        run: ls -lh dist/
+      - name: Set up Python 3.12 for validation
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
-      - name: Validate complete release payload
+      - name: Build corrected Linux ABI3 wheel
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          command: build
+          maturin-version: v1.14.1
+          target: x86_64-unknown-linux-gnu
+          manylinux: "2_28"
+          args: >-
+            --locked
+            --release
+            --manifest-path rust/framevitals-py/Cargo.toml
+            --interpreter python3.11
+            --out dist
+            --compatibility pypi
+
+      - name: Verify corrected artifact
         run: |
           python -m pip install --upgrade twine
           python -m twine check dist/*
           python - <<'PY'
           from pathlib import Path
+          import zipfile
 
           wheels = list(Path("dist").glob("*.whl"))
-          sdists = list(Path("dist").glob("*.tar.gz"))
-          native = [path for path in wheels if "none-any" not in path.name]
-          fallback = [path for path in wheels if "none-any" in path.name]
-
-          assert len(sdists) == 1, f"Expected one sdist, found {len(sdists)}"
-          assert len(fallback) == 1, f"Expected one portable fallback wheel, found {len(fallback)}"
-          assert len(native) == 4, f"Expected four native wheels, found {len(native)}: {native}"
-          print("Release payload contains one fallback wheel, one sdist, and four native wheels.")
+          assert len(wheels) == 1, wheels
+          wheel = wheels[0]
+          expected = "framevitals-0.3.0-cp311-abi3-manylinux_2_28_x86_64.whl"
+          assert wheel.name == expected, f"Expected {expected}, got {wheel.name}"
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+          assert "framevitals/py.typed" in names
+          assert any(name.startswith("framevitals/_native") and name.endswith(".so") for name in names)
+          print("Publishing corrected artifact:", wheel.name)
           PY
 
-      - name: Publish to PyPI
+      - name: Publish corrected Linux ABI3 wheel
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
