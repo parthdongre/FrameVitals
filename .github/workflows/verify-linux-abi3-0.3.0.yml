@@ -1,0 +1,83 @@
+name: Verify Linux ABI3 0.3.0
+
+on:
+  push:
+    branches: ["release/0.3.0"]
+    paths:
+      - ".github/workflows/verify-linux-abi3-0.3.0.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-linux-abi3:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact 0.3.0 release commit
+        uses: actions/checkout@v6
+        with:
+          ref: 3f73877d41c3ab30b8c73747bff36841e0bbcab2
+          persist-credentials: false
+
+      - name: Set up Python 3.12 smoke interpreter
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build corrected Linux ABI3 wheel
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          command: build
+          maturin-version: v1.14.1
+          target: x86_64-unknown-linux-gnu
+          manylinux: "2_28"
+          args: >-
+            --locked
+            --release
+            --manifest-path rust/framevitals-py/Cargo.toml
+            --interpreter python3.11
+            --out dist
+            --compatibility pypi
+
+      - name: Verify ABI3 tag and payload
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+
+          wheels = list(Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, wheels
+          wheel = wheels[0]
+          expected = "framevitals-0.3.0-cp311-abi3-manylinux_2_28_x86_64.whl"
+          assert wheel.name == expected, f"Expected {expected}, got {wheel.name}"
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+          assert "framevitals/py.typed" in names
+          assert any(name.startswith("framevitals/_native") and name.endswith(".so") for name in names)
+          print("Verified corrected wheel:", wheel.name)
+          PY
+
+      - name: Verify Python 3.12 can install and load native wheel
+        run: |
+          python -m venv /tmp/fv-abi3-smoke
+          /tmp/fv-abi3-smoke/bin/python -m pip install --upgrade pip
+          /tmp/fv-abi3-smoke/bin/python -m pip install numpy pandas scipy statsmodels scikit-learn pyarrow
+          /tmp/fv-abi3-smoke/bin/python -m pip install --no-deps dist/*.whl
+          cd /tmp
+          /tmp/fv-abi3-smoke/bin/python - <<'PY'
+          import framevitals
+          from framevitals.backends import backend_status
+
+          assert framevitals.__version__ == "0.3.0"
+          status = backend_status()
+          assert status["native_available"] is True, status
+          assert status["selected"] == "rust", status
+          print(status)
+          PY
+
+      - name: Store verified corrected wheel
+        uses: actions/upload-artifact@v6
+        with:
+          name: framevitals-0.3.0-linux-abi3-corrected
+          path: dist/*.whl
+          if-no-files-found: error
