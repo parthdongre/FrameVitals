@@ -190,7 +190,7 @@ fv.analyze(data, mode="deep")
 fv.analyze(data, mode="research")
 ```
 
-Use `quick` for fast checks and the deeper modes when you want broader statistical or modelling diagnostics.
+Use `quick` for fast checks and the deeper modes when you want broader statistical or modelling diagnostics. For preset-driven configuration, `exhaustive` is available as an alias for the deepest built-in preset while `research` remains supported.
 
 ## Source-Aware Execution
 
@@ -255,7 +255,7 @@ Training / Analytics / Production
 The repository includes a reusable GitHub Action:
 
 ```yaml
-- uses: parthdongre/FrameVitals@v0.2.0
+- uses: parthdongre/FrameVitals@v0.3.0
   id: framevitals
   with:
     current: data/production.parquet
