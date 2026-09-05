@@ -1,0 +1,38 @@
+name: Smoke PyPI 0.3.0
+
+on:
+  push:
+    branches: ["release/0.3.0"]
+    paths:
+      - ".github/workflows/smoke-pypi-0.3.0.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install public FrameVitals 0.3.0
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir framevitals==0.3.0
+
+      - name: Verify installed release
+        run: |
+          python - <<'PY'
+          import framevitals
+          from framevitals.backends import backend_status
+
+          assert framevitals.__version__ == "0.3.0", framevitals.__version__
+          status = backend_status()
+          print("FrameVitals version:", framevitals.__version__)
+          print("Backend status:", status)
+          assert status.get("native_available") is True, status
+          PY
+          framevitals --version
