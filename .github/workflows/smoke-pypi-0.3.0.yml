@@ -21,7 +21,8 @@ jobs:
       - name: Install public FrameVitals 0.3.0
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir framevitals==0.3.0
+          python -m pip install --no-cache-dir -v framevitals==0.3.0 2>&1 | tee /tmp/framevitals-pip.log
+          grep -F "framevitals-0.3.0-cp311-abi3-manylinux_2_28_x86_64.whl" /tmp/framevitals-pip.log
 
       - name: Verify installed release
         run: |
@@ -34,5 +35,6 @@ jobs:
           print("FrameVitals version:", framevitals.__version__)
           print("Backend status:", status)
           assert status.get("native_available") is True, status
+          assert status.get("selected") == "rust", status
           PY
           framevitals --version
