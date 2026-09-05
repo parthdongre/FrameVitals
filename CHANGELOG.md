@@ -6,23 +6,63 @@ FrameVitals follows semantic versioning while the public API matures. The 0.x se
 
 ## Unreleased
 
-### 0.3.0 development
+No user-facing changes are currently queued beyond 0.3.0.
 
-#### Configuration and execution policy
+## 0.3.0 - 2026-09-05
 
-- Added enforceable resource caps for sampled rows, relationship-pair work, memory-heavy parallelism, and ultra-wide streaming profile width. User caps only tighten the adaptive mode budget and never silently increase work.
-- Added deterministic `FRAMEVITALS_*` environment configuration with precedence between preset defaults and project/runtime configuration.
-- Added the `exhaustive` preset as the forward-looking name for the deepest built-in policy while retaining `research` compatibility throughout the 0.x series.
-- Added per-run `ExecutionPolicy` scoping so concurrent analyses can use different limits without mutating process-global state.
+FrameVitals 0.3.0 focuses on predictable execution, reusable planning state, monitoring integrity, and safer web/API behavior while retaining the source-aware Arrow/Rust execution architecture introduced in 0.2.0.
 
-#### Planning and reusable execution state
+### Highlights
 
-- Added a versioned execution-planner contract with structured per-module status, reason, resource class, dependency, explicit-disable, and effective-disable metadata.
-- Centralized built-in mode-to-module policy in the planner and made `analyze()` consume the same policy so planning and runtime cannot drift on mode disables.
-- Added dependency propagation so disabling or invalidating an upstream module blocks dependent work instead of falsely advertising it as runnable.
-- Added topologically ordered execution stages and a flattened runnable-module order as the scheduling contract for progressively planner-controlled execution.
-- Added a per-run `AnalysisContext` with a thread-safe exactly-once intermediate cache, authoritative fact registry, named reusable bounded samples, deterministic seed, and metadata-only provenance.
-- Updated `framevitals.plan()` to reuse one context for column roles, dataset signals, execution-budget derivation, and planner construction, and to expose context/cache/sample provenance without serializing raw sample values.
+- Added enforceable per-run resource caps for sampled rows, relationship-pair work, memory-heavy parallelism, and ultra-wide streaming profile width.
+- Added a versioned, dependency-aware execution planner with explicit module decisions, resource classes, dependency blocking, runnable order, and topological execution stages.
+- Added a reusable per-run `AnalysisContext` for exactly-once planning intermediates, facts, bounded samples, deterministic seeds, and metadata-only provenance.
+- Added deterministic `FRAMEVITALS_*` environment overrides with documented precedence and explicit Python API overrides.
+- Added snapshot integrity verification so monitoring comparisons reject tampered or internally inconsistent snapshots instead of treating modified metadata as trustworthy state.
+- Hardened the Flask/web layer against path traversal, user-derived filesystem paths, exception-detail disclosure, and sensitive path logging.
+
+### Configuration and execution policy
+
+- Added `max_sample_rows`, `max_relationship_pairs`, `max_memory_heavy_parallelism`, and `max_streaming_profile_columns` to `AnalysisConfig` and the public `analyze()`/`plan()` Python APIs.
+- Resource caps are hard upper bounds: they can only tighten adaptive work and never silently expand work above mode defaults.
+- Added deterministic environment overrides for preset, mode, target, artifacts, workers, disabled modules, and all four resource caps.
+- Configuration precedence is now deterministic: defaults < preset < environment < config mapping/TOML/`AnalysisConfig` < explicit Python arguments.
+- Added the `exhaustive` preset as the forward-looking alias for the deepest built-in policy while retaining `research` compatibility throughout the 0.x series.
+- Added per-run `ExecutionPolicy` scoping using context-local state so concurrent analyses can apply different limits without mutating process-global policy.
+- Fixed low sample caps so values below ten remain valid hard limits; diagnostics that need more observations now skip individually rather than rejecting the configured budget.
+
+### Planning and reusable execution state
+
+- Added planner schema version `1` and structured per-module decisions including status, reason, resource class, dependencies, and blocking information.
+- Centralized built-in mode-to-module policy in the planner and made public analysis configuration consume the same source of truth.
+- Added dependency propagation so disabling or invalidating an upstream module marks dependent work non-applicable instead of falsely advertising it as runnable.
+- Added topologically ordered execution stages plus a flattened runnable-module order for scheduler integration.
+- Added `AnalysisContext`, a per-run thread-safe container for resolved config, execution policy, source metadata, authoritative facts, exactly-once cached intermediates, reusable samples, deterministic seed, and provenance metadata.
+- Updated `framevitals.plan()` to reuse one context for column roles, dataset signals, execution-budget derivation, and execution-plan construction.
+- Preserved compatibility aliases for pre-0.3 internal analysis-mode policy imports while keeping the planner as the authoritative implementation.
+
+### Monitoring and snapshot integrity
+
+- Snapshot loading/comparison now validates integrity instead of accepting modified fingerprints or inconsistent serialized state.
+- CLI monitoring tests now compare two independently generated valid snapshots rather than mutating snapshot internals.
+- Snapshot integrity failures are surfaced as validation errors before drift/monitoring logic runs.
+
+### Web and API hardening
+
+- Uploaded filenames no longer determine server filesystem paths; validated extensions are mapped through server-owned suffixes and generated dataset identifiers.
+- Upload paths are retained in bounded server-side state instead of being stored in client-side Flask session data.
+- Report, cleaned-dataset, and temporary-upload paths are resolved and constrained to managed directories before filesystem operations.
+- Server-rendered and JSON endpoints now keep exception details in server logs and return stable generic error messages externally.
+- Removed logging of managed upload paths after CodeQL identified them as potentially sensitive data.
+- PDF and AI fallback failures no longer expose raw exception text to clients.
+- `/api/health` now reports the installed FrameVitals package version instead of a hard-coded web API version string.
+- Web analysis uses the same canonical mode policy as the Python API.
+
+### Compatibility and release quality
+
+- Python 3.11, 3.12, and 3.13 core lanes, lower-bound dependencies, optional features, Arrow fallback, Arrow/DuckDB and Polars interoperability, native Rust/Python bridge checks, frontend builds, package quality, and CodeQL were exercised during the release-candidate gate.
+- The release keeps `research` mode accepted while exposing `exhaustive` as an alias; no public 0.2 API was intentionally removed.
+- The package remains an alpha (`0.x`) release: planner stages are now an explicit scheduling contract, while deeper planner control of every materialized/streaming runtime scheduling branch can continue incrementally without changing the 0.3 public planner schema.
 
 ## 0.2.0 - 2026-08-17
 
