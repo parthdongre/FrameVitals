@@ -11,8 +11,11 @@ is deterministic and must be disclosed in result metadata.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
-from typing import Any
+from numbers import Integral
+from typing import Any, Iterator
 
 import numpy as np
 import pandas as pd
@@ -21,10 +24,6 @@ import pandas as pd
 _VALID_MODES = {"quick", "standard", "deep", "research"}
 _SAMPLE_SEED = 0x9E3779B97F4A7C15
 
-# Full-stream profiling is valuable, but on ultra-wide sources scanning every
-# cell defeats the purpose of streaming. These budgets cap the number of source
-# cells inspected by the reusable profile pass while preserving the true source
-# shape in execution metadata.
 _STREAMING_PROFILE_CELL_BUDGETS = {
     "quick": 64_000_000,
     "standard": 96_000_000,
@@ -37,6 +36,84 @@ _STREAMING_PROFILE_COLUMN_CAPS = {
     "deep": 128,
     "research": 256,
 }
+
+
+def _require_non_negative_int(name: str, value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"{name} must be an integer.")
+    converted = int(value)
+    if converted < 0:
+        raise ValueError(f"{name} must be non-negative.")
+    return converted
+
+
+def _require_positive_int(name: str, value: Any) -> int:
+    converted = _require_non_negative_int(name, value)
+    if converted < 1:
+        raise ValueError(f"{name} must be at least 1.")
+    return converted
+
+
+def _optional_positive_int(name: str, value: Any) -> int | None:
+    if value is None:
+        return None
+    return _require_positive_int(name, value)
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionPolicy:
+    """Per-call hard caps layered on top of adaptive mode defaults.
+
+    Policy values can only reduce work. They never increase a mode's built-in
+    sampling or parallelism limits. A context variable carries the policy across
+    the existing pipeline without mutable process-wide globals, so concurrent
+    analyses can safely use different limits.
+    """
+
+    max_sample_rows: int | None = None
+    max_relationship_pairs: int | None = None
+    max_memory_heavy_parallelism: int | None = None
+    max_streaming_profile_columns: int | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "max_sample_rows",
+            "max_relationship_pairs",
+            "max_memory_heavy_parallelism",
+            "max_streaming_profile_columns",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _optional_positive_int(name, getattr(self, name)),
+            )
+
+    def to_dict(self) -> dict[str, int | None]:
+        return asdict(self)
+
+
+_DEFAULT_EXECUTION_POLICY = ExecutionPolicy()
+_EXECUTION_POLICY: ContextVar[ExecutionPolicy] = ContextVar(
+    "framevitals_execution_policy",
+    default=_DEFAULT_EXECUTION_POLICY,
+)
+
+
+def current_execution_policy() -> ExecutionPolicy:
+    """Return the resource caps active for the current analysis context."""
+    return _EXECUTION_POLICY.get()
+
+
+@contextmanager
+def use_execution_policy(policy: ExecutionPolicy) -> Iterator[None]:
+    """Apply ``policy`` to nested budget derivation for one logical run."""
+    if not isinstance(policy, ExecutionPolicy):
+        raise TypeError("policy must be an ExecutionPolicy.")
+    token = _EXECUTION_POLICY.set(policy)
+    try:
+        yield
+    finally:
+        _EXECUTION_POLICY.reset(token)
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,21 +153,22 @@ def _bounded(requested: int, rows: int) -> int:
     return min(int(requested), int(rows))
 
 
+def _policy_row_cap(requested: int, rows: int, policy: ExecutionPolicy) -> int:
+    bounded = _bounded(requested, rows)
+    if policy.max_sample_rows is None:
+        return bounded
+    return min(bounded, policy.max_sample_rows)
+
+
 def _deterministic_stratified_positions(
     rows: int,
     target_rows: int,
     *,
     seed: int = _SAMPLE_SEED,
 ) -> np.ndarray:
-    """Choose one deterministic pseudo-random row from each equal-width stratum.
-
-    Fixed evenly spaced samples can lock onto periodic structure. Stratified jitter
-    retains deterministic whole-dataset coverage while breaking that phase locking.
-    Positions are returned sorted, so temporal order remains available to callers
-    that need it, without allocating a permutation proportional to the source size.
-    """
-    rows = int(rows)
-    target_rows = int(target_rows)
+    """Choose one deterministic pseudo-random row from each equal-width stratum."""
+    rows = _require_non_negative_int("rows", rows)
+    target_rows = _require_non_negative_int("target_rows", target_rows)
     count = min(rows, target_rows)
     if count <= 0:
         return np.empty(0, dtype=np.int64)
@@ -107,7 +185,6 @@ def _deterministic_stratified_positions(
     widths = (edges[1:] - edges[:-1]).astype(np.uint64)
     indices = np.arange(count, dtype=np.uint64)
 
-    # SplitMix64-style deterministic mixing. uint64 overflow is intentional.
     with np.errstate(over="ignore"):
         mixed = indices + np.uint64(seed)
         mixed = (mixed ^ (mixed >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
@@ -116,9 +193,6 @@ def _deterministic_stratified_positions(
 
     offsets = (mixed % widths).astype(np.int64)
     positions = edges[:-1] + offsets
-
-    # Keep full-range coverage as an explicit invariant while jittering the
-    # interior strata. This is useful for ordered/time-series diagnostics too.
     positions[0] = 0
     positions[-1] = rows - 1
     return positions
@@ -130,36 +204,38 @@ def derive_streaming_profile_column_limit(
     *,
     mode: str = "standard",
 ) -> int:
-    """Return the deterministic full-stream column budget for a source shape.
-
-    Ordinary datasets keep every column. Ultra-wide/high-cell-count sources are
-    projected before the full streaming profile pass so total scanned cells stay
-    bounded. The projection itself is selected by the caller from the source
-    schema; this function only resolves the allowed width.
-    """
+    """Return the deterministic full-stream column budget for a source shape."""
     if mode not in _VALID_MODES:
         raise ValueError(f"Unknown analysis mode: {mode}")
-    if rows < 0 or columns < 0:
-        raise ValueError("rows and columns must be non-negative.")
+    rows = _require_non_negative_int("rows", rows)
+    columns = _require_non_negative_int("columns", columns)
     if columns == 0:
         return 0
+
+    policy = current_execution_policy()
+    explicit_cap = policy.max_streaming_profile_columns
+
     if rows == 0:
-        return int(columns)
+        derived = columns
+    else:
+        cells = rows * columns
+        cell_budget = int(_STREAMING_PROFILE_CELL_BUDGETS[mode])
+        if cells <= cell_budget and columns < 10_000:
+            derived = columns
+        else:
+            by_cells = max(1, cell_budget // max(rows, 1))
+            derived = max(
+                1,
+                min(
+                    columns,
+                    int(by_cells),
+                    int(_STREAMING_PROFILE_COLUMN_CAPS[mode]),
+                ),
+            )
 
-    cells = int(rows) * int(columns)
-    cell_budget = int(_STREAMING_PROFILE_CELL_BUDGETS[mode])
-    if cells <= cell_budget and columns < 10_000:
-        return int(columns)
-
-    by_cells = max(1, cell_budget // max(int(rows), 1))
-    return max(
-        1,
-        min(
-            int(columns),
-            int(by_cells),
-            int(_STREAMING_PROFILE_COLUMN_CAPS[mode]),
-        ),
-    )
+    if explicit_cap is not None:
+        derived = min(derived, explicit_cap)
+    return max(1, int(derived))
 
 
 def derive_execution_budget(
@@ -168,19 +244,14 @@ def derive_execution_budget(
     *,
     mode: str = "standard",
 ) -> ExecutionBudget:
-    """Derive a conservative execution policy from shape and analysis mode.
-
-    The thresholds are deliberately simple and deterministic for now. They are
-    a compatibility layer for the future cost-based planner, where RAM, storage
-    metadata, native throughput, GPU availability, and user accuracy budgets can
-    refine the same object without changing analysis APIs.
-    """
+    """Derive a conservative execution policy from shape and analysis mode."""
     if mode not in _VALID_MODES:
         raise ValueError(f"Unknown analysis mode: {mode}")
-    if rows < 0 or columns < 0:
-        raise ValueError("rows and columns must be non-negative.")
+    rows = _require_non_negative_int("rows", rows)
+    columns = _require_non_negative_int("columns", columns)
 
-    cells = int(rows) * int(columns)
+    policy = current_execution_policy()
+    cells = rows * columns
     large_dataset = rows >= 100_000 or cells >= 10_000_000
     wide_dataset = columns >= 1_000
     ultra_wide_dataset = columns >= 10_000
@@ -238,36 +309,42 @@ def derive_execution_budget(
     }
     selected = presets[mode]
 
-    # Ultra-wide data must spend relationship budget more carefully. The future
-    # sparse feature-graph engine will replace this fixed cap with candidate
-    # generation rather than dense pair enumeration.
     relationship_budget = int(selected["relationships"])
     if ultra_wide_dataset:
         relationship_budget = min(relationship_budget, 10)
     elif wide_dataset:
         relationship_budget = min(relationship_budget, 20)
+    if policy.max_relationship_pairs is not None:
+        relationship_budget = min(
+            relationship_budget,
+            policy.max_relationship_pairs,
+        )
 
-    # Memory-heavy modules should not be launched four-at-a-time simply because
-    # a machine exposes four Python workers. Large inputs default to sequential
-    # heavy execution until the scheduler gains RAM-aware token accounting.
     heavy_parallelism = 1 if large_dataset or wide_dataset else 2
+    if policy.max_memory_heavy_parallelism is not None:
+        heavy_parallelism = min(
+            heavy_parallelism,
+            policy.max_memory_heavy_parallelism,
+        )
 
     return ExecutionBudget(
         mode=mode,
-        rows=int(rows),
-        columns=int(columns),
+        rows=rows,
+        columns=columns,
         cells=cells,
         scale_class=scale_class,
         large_dataset=large_dataset,
         wide_dataset=wide_dataset,
         ultra_wide_dataset=ultra_wide_dataset,
-        quality_sample_rows=_bounded(selected["quality"], rows),
-        deep_statistics_sample_rows=_bounded(selected["deep"], rows),
-        bootstrap_sample_rows=_bounded(selected["bootstrap"], rows),
-        distribution_sample_rows=_bounded(selected["distribution"], rows),
-        pair_sample_rows=_bounded(selected["pair"], rows),
-        anomaly_sample_rows=_bounded(selected["anomaly"], rows),
-        time_series_sample_rows=_bounded(selected["time_series"], rows),
+        quality_sample_rows=_policy_row_cap(selected["quality"], rows, policy),
+        deep_statistics_sample_rows=_policy_row_cap(selected["deep"], rows, policy),
+        bootstrap_sample_rows=_policy_row_cap(selected["bootstrap"], rows, policy),
+        distribution_sample_rows=_policy_row_cap(
+            selected["distribution"], rows, policy
+        ),
+        pair_sample_rows=_policy_row_cap(selected["pair"], rows, policy),
+        anomaly_sample_rows=_policy_row_cap(selected["anomaly"], rows, policy),
+        time_series_sample_rows=_policy_row_cap(selected["time_series"], rows, policy),
         relationship_pair_budget=relationship_budget,
         max_memory_heavy_parallelism=heavy_parallelism,
     )
@@ -280,9 +357,10 @@ def deterministic_sample_frame(
     preserve_order: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Return a deterministic bounded view and transparent sampling metadata."""
+    if not isinstance(dataframe, pd.DataFrame):
+        raise TypeError("dataframe must be a pandas DataFrame.")
+    max_rows = _require_positive_int("max_rows", max_rows)
     source_rows = int(len(dataframe))
-    if max_rows < 1:
-        raise ValueError("max_rows must be at least 1.")
 
     if source_rows <= max_rows:
         return dataframe, {
@@ -295,8 +373,6 @@ def deterministic_sample_frame(
     positions = _deterministic_stratified_positions(source_rows, max_rows)
     sampled = dataframe.iloc[positions]
     if not preserve_order:
-        # Positions stay sorted so time-aware callers can preserve ordering, while
-        # statistical callers receive a copy that is safe to mutate downstream.
         sampled = sampled.copy()
 
     return sampled, {

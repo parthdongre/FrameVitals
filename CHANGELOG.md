@@ -6,7 +6,23 @@ FrameVitals follows semantic versioning while the public API matures. The 0.x se
 
 ## Unreleased
 
-No user-facing changes are currently queued beyond 0.2.0.
+### 0.3.0 development
+
+#### Configuration and execution policy
+
+- Added enforceable resource caps for sampled rows, relationship-pair work, memory-heavy parallelism, and ultra-wide streaming profile width. User caps only tighten the adaptive mode budget and never silently increase work.
+- Added deterministic `FRAMEVITALS_*` environment configuration with precedence between preset defaults and project/runtime configuration.
+- Added the `exhaustive` preset as the forward-looking name for the deepest built-in policy while retaining `research` compatibility throughout the 0.x series.
+- Added per-run `ExecutionPolicy` scoping so concurrent analyses can use different limits without mutating process-global state.
+
+#### Planning and reusable execution state
+
+- Added a versioned execution-planner contract with structured per-module status, reason, resource class, dependency, explicit-disable, and effective-disable metadata.
+- Centralized built-in mode-to-module policy in the planner and made `analyze()` consume the same policy so planning and runtime cannot drift on mode disables.
+- Added dependency propagation so disabling or invalidating an upstream module blocks dependent work instead of falsely advertising it as runnable.
+- Added topologically ordered execution stages and a flattened runnable-module order as the scheduling contract for progressively planner-controlled execution.
+- Added a per-run `AnalysisContext` with a thread-safe exactly-once intermediate cache, authoritative fact registry, named reusable bounded samples, deterministic seed, and metadata-only provenance.
+- Updated `framevitals.plan()` to reuse one context for column roles, dataset signals, execution-budget derivation, and planner construction, and to expose context/cache/sample provenance without serializing raw sample values.
 
 ## 0.2.0 - 2026-08-17
 

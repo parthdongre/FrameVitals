@@ -435,6 +435,15 @@ def _missingness_relationships(
     return relationships[:30]
 
 
+def _require_int_control(name: str, value: Any, *, minimum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        raise TypeError(f"{name} must be an integer.")
+    resolved = int(value)
+    if resolved < minimum:
+        raise ValueError(f"{name} must be at least {minimum}.")
+    return resolved
+
+
 def run_quality_diagnostics(
     df: pd.DataFrame,
     *,
@@ -445,12 +454,17 @@ def run_quality_diagnostics(
     max_missingness_columns: int = DEFAULT_MAX_MISSINGNESS_COLUMNS,
 ) -> dict[str, Any]:
     """Return a bounded, deterministic set of practical data-quality checks."""
-    if max_sample_rows < 10:
-        raise ValueError("max_sample_rows must be at least 10.")
-    if max_columns < 1:
-        raise ValueError("max_columns must be at least 1.")
-    if max_missingness_columns < 2:
-        raise ValueError("max_missingness_columns must be at least 2.")
+    max_sample_rows = _require_int_control(
+        "max_sample_rows",
+        max_sample_rows,
+        minimum=1,
+    )
+    max_columns = _require_int_control("max_columns", max_columns, minimum=1)
+    max_missingness_columns = _require_int_control(
+        "max_missingness_columns",
+        max_missingness_columns,
+        minimum=2,
+    )
 
     if profile is None:
         from framevitals.profiler import build_profile
@@ -529,7 +543,11 @@ def run_quality_diagnostics(
         "max_sample_rows": int(max_sample_rows),
         "duplicate_rows": duplicate_rows,
         "summary": {
-            "issue_groups": sum(bool(value) for key, value in checks.items() if key != "primary_key_candidates"),
+            "issue_groups": sum(
+                bool(value)
+                for key, value in checks.items()
+                if key != "primary_key_candidates"
+            ),
             "issue_count": issue_count + (1 if duplicate_rows else 0),
             "primary_key_candidate_count": len(primary_keys),
         },

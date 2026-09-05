@@ -176,7 +176,7 @@ def run_full_analysis(
                 df,
                 profile=profile,
                 column_roles=column_roles,
-                max_sample_rows=max(execution_budget.quality_sample_rows, 10),
+                max_sample_rows=execution_budget.quality_sample_rows,
             ),
         )
         timings_ms["quality_diagnostics"] = quality_elapsed

@@ -159,10 +159,32 @@ def test_compare_snapshots_cli_can_fail_ci_on_change(tmp_path, monkeypatch, caps
     assert main() == 0
     capsys.readouterr()
 
-    payload = json.loads(baseline.read_text(encoding="utf-8"))
-    payload["fingerprint"] = "0" * 64
-    payload["state"]["dataset"]["dtypes"]["new_column"] = "int64"
-    current.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    dataset.write_text(
+        "value,other,group,new_column\n"
+        "1,2,a,10\n"
+        "2,4,b,20\n"
+        "3,6,a,30\n"
+        "4,8,b,40\n"
+        "5,10,a,50\n"
+        "6,12,b,60\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "framevitals",
+            "snapshot",
+            str(dataset),
+            "--mode",
+            "quick",
+            "--workers",
+            "1",
+            "--output",
+            str(current),
+        ],
+    )
+    assert main() == 0
+    capsys.readouterr()
 
     monkeypatch.setattr(
         "sys.argv",
