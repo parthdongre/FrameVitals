@@ -85,18 +85,22 @@ jobs:
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             manylinux: "2_28"
+            interpreter: python3.11
           - name: macos-arm64
             os: macos-latest
             target: aarch64-apple-darwin
             manylinux: "off"
+            interpreter: python
           - name: macos-x86_64
             os: macos-15-intel
             target: x86_64-apple-darwin
             manylinux: "off"
+            interpreter: python
           - name: windows-x86_64
             os: windows-latest
             target: x86_64-pc-windows-msvc
             manylinux: "off"
+            interpreter: python
 
     steps:
       - name: Checkout repository
@@ -120,11 +124,11 @@ jobs:
             --locked
             --release
             --manifest-path rust/framevitals-py/Cargo.toml
-            --interpreter python
+            --interpreter ${{ matrix.interpreter }}
             --out dist
             --compatibility pypi
 
-      - name: Verify native wheel payload
+      - name: Verify native wheel ABI and payload
         shell: bash
         run: |
           python - <<'PY'
@@ -134,6 +138,9 @@ jobs:
           wheels = list(Path("dist").glob("*.whl"))
           assert len(wheels) == 1, f"Expected one native wheel, found {len(wheels)}"
           wheel = wheels[0]
+          assert "-cp311-abi3-" in wheel.name, (
+              f"Native wheel must target the Python 3.11 stable ABI, got {wheel.name}"
+          )
           with zipfile.ZipFile(wheel) as archive:
               names = archive.namelist()
           suffixes = (".so", ".pyd", ".dylib")
@@ -142,7 +149,7 @@ jobs:
               name.startswith("framevitals/_native") and name.endswith(suffixes)
               for name in names
           ), f"Native extension missing from {wheel.name}"
-          print(f"Verified native distribution: {wheel.name}")
+          print(f"Verified native ABI3 distribution: {wheel.name}")
           PY
 
       - name: Store native wheel
@@ -189,7 +196,12 @@ jobs:
           assert len(sdists) == 1, f"Expected one sdist, found {len(sdists)}"
           assert len(fallback) == 1, f"Expected one portable fallback wheel, found {len(fallback)}"
           assert len(native) == 4, f"Expected four native wheels, found {len(native)}: {native}"
-          print("Release payload contains one fallback wheel, one sdist, and four native wheels.")
+          assert all("-cp311-abi3-" in path.name for path in native), (
+              f"Every native wheel must use the Python 3.11 stable ABI: {native}"
+          )
+          linux = [path for path in native if "manylinux_2_28_x86_64" in path.name]
+          assert len(linux) == 1, f"Expected one Linux x86_64 ABI3 wheel, found {linux}"
+          print("Release payload contains one fallback wheel, one sdist, and four cp311-abi3 wheels.")
           PY
 
       - name: Publish to PyPI
