@@ -20,16 +20,18 @@ from time import perf_counter
 from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.exceptions import ClientDisconnected
 
+from framevitals import __version__ as FRAMEVITALS_VERSION
 from framevitals.ai_insights import answer_dataset_question
 from framevitals.drift_analysis import split_by_date
 from framevitals.frontend_api import build_dashboard_payload
-from framevitals.loader import load_dataset, save_uploaded_file
+from framevitals.loader import UPLOAD_DIR, load_dataset, save_uploaded_file
 from framevitals.pipeline import run_full_analysis
 from framevitals.planner import effective_disabled_modules
 
 
 _VALID_ANALYSIS_MODES = {"quick", "standard", "deep", "research"}
 _DATASET_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
+CLEANED_DIR = Path("cleaned")
 REPORT_DIR = Path("reports")
 
 
@@ -77,6 +79,7 @@ app.secret_key = os.environ.get("FRAMEVITALS_SECRET_KEY") or secrets.token_urlsa
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
 ANALYSIS_CACHE: OrderedDict[str, dict] = OrderedDict()
+UPLOAD_PATHS: OrderedDict[str, str] = OrderedDict()
 REPORT_JOBS: OrderedDict[str, dict] = OrderedDict()
 REPORT_LOCK = Lock()
 
@@ -108,8 +111,51 @@ def _validate_dataset_id(dataset_id: str | None) -> str:
     return dataset_id
 
 
-def _report_path(dataset_id: str) -> Path:
-    return REPORT_DIR / f"{_validate_dataset_id(dataset_id)}_report.pdf"
+def _trusted_generated_path(value: str | Path | None, root: Path) -> Path | None:
+    """Resolve a server-generated artifact path and keep it inside ``root``."""
+    if value is None:
+        return None
+    try:
+        root_path = root.resolve()
+        candidate = Path(value).resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+    if candidate.parent != root_path:
+        return None
+    return candidate
+
+
+def _is_nonempty_file(path: Path | None) -> bool:
+    if path is None:
+        return False
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _cache_upload_path(dataset_id: str, file_path: Path) -> None:
+    dataset_id = _validate_dataset_id(dataset_id)
+    trusted = _trusted_generated_path(file_path, UPLOAD_DIR)
+    if trusted is None:
+        raise ValueError("Upload path escaped the managed upload directory.")
+    with REPORT_LOCK:
+        UPLOAD_PATHS[dataset_id] = str(trusted)
+        UPLOAD_PATHS.move_to_end(dataset_id)
+        while len(UPLOAD_PATHS) > _WEB_CACHE_LIMIT:
+            UPLOAD_PATHS.popitem(last=False)
+
+
+def _get_upload_path(dataset_id: str | None) -> Path | None:
+    try:
+        dataset_id = _validate_dataset_id(dataset_id)
+    except ValueError:
+        return None
+    with REPORT_LOCK:
+        value = UPLOAD_PATHS.get(dataset_id)
+        if value is not None:
+            UPLOAD_PATHS.move_to_end(dataset_id)
+    return _trusted_generated_path(value, UPLOAD_DIR)
 
 
 def _cache_analysis(dataset_id: str, result: dict) -> None:
@@ -121,6 +167,7 @@ def _cache_analysis(dataset_id: str, result: dict) -> None:
         while len(ANALYSIS_CACHE) > _WEB_CACHE_LIMIT:
             evicted_id, _ = ANALYSIS_CACHE.popitem(last=False)
             REPORT_JOBS.pop(evicted_id, None)
+            UPLOAD_PATHS.pop(evicted_id, None)
 
 
 def _get_cached_analysis(dataset_id: str | None) -> dict | None:
@@ -152,9 +199,12 @@ def _set_report_job(
     error: str | None = None,
 ) -> dict:
     dataset_id = _validate_dataset_id(dataset_id)
+    trusted_pdf = _trusted_generated_path(pdf_path, REPORT_DIR) if pdf_path else None
+    if pdf_path is not None and trusted_pdf is None:
+        raise ValueError("Report path escaped the managed report directory.")
     job = {
         "status": status,
-        "pdf_path": str(pdf_path) if pdf_path else None,
+        "pdf_path": str(trusted_pdf) if trusted_pdf else None,
         "error": error,
     }
     with REPORT_LOCK:
@@ -203,8 +253,8 @@ def _queue_pdf_generation(dataset_id: str, result: dict | None = None) -> dict:
     if current_job.get("status") in {"queued", "running"}:
         return current_job
     if current_job.get("status") == "ready":
-        report_path = _report_path(dataset_id)
-        if report_path.exists() and report_path.stat().st_size > 0:
+        report_path = _trusted_generated_path(current_job.get("pdf_path"), REPORT_DIR)
+        if _is_nonempty_file(report_path):
             return current_job
 
     _set_report_job(dataset_id, "queued")
@@ -216,9 +266,13 @@ def _queue_pdf_generation(dataset_id: str, result: dict | None = None) -> dict:
 
             pdf_path = generate_pdf_report(cached_result)
             _set_report_job(dataset_id, "ready", pdf_path=pdf_path)
-        except Exception as exc:  # optional report generation must fail soft
+        except Exception:  # optional report generation must fail soft
             app.logger.exception("PDF generation failed for dataset %s", dataset_id)
-            _set_report_job(dataset_id, "failed", error=str(exc))
+            _set_report_job(
+                dataset_id,
+                "failed",
+                error="PDF report generation failed. Check server logs for details.",
+            )
 
     Thread(target=worker, daemon=True).start()
     return _get_report_job(dataset_id)
@@ -227,9 +281,9 @@ def _queue_pdf_generation(dataset_id: str, result: dict | None = None) -> dict:
 def _report_status_payload(dataset_id: str) -> dict:
     dataset_id = _validate_dataset_id(dataset_id)
     job = _get_report_job(dataset_id)
-    report_path = _report_path(dataset_id)
+    report_path = _trusted_generated_path(job.get("pdf_path"), REPORT_DIR)
 
-    if report_path.exists() and report_path.stat().st_size > 0:
+    if job.get("status") == "ready" and _is_nonempty_file(report_path):
         return {
             "status": "ready",
             "ready": True,
@@ -238,24 +292,26 @@ def _report_status_payload(dataset_id: str) -> dict:
         }
 
     status = job.get("status") or "pending"
+    if status == "ready":
+        status = "missing"
     return {
         "status": status,
         "ready": False,
-        "pdf_path": job.get("pdf_path"),
-        "error": job.get("error"),
+        "pdf_path": None,
+        "error": job.get("error") if status == "failed" else None,
     }
 
 
 def _store_session(
     *,
     dataset_id: str,
-    file_path: Path,
     original_filename: str,
     analysis_mode: str,
     target_column: str | None,
 ) -> None:
+    # Keep paths out of client-side session state. The upload path is held in a
+    # bounded server-side map keyed by the generated dataset identifier.
     session["dataset_id"] = _validate_dataset_id(dataset_id)
-    session["file_path"] = str(file_path)
     session["original_filename"] = original_filename
     session["analysis_mode"] = _normalize_analysis_mode(analysis_mode)
     session["target_column"] = target_column
@@ -264,10 +320,14 @@ def _store_session(
 def _unlink_quietly(path: Path | None) -> None:
     if path is None:
         return
+    trusted = _trusted_generated_path(path, UPLOAD_DIR)
+    if trusted is None:
+        app.logger.warning("Refusing to remove path outside the managed upload directory")
+        return
     try:
-        path.unlink(missing_ok=True)
+        trusted.unlink(missing_ok=True)
     except OSError:
-        app.logger.warning("Could not remove temporary upload %s", path)
+        app.logger.warning("Could not remove temporary upload %s", trusted)
 
 
 @app.route("/")
@@ -298,6 +358,7 @@ def analyze():
             ), 400
 
         dataset_id, file_path, original_filename = save_uploaded_file(uploaded_file)
+        _cache_upload_path(dataset_id, file_path)
         result = _run_web_analysis(
             dataset_id=dataset_id,
             file_path=file_path,
@@ -310,15 +371,17 @@ def analyze():
         result["report_status"] = _report_status_payload(dataset_id)
         _store_session(
             dataset_id=dataset_id,
-            file_path=file_path,
             original_filename=original_filename,
             analysis_mode=analysis_mode,
             target_column=target_column,
         )
         return render_template("report.html", result=DotDict.from_dict(result))
-    except Exception as exc:
+    except Exception:
         app.logger.exception("Server-rendered analysis failed")
-        return render_template("error.html", message=str(exc)), 500
+        return render_template(
+            "error.html",
+            message="Dataset analysis failed. Check the server logs for details.",
+        ), 500
 
 
 @app.route("/api/analyze", methods=["POST"])
@@ -341,6 +404,7 @@ def api_analyze():
             return jsonify({"error": "Please upload a valid dataset file."}), 400
 
         dataset_id, file_path, original_filename = save_uploaded_file(uploaded_file)
+        _cache_upload_path(dataset_id, file_path)
         df = load_dataset(file_path)
         result = _run_web_analysis(
             dataset_id=dataset_id,
@@ -367,31 +431,31 @@ def api_analyze():
         payload["downloadLinks"]["reportStatus"] = report_status["status"]
         _store_session(
             dataset_id=dataset_id,
-            file_path=file_path,
             original_filename=original_filename,
             analysis_mode=analysis_mode,
             target_column=target_column,
         )
         return safe_jsonify(payload)
-    except Exception as exc:
+    except Exception:
         app.logger.exception("API analysis failed")
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Dataset analysis failed."}), 500
 
 
 @app.route("/ask", methods=["POST"])
 def ask():
     try:
         dataset_id = session.get("dataset_id")
-        file_path_value = session.get("file_path")
         original_filename = session.get("original_filename", "dataset")
         analysis_mode = _normalize_analysis_mode(session.get("analysis_mode"))
         target_column = session.get("target_column")
         question = request.form.get("question", "")
 
-        if not dataset_id or not file_path_value:
+        if not dataset_id:
             return redirect(url_for("index"))
         dataset_id = _validate_dataset_id(dataset_id)
-        file_path = Path(file_path_value)
+        file_path = _get_upload_path(dataset_id)
+        if file_path is None:
+            return redirect(url_for("index"))
 
         # Reuse the analysis produced by the upload route. The old handler
         # reran the entire pipeline for every question, which was needlessly
@@ -435,9 +499,12 @@ def ask():
         result["chat_answer"] = answer
         result["chat_question"] = question
         return render_template("report.html", result=DotDict.from_dict(result))
-    except Exception as exc:
+    except Exception:
         app.logger.exception("Server-rendered question answering failed")
-        return render_template("error.html", message=str(exc)), 500
+        return render_template(
+            "error.html",
+            message="Question answering failed. Check the server logs for details.",
+        ), 500
 
 
 @app.route("/api/ask", methods=["POST"])
@@ -453,8 +520,8 @@ def api_ask():
             return jsonify({"error": "Missing 'question' in request body."}), 400
         try:
             dataset_id = _validate_dataset_id(dataset_id)
-        except ValueError as exc:
-            return jsonify({"error": str(exc)}), 400
+        except ValueError:
+            return jsonify({"error": "Invalid dataset identifier."}), 400
         if session_dataset_id and dataset_id != session_dataset_id:
             return jsonify({"error": "Dataset does not belong to this session."}), 403
 
@@ -464,12 +531,13 @@ def api_ask():
                 "error": "No cached analysis was found for this dataset. Run /api/analyze first.",
             }), 404
 
-        file_path = session.get("file_path")
+        file_path = _get_upload_path(dataset_id)
         df = None
-        if file_path:
+        if file_path is not None:
             try:
-                df = load_dataset(Path(file_path))
+                df = load_dataset(file_path)
             except Exception:
+                app.logger.warning("Could not reload cached upload for agent analysis")
                 df = None
 
         try:
@@ -482,7 +550,7 @@ def api_ask():
                 analysis_result=cached_result,
                 fast=(mode != "full"),
             )
-        except Exception as exc:
+        except Exception:
             fallback = answer_dataset_question(
                 question=question,
                 profile=cached_result["profile"],
@@ -493,7 +561,7 @@ def api_ask():
             )
             response = {
                 "source": fallback.get("source", "fallback"),
-                "answer": fallback.get("answer", str(exc)),
+                "answer": fallback.get("answer") or "Question answering is unavailable.",
                 "trace": {},
             }
 
@@ -504,9 +572,9 @@ def api_ask():
             "answer": response.get("answer"),
             "trace": response.get("trace", {}),
         })
-    except Exception as exc:
+    except Exception:
         app.logger.exception("API question answering failed")
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Question answering failed."}), 500
 
 
 @app.route("/api/ai-report", methods=["POST"])
@@ -517,8 +585,8 @@ def api_ai_report():
         dataset_id = body.get("dataset_id") or session.get("dataset_id")
         try:
             dataset_id = _validate_dataset_id(dataset_id)
-        except ValueError as exc:
-            return jsonify({"error": str(exc)}), 400
+        except ValueError:
+            return jsonify({"error": "Invalid dataset identifier."}), 400
 
         cached = _get_cached_analysis(dataset_id)
         if cached is None:
@@ -538,15 +606,19 @@ def api_ai_report():
                 column_roles_summary=cached.get("roles_summary") or {},
                 dataset_signals=cached.get("dataset_signals") or {},
             )
-        except Exception as exc:
-            ai_report = {"source": f"error: {exc}", "text": str(exc)}
+        except Exception:
+            app.logger.exception("AI report model generation failed")
+            ai_report = {
+                "source": "error",
+                "text": "AI report generation failed. Check server logs for details.",
+            }
 
         cached["ai_report"] = ai_report
         _cache_analysis(dataset_id, cached)
         return safe_jsonify(ai_report)
-    except Exception as exc:
+    except Exception:
         app.logger.exception("AI report generation failed")
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "AI report generation failed."}), 500
 
 
 @app.route("/api/health")
@@ -572,7 +644,7 @@ def api_health():
         ),
         "cached_analyses": cached_count,
         "pdf_jobs": job_count,
-        "version": "v3",
+        "version": FRAMEVITALS_VERSION,
     })
 
 
@@ -607,9 +679,9 @@ def api_compare():
         report["reference_filename"] = ref_name
         report["current_filename"] = cur_name
         return safe_jsonify(report)
-    except Exception as exc:
+    except Exception:
         app.logger.exception("Dataset comparison failed")
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Dataset comparison failed."}), 500
     finally:
         _unlink_quietly(ref_path)
         _unlink_quietly(cur_path)
@@ -652,9 +724,9 @@ def api_compare_self():
         report["split_by"] = date_column
         report["split_ratio"] = ratio
         return safe_jsonify(report)
-    except Exception as exc:
+    except Exception:
         app.logger.exception("Self-comparison failed")
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Dataset self-comparison failed."}), 500
     finally:
         _unlink_quietly(ds_path)
 
@@ -665,8 +737,12 @@ def download_cleaned(dataset_id):
         dataset_id = _validate_dataset_id(dataset_id)
     except ValueError:
         return render_template("error.html", message="Invalid dataset identifier."), 400
-    path = Path("cleaned") / f"{dataset_id}_cleaned.csv"
-    if path.exists() and path.is_file():
+
+    result = _get_cached_analysis(dataset_id)
+    cleaning = result.get("cleaning", {}) if isinstance(result, dict) else {}
+    output_value = cleaning.get("output_path") if isinstance(cleaning, dict) else None
+    path = _trusted_generated_path(output_value, CLEANED_DIR)
+    if _is_nonempty_file(path):
         return send_file(path, as_attachment=True)
     return render_template("error.html", message="Cleaned dataset not found."), 404
 
@@ -675,8 +751,8 @@ def download_cleaned(dataset_id):
 def api_report_status(dataset_id):
     try:
         dataset_id = _validate_dataset_id(dataset_id)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except ValueError:
+        return jsonify({"error": "Invalid dataset identifier."}), 400
     status = _report_status_payload(dataset_id)
     status["downloadUrl"] = f"/download-report/{dataset_id}"
     status["dataset_id"] = dataset_id
@@ -687,10 +763,10 @@ def api_report_status(dataset_id):
 def download_report(dataset_id):
     try:
         dataset_id = _validate_dataset_id(dataset_id)
-        pdf_path = _report_path(dataset_id)
         report_status = _report_status_payload(dataset_id)
+        pdf_path = _trusted_generated_path(report_status.get("pdf_path"), REPORT_DIR)
 
-        if report_status["ready"] and pdf_path.exists() and pdf_path.stat().st_size > 0:
+        if report_status["ready"] and _is_nonempty_file(pdf_path):
             return send_file(pdf_path, as_attachment=True)
 
         result = _get_cached_analysis(dataset_id)
@@ -698,7 +774,8 @@ def download_report(dataset_id):
             _queue_pdf_generation(dataset_id, result)
 
         report_status = _report_status_payload(dataset_id)
-        if report_status["ready"] and pdf_path.exists() and pdf_path.stat().st_size > 0:
+        pdf_path = _trusted_generated_path(report_status.get("pdf_path"), REPORT_DIR)
+        if report_status["ready"] and _is_nonempty_file(pdf_path):
             return send_file(pdf_path, as_attachment=True)
 
         message = (
@@ -706,7 +783,7 @@ def download_report(dataset_id):
             "Please try again shortly."
         )
         if report_status["status"] == "failed":
-            message = f"PDF generation failed: {report_status.get('error', 'Unknown error')}"
+            message = "PDF report generation failed. Check the server logs for details."
         elif result is None:
             message = (
                 "No cached analysis was found for this dataset. "
@@ -715,9 +792,12 @@ def download_report(dataset_id):
         return render_template("error.html", message=message), 202
     except ValueError:
         return render_template("error.html", message="Invalid dataset identifier."), 400
-    except Exception as exc:
+    except Exception:
         app.logger.exception("PDF download failed")
-        return render_template("error.html", message=str(exc)), 500
+        return render_template(
+            "error.html",
+            message="PDF download failed. Check the server logs for details.",
+        ), 500
 
 
 if __name__ == "__main__":
