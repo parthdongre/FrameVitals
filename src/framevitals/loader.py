@@ -10,12 +10,23 @@ from framevitals.security import (
 
 
 UPLOAD_DIR = Path("uploads")
+_SAFE_UPLOAD_SUFFIXES = {
+    ".csv": ".csv",
+    ".tsv": ".tsv",
+    ".xlsx": ".xlsx",
+    ".xls": ".xls",
+    ".json": ".json",
+}
 
 
 def save_uploaded_file(uploaded_file):
     """
     Save a web-uploaded dataset and return its generated dataset ID,
     saved path, and sanitized original filename.
+
+    The storage path is composed only from server-generated data and a suffix
+    selected from a fixed allowlist. The client filename is retained only as
+    sanitized display metadata and never becomes a filesystem path component.
     """
 
     UPLOAD_DIR.mkdir(
@@ -29,9 +40,15 @@ def save_uploaded_file(uploaded_file):
         uploaded_file.filename
     )
 
-    suffix = Path(
+    requested_suffix = Path(
         original_filename
     ).suffix.lower()
+    try:
+        suffix = _SAFE_UPLOAD_SUFFIXES[requested_suffix]
+    except KeyError as exc:
+        # ``validate_file`` should make this unreachable, but keep the storage
+        # boundary independently safe if the validation contract ever changes.
+        raise ValueError("Unsupported upload format.") from exc
 
     dataset_id = uuid4().hex[:12]
 
