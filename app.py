@@ -327,7 +327,7 @@ def _unlink_quietly(path: Path | None) -> None:
     try:
         trusted.unlink(missing_ok=True)
     except OSError:
-        app.logger.warning("Could not remove temporary upload %s", trusted)
+        app.logger.warning("Could not remove temporary upload")
 
 
 @app.route("/")
