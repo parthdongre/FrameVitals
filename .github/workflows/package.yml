@@ -61,6 +61,9 @@ jobs:
           native = list(Path("dist-native").glob("*.whl"))
           assert len(fallback) == 1, f"Expected one fallback wheel, found {len(fallback)}"
           assert len(native) == 1, f"Expected one native wheel, found {len(native)}"
+          assert "-cp311-abi3-" in native[0].name, (
+              f"Native wheel must target the Python 3.11 stable ABI, got {native[0].name}"
+          )
 
           def names(path: Path) -> list[str]:
               with zipfile.ZipFile(path) as archive:
@@ -91,7 +94,7 @@ jobs:
           ), "Native wheel does not contain framevitals._native"
 
           print(f"Portable fallback: {fallback[0].name}")
-          print(f"Native wheel: {native[0].name}")
+          print(f"Native ABI3 wheel: {native[0].name}")
           PY
 
       - name: Validate distributions
