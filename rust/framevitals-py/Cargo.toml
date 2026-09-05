@@ -1,6 +1,6 @@
 [package]
 name = "framevitals-py"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "PyO3 bridge for FrameVitals native kernels"
 license = "MIT"

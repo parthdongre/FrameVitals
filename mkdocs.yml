@@ -16,6 +16,10 @@ theme:
 
 nav:
   - Home: index.md
+  - Configuration: configuration.md
+  - Planning: planning.md
+  - Planner scheduling: planner-scheduling.md
+  - Execution context: execution-context.md
   - Source-aware execution: source-execution.md
   - Execution provenance: execution-provenance.md
   - Result objects: result-objects.md

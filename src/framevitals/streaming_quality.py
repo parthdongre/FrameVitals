@@ -14,6 +14,7 @@ from typing import Any
 import pandas as pd
 
 from framevitals.column_roles import infer_column_roles
+from framevitals.execution import current_execution_policy
 from framevitals.provenance import normalize_execution
 from framevitals.quality_diagnostics import run_quality_diagnostics
 
@@ -102,6 +103,13 @@ def run_streaming_quality_diagnostics(
         raise ValueError("source_rows must be at least 1.")
     if source_columns < 1:
         raise ValueError("source_columns must be at least 1.")
+
+    # Enforce the per-run policy again at the adapter boundary. The outer
+    # streaming orchestrator may request a larger diagnostic floor, but a hard
+    # user cap must never be widened by an internal convenience default.
+    policy = current_execution_policy()
+    if policy.max_sample_rows is not None:
+        max_sample_rows = min(int(max_sample_rows), int(policy.max_sample_rows))
 
     roles = infer_column_roles(sample)
     payload = run_quality_diagnostics(

@@ -22,7 +22,7 @@
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.0.0",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.13.4",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
