@@ -3,10 +3,6 @@ name: Publish FrameVitals to PyPI
 on:
   release:
     types: [published]
-  push:
-    branches: ["release/0.3.0"]
-    paths:
-      - ".github/workflows/release.yml"
 
 permissions:
   contents: read
@@ -14,14 +10,12 @@ permissions:
 jobs:
   build-fallback:
     name: Build portable fallback
-    if: "${{ github.event_name == 'release' || github.event.head_commit.message == 'release: publish FrameVitals 0.3.0' }}"
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'push' && '3f73877d41c3ab30b8c73747bff36841e0bbcab2' || github.event.release.tag_name }}
           persist-credentials: false
 
       - name: Set up Python
@@ -36,7 +30,7 @@ jobs:
 
       - name: Verify release version across Python and Rust packages
         env:
-          RELEASE_TAG: ${{ github.event_name == 'push' && 'v0.3.0' || github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           PYTHONPATH=src python - <<'PY'
           import os
@@ -82,7 +76,6 @@ jobs:
 
   build-native:
     name: Native wheel — ${{ matrix.name }}
-    if: "${{ github.event_name == 'release' || github.event.head_commit.message == 'release: publish FrameVitals 0.3.0' }}"
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -109,7 +102,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'push' && '3f73877d41c3ab30b8c73747bff36841e0bbcab2' || github.event.release.tag_name }}
           persist-credentials: false
 
       - name: Set up Python 3.11 ABI floor
@@ -160,61 +152,9 @@ jobs:
           path: dist/*.whl
           if-no-files-found: error
 
-  stage-github-release:
-    name: Stage GitHub release
-    if: "${{ github.event_name == 'release' || github.event.head_commit.message == 'release: publish FrameVitals 0.3.0' }}"
-    needs: [build-fallback, build-native]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Create v0.3.0 draft release when manually publishing
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view v0.3.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "v0.3.0 release already exists."
-            exit 0
-          fi
-          cat > release-notes.md <<'EOF'
-          # FrameVitals v0.3.0
-
-          FrameVitals 0.3.0 makes execution planning and resource control first-class, hardens monitoring and web paths, and preserves the source-aware Arrow/Rust architecture introduced in 0.2.0.
-
-          ## Highlights
-
-          - Enforceable per-run resource caps for sampled rows, relationship work, memory-heavy parallelism, and ultra-wide streaming profiling.
-          - Deterministic configuration precedence across presets, environment variables, TOML/config mappings, and explicit Python/CLI arguments.
-          - A versioned dependency-aware execution planner with structured module decisions, topological stages, and centralized mode policy.
-          - Reusable per-run `AnalysisContext` state for exactly-once planning intermediates, facts, bounded samples, and metadata-only provenance.
-          - Correct hard-cap enforcement for low sample budgets.
-          - Snapshot integrity validation and monitoring fixes.
-          - Flask/web filesystem, exception-disclosure, and sensitive-path logging hardening.
-          - Compatibility retained for the 0.2 source-aware Arrow/Rust execution model and existing public result contracts.
-
-          ## Install
-
-          ```bash
-          pip install framevitals==0.3.0
-          ```
-
-          FrameVitals 0.3.0 supports Python 3.11, 3.12, and 3.13. Native ABI3 wheels are published for Linux x86_64, macOS arm64, macOS x86_64, and Windows x86_64, alongside a portable fallback wheel and source distribution.
-
-          See `CHANGELOG.md` for the complete release notes.
-          EOF
-          gh release create v0.3.0 \
-            --repo "$GITHUB_REPOSITORY" \
-            --target 3f73877d41c3ab30b8c73747bff36841e0bbcab2 \
-            --title "FrameVitals v0.3.0" \
-            --notes-file release-notes.md \
-            --draft
-
   publish:
     name: Publish distributions to PyPI
-    if: "${{ github.event_name == 'release' || github.event.head_commit.message == 'release: publish FrameVitals 0.3.0' }}"
-    needs: [build-fallback, build-native, stage-github-release]
+    needs: [build-fallback, build-native]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -254,18 +194,3 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-
-  publish-github-release:
-    name: Publish GitHub release
-    if: "${{ github.event_name == 'release' || github.event.head_commit.message == 'release: publish FrameVitals 0.3.0' }}"
-    needs: [publish]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Publish staged v0.3.0 release
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release edit v0.3.0 --repo "$GITHUB_REPOSITORY" --draft=false
