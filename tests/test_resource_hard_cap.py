@@ -1,6 +1,7 @@
 import pandas as pd
 
 import framevitals
+from framevitals.quality_diagnostics import run_quality_diagnostics
 
 
 def test_materialized_quality_diagnostics_respect_subten_hard_cap(monkeypatch):
@@ -35,3 +36,16 @@ def test_materialized_quality_diagnostics_respect_subten_hard_cap(monkeypatch):
 
     assert captured["frame_rows"] == 20
     assert captured["max_sample_rows"] == 4
+
+
+def test_quality_diagnostics_execute_with_subten_cap():
+    frame = pd.DataFrame({
+        "x": list(range(20)),
+        "y": [index * 2 for index in range(20)],
+        "category": ["a", "b"] * 10,
+    })
+
+    result = run_quality_diagnostics(frame, max_sample_rows=4)
+
+    assert result["available"] is True
+    assert result["max_sample_rows"] == 4
