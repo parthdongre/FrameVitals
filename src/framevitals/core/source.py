@@ -179,6 +179,21 @@ def recognize_source(value: Any) -> SourceDescriptor:
                 capabilities=("model_graph", "parameters", "initializers", "operators"),
                 metadata={"framework": "onnx", "format": "onnx"},
             )
+        if suffix in {".graphml", ".gexf", ".gml"}:
+            return SourceDescriptor(
+                kind=SourceKind.GRAPH,
+                python_type=_type_name(value),
+                capabilities=(
+                    "file",
+                    "topology",
+                    "connectivity",
+                    "centrality",
+                    "communities",
+                    "shortest_paths",
+                    "attributes",
+                ),
+                metadata={"format": suffix.lstrip(".")},
+            )
         return SourceDescriptor(
             kind=SourceKind.TABULAR,
             python_type=_type_name(value),
