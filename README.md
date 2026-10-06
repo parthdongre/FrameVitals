@@ -2,9 +2,9 @@
 
 # FrameVitals
 
-### Know if your data is healthy, stable, and ML-ready — before your model finds out.
+### Analyze, diagnose, clean, compare, model, and report on tabular data from one toolkit.
 
-**FrameVitals is a source-aware Python toolkit for data health, drift detection, anomaly analysis, data contracts, quality gates, and ML-readiness diagnostics on tabular data.**
+**FrameVitals is an open-source, source-aware Python data analysis toolkit for profiling, data quality, statistics, drift detection, anomaly analysis, data contracts, cleaning, ML readiness, model diagnostics, and shareable reports on tabular data.**
 
 🌐 **Website:** https://framevitals.vercel.app/
 
