@@ -71,6 +71,29 @@ def _safe_float(value: Any) -> float | None:
     return result if math.isfinite(result) else None
 
 
+def _detect_weight_attribute(graph: Any, *, sample_edges: int = 256) -> str | None:
+    """Use a conventional non-negative numeric weight attribute when it is reliable."""
+    checked = 0
+    valid = 0
+    try:
+        iterator = graph.edges(data=True)
+    except Exception:
+        return None
+
+    for _, _, data in iterator:
+        checked += 1
+        value = data.get("weight") if isinstance(data, dict) else None
+        numeric = _safe_float(value)
+        if numeric is not None and numeric >= 0:
+            valid += 1
+        if checked >= sample_edges:
+            break
+
+    if checked == 0:
+        return None
+    return "weight" if valid / checked >= 0.80 else None
+
+
 def _health_label(score: float) -> str:
     if score >= 90:
         return "healthy"
@@ -365,11 +388,12 @@ def analyze_graph(
     self_loops = int(nx.number_of_selfloops(graph)) if n else 0
     density = float(nx.density(graph)) if n > 1 else 0.0
 
+    resolved_weight = weight or _detect_weight_attribute(graph)
     paths = _sample_shortest_paths(
         graph,
         nx,
         source_count=budget["path_sources"],
-        weight=weight,
+        weight=resolved_weight,
     )
     centrality = _centrality_summary(graph, nx, budget)
     cuts = _cut_structure(graph, nx, budget)
@@ -494,6 +518,7 @@ def analyze_graph(
         "density": round(density, 8),
         "isolates": len(isolates),
         "self_loops": self_loops,
+        "weight_attribute": resolved_weight,
         "degree": degrees,
         "components": components,
         "shortest_paths": paths,
