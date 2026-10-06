@@ -320,3 +320,90 @@ def test_onnx_independent_output_branches_are_not_false_disconnected(tmp_path):
         item["code"] == "model.onnx.disconnected"
         for item in result.beacons
     )
+
+
+
+def test_graph_file_prism_tide_core_and_spectral_diagnostics(tmp_path):
+    nx = pytest.importorskip("networkx")
+
+    first_graph = nx.cycle_graph(12)
+    second_graph = nx.path_graph(12)
+
+    first = tmp_path / "first.graphml"
+    second = tmp_path / "second.graphml"
+    nx.write_graphml(first_graph, first)
+    nx.write_graphml(second_graph, second)
+
+    inspected = fv.inspect_source(first)
+    assert inspected["kind"] == "graph"
+    assert inspected["metadata"]["format"] == "graphml"
+
+    result = fv.prism(first, depth="quick")
+    graph = result.analysis["graph"]
+
+    assert result.analysis["source_kind"] == "graph"
+    assert graph["nodes"] == 12
+    assert graph["core"]["available"] is True
+    assert graph["core"]["max_core"] >= 2
+    assert graph["spectral"]["available"] is True
+    assert graph["spectral"]["spectral_radius"] > 0
+
+    change = fv.tide(first, second)
+    assert change["source_kind"] == "graph"
+    assert change["graph"]["degree_js_distance"] > 0
+
+
+def test_transformer_architecture_diagnostics_are_exposed():
+    torch = pytest.importorskip("torch")
+    nn = torch.nn
+
+    class TinyTransformer(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.embed = nn.Embedding(32, 8)
+            self.attn = nn.MultiheadAttention(8, 2, batch_first=True)
+            self.norm = nn.LayerNorm(8)
+
+        def forward(self, token_ids):
+            x = self.embed(token_ids)
+            out, _ = self.attn(x, x, x, need_weights=False)
+            return self.norm(out)
+
+    model = TinyTransformer()
+    result = fv.prism(model, depth="quick")
+    report = result.analysis["model"]
+
+    assert report["architecture"] == "transformer"
+    details = report["architecture_diagnostics"]["transformer"]
+    assert details["available"] is True
+    assert details["attention_modules"]
+    assert details["attention_modules"][0]["heads"] == 2
+    assert details["embeddings"]
+    assert details["normalization"]
+
+
+def test_recurrent_architecture_diagnostics_include_gate_spectra():
+    torch = pytest.importorskip("torch")
+    nn = torch.nn
+
+    class TinyRecurrent(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.rnn = nn.LSTM(input_size=4, hidden_size=4, num_layers=1)
+            self.out = nn.Linear(4, 1)
+
+        def forward(self, x):
+            values, _ = self.rnn(x)
+            return self.out(values)
+
+    model = TinyRecurrent()
+    result = fv.prism(model, depth="quick")
+    report = result.analysis["model"]
+
+    assert report["architecture"] == "recurrent"
+    details = report["architecture_diagnostics"]["recurrent"]
+    assert details["available"] is True
+    assert details["modules"]
+    layer = details["modules"][0]["layers"][0]
+    assert len(layer["gate_norms"]) == 4
+    assert len(layer["spectral_radii"]) == 4
