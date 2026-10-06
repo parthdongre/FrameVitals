@@ -100,6 +100,11 @@ def _leaf_modules(model: Any) -> list[tuple[str, Any]]:
             children = []
         if not children:
             output.append((name, module))
+
+    # A model can itself be a single leaf module (for example nn.Linear).
+    # named_modules then exposes only the unnamed root.
+    if not output:
+        output.append(("<root>", model))
     return output
 
 
