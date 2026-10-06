@@ -47,15 +47,6 @@ function severityForScore(s: number): "high" | "medium" | "low" | "muted" {
   return "muted";
 }
 
-function colorForScore(s: number): string {
-  // Continuous gradient from slate (low) → amber → rose (high)
-  if (s >= 0.85) return "rgba(244,63,94,0.85)"; // rose
-  if (s >= 0.6) return "rgba(251,146,60,0.85)"; // orange
-  if (s >= 0.4) return "rgba(245,158,11,0.7)"; // amber
-  if (s >= 0.2) return "rgba(56,189,248,0.55)"; // sky
-  return "rgba(148,163,184,0.35)"; // slate
-}
-
 export function AnomalyEnsemblePanel({ anomalies }: AnomalyEnsemblePanelProps) {
   if (!anomalies) return null;
 
@@ -72,7 +63,7 @@ export function AnomalyEnsemblePanel({ anomalies }: AnomalyEnsemblePanelProps) {
         </CardHeader>
         <CardContent className="p-6">
           <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-sm text-slate-400">
-            {anomalies.message ?? "Anomaly ensemble unavailable for this dataset."}
+            {anomalies.message ?? "Irregularity view unavailable for this dataset."}
           </div>
         </CardContent>
       </Card>
