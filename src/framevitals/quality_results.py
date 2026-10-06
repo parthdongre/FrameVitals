@@ -200,6 +200,19 @@ class DriftResult(_QualityResult):
             ])
             return "\n".join(lines)
 
+        if source_kind == "relational":
+            relational = self.get("relational", {})
+            if not isinstance(relational, dict):
+                relational = {}
+            lines.extend([
+                f"Tables          {relational.get('reference_table_count', '?')} -> {relational.get('current_table_count', '?')}",
+                f"Added tables    {len(relational.get('added_tables', []))}",
+                f"Removed tables  {len(relational.get('removed_tables', []))}",
+                f"Row changes     {len(relational.get('row_changes', {}))}",
+                f"Schema changes  {len(relational.get('column_changes', {}))}",
+            ])
+            return "\n".join(lines)
+
         if source_kind == "graph":
             graph = self.get("graph", {})
             if not isinstance(graph, dict):
