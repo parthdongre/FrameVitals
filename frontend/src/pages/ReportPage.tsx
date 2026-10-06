@@ -6,7 +6,6 @@ import { useHashRoute } from "@/router/HashRouter";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Tabs } from "@/components/ui/Tabs";
-import { HowThisWorks } from "@/components/site/HowThisWorks";
 import { findTab, REPORT_TABS } from "./report/tabRegistry";
 import { tabVariants } from "@/components/site/Variants";
 import { setAnalysis as cacheAnalysis, getAnalysis, subscribeAnalysis } from "@/lib/analysisStore";
@@ -63,12 +62,12 @@ export function ReportPage({ telemetry, onNavigate }: ReportPageProps) {
   if (!hasAnalysis) {
     return (
       <Section className="pt-6">
-        <Eyebrow>Report</Eyebrow>
-        <PageTitle subtitle="Run the analyzer first, then come back here for the structured report. The cache is per-session — refresh the analyze page to start a new one.">
-          No analysis yet.
+        <Eyebrow>Prism report</Eyebrow>
+        <PageTitle subtitle="Run Prism first, then return here for the report.">
+          No Prism result yet.
         </PageTitle>
         <button onClick={() => onNavigate("analyze")} className="btn-primary">
-          Go to Analyze →
+          Run Prism →
         </button>
       </Section>
     );
@@ -119,7 +118,7 @@ function ReportShell({
             mode ? ` · mode ${mode.toUpperCase()}` : ""
           }`}
         >
-          Read the report.
+          Prism, resolved.
         </PageTitle>
 
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
@@ -134,7 +133,7 @@ function ReportShell({
             </a>
           ) : null}
           <button onClick={() => onNavigate("analyze")} className="btn-ghost">
-            Run again
+            Run Prism again
           </button>
         </div>
       </Section>
@@ -172,13 +171,6 @@ function ReportShell({
                 )}
               </Suspense>
             </ErrorBoundary>
-
-            <HowThisWorks
-              title={active.howItWorks.title}
-              body={active.howItWorks.body}
-              algorithms={active.howItWorks.algorithms}
-              source={active.howItWorks.source}
-            />
           </motion.section>
         </AnimatePresence>
       </Section>
