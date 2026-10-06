@@ -13,8 +13,14 @@ authors = [
     { name = "Parth Dongre" }
 ]
 keywords = [
+    "data-analysis",
+    "exploratory-data-analysis",
     "data-quality",
     "data-profiling",
+    "data-validation",
+    "data-cleaning",
+    "data-observability",
+    "statistics",
     "machine-learning",
     "anomaly-detection",
     "data-drift",
