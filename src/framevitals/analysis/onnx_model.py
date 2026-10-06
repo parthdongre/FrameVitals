@@ -174,15 +174,14 @@ def inspect_onnx(path: str | Path) -> dict[str, Any]:
     for item in initializers:
         dtype_counts[item["dtype"]] += int(item["elements"])
 
-    disconnected_nodes = 0
+    components = 0
+    largest_component = 0
     if nodes:
         undirected: defaultdict[int, set[int]] = defaultdict(set)
         for left, right in edges:
             undirected[left].add(right)
             undirected[right].add(left)
         seen: set[int] = set()
-        components = 0
-        largest_component = 0
         for start in range(len(nodes)):
             if start in seen:
                 continue
@@ -198,10 +197,35 @@ def inspect_onnx(path: str | Path) -> dict[str, Any]:
                         seen.add(nxt)
                         stack.append(nxt)
             largest_component = max(largest_component, size)
-        disconnected_nodes = len(nodes) - largest_component
-    else:
-        components = 0
-        largest_component = 0
+
+    # Independent branches can be perfectly valid in multi-output ONNX graphs.
+    # The stronger diagnostic is whether a node contributes to any declared
+    # graph output. Walk the dataflow graph backwards from output-producing
+    # nodes and flag only nodes outside that backward-reachable set.
+    reverse_adjacency: defaultdict[int, list[int]] = defaultdict(list)
+    for left, right in edges:
+        reverse_adjacency[right].append(left)
+
+    output_producers = {
+        producers[name]
+        for name in graph_outputs
+        if name in producers
+    }
+    reaches_output = set(output_producers)
+    stack = list(output_producers)
+    while stack:
+        current = stack.pop()
+        for previous in reverse_adjacency.get(current, []):
+            if previous not in reaches_output:
+                reaches_output.add(previous)
+                stack.append(previous)
+
+    unreachable_output_nodes = [
+        node_names[index]
+        for index in range(len(nodes))
+        if index not in reaches_output
+    ]
+    disconnected_nodes = len(unreachable_output_nodes)
 
     architecture = _architecture(operator_counts, [item["name"] for item in initializers])
 
@@ -224,6 +248,7 @@ def inspect_onnx(path: str | Path) -> dict[str, Any]:
         "components": components,
         "largest_component_nodes": largest_component,
         "disconnected_nodes": disconnected_nodes,
+        "unreachable_output_nodes": unreachable_output_nodes,
         "graph_inputs": graph_inputs,
         "external_inputs": truly_external_inputs,
         "graph_outputs": graph_outputs,
@@ -287,14 +312,15 @@ def analyze_onnx(path: str | Path, *, depth: str | None = None) -> AnalysisResul
     if summary["disconnected_nodes"]:
         findings.append(beacon(
             "model.onnx.disconnected",
-            "The operator graph contains disconnected regions",
+            "Some ONNX operators do not contribute to a declared output",
             severity="high",
             confidence=1.0,
-            summary=f"{summary['disconnected_nodes']} nodes sit outside the largest graph component.",
-            recommendation="Inspect disconnected branches and export-time artifacts.",
+            summary=f"{summary['disconnected_nodes']} nodes cannot reach any declared graph output.",
+            recommendation="Inspect dead computation branches, pruning, and export-time artifacts.",
             evidence={
                 "components": summary["components"],
                 "disconnected_nodes": summary["disconnected_nodes"],
+                "nodes": summary["unreachable_output_nodes"][:50],
             },
         ))
 
