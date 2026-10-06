@@ -19,34 +19,58 @@ from framevitals.result import AnalysisResult
 _DEPTH_BUDGETS = {
     "quick": {
         "path_sources": 6,
+        "path_nodes": 100_000,
+        "path_edges": 250_000,
         "betweenness_sources": 12,
+        "centrality_nodes": 20_000,
         "centrality_edges": 80_000,
+        "community_nodes": 20_000,
         "community_edges": 40_000,
+        "cut_nodes": 50_000,
         "cut_edges": 60_000,
+        "clustering_nodes": 20_000,
         "clustering_edges": 40_000,
     },
     "standard": {
         "path_sources": 12,
+        "path_nodes": 250_000,
+        "path_edges": 600_000,
         "betweenness_sources": 24,
+        "centrality_nodes": 75_000,
         "centrality_edges": 250_000,
+        "community_nodes": 75_000,
         "community_edges": 150_000,
+        "cut_nodes": 150_000,
         "cut_edges": 200_000,
+        "clustering_nodes": 60_000,
         "clustering_edges": 120_000,
     },
     "deep": {
         "path_sources": 24,
+        "path_nodes": 500_000,
+        "path_edges": 1_500_000,
         "betweenness_sources": 48,
+        "centrality_nodes": 200_000,
         "centrality_edges": 600_000,
+        "community_nodes": 200_000,
         "community_edges": 400_000,
+        "cut_nodes": 350_000,
         "cut_edges": 500_000,
+        "clustering_nodes": 150_000,
         "clustering_edges": 300_000,
     },
     "research": {
         "path_sources": 48,
+        "path_nodes": 1_000_000,
+        "path_edges": 3_000_000,
         "betweenness_sources": 96,
+        "centrality_nodes": 500_000,
         "centrality_edges": 1_500_000,
+        "community_nodes": 500_000,
         "community_edges": 1_000_000,
+        "cut_nodes": 750_000,
         "cut_edges": 1_000_000,
+        "clustering_nodes": 300_000,
         "clustering_edges": 750_000,
     },
 }
@@ -261,7 +285,7 @@ def _centrality_summary(
     if not n:
         return result
 
-    if m <= budget["centrality_edges"]:
+    if n <= budget["centrality_nodes"] and m <= budget["centrality_edges"]:
         try:
             pagerank = nx.pagerank(
                 graph,
@@ -293,11 +317,13 @@ def _centrality_summary(
         result["pagerank"] = {
             "available": False,
             "reason": "resource_budget",
+            "node_limit": budget["centrality_nodes"],
             "edge_limit": budget["centrality_edges"],
         }
         result["betweenness"] = {
             "available": False,
             "reason": "resource_budget",
+            "node_limit": budget["centrality_nodes"],
             "edge_limit": budget["centrality_edges"],
         }
 
@@ -305,11 +331,13 @@ def _centrality_summary(
 
 
 def _cut_structure(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, Any]:
+    n = graph.number_of_nodes()
     m = graph.number_of_edges()
-    if m > budget["cut_edges"]:
+    if n > budget["cut_nodes"] or m > budget["cut_edges"]:
         return {
             "available": False,
             "reason": "resource_budget",
+            "node_limit": budget["cut_nodes"],
             "edge_limit": budget["cut_edges"],
         }
 
@@ -336,11 +364,17 @@ def _community_summary(
     *,
     weight: str | None = None,
 ) -> dict[str, Any]:
+    n = graph.number_of_nodes()
     m = graph.number_of_edges()
-    if m > budget["community_edges"] or graph.number_of_nodes() < 2:
+    over_budget = (
+        n > budget["community_nodes"]
+        or m > budget["community_edges"]
+    )
+    if over_budget or n < 2:
         return {
             "available": False,
-            "reason": "resource_budget" if m > budget["community_edges"] else "too_small",
+            "reason": "resource_budget" if over_budget else "too_small",
+            "node_limit": budget["community_nodes"],
             "edge_limit": budget["community_edges"],
         }
 
@@ -380,11 +414,13 @@ def _community_summary(
 
 
 def _clustering_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, Any]:
+    n = graph.number_of_nodes()
     m = graph.number_of_edges()
-    if m > budget["clustering_edges"]:
+    if n > budget["clustering_nodes"] or m > budget["clustering_edges"]:
         return {
             "available": False,
             "reason": "resource_budget",
+            "node_limit": budget["clustering_nodes"],
             "edge_limit": budget["clustering_edges"],
         }
     try:
@@ -432,12 +468,22 @@ def analyze_graph(
     density = float(nx.density(graph)) if n > 1 else 0.0
 
     resolved_weight = weight or _detect_weight_attribute(graph)
-    paths = _sample_shortest_paths(
-        graph,
-        nx,
-        source_count=budget["path_sources"],
-        weight=resolved_weight,
-    )
+    if n > budget["path_nodes"] or m > budget["path_edges"]:
+        paths = {
+            "available": False,
+            "reason": "resource_budget",
+            "node_limit": budget["path_nodes"],
+            "edge_limit": budget["path_edges"],
+            "weighted": bool(resolved_weight),
+            "weight_attribute": resolved_weight,
+        }
+    else:
+        paths = _sample_shortest_paths(
+            graph,
+            nx,
+            source_count=budget["path_sources"],
+            weight=resolved_weight,
+        )
     centrality = _centrality_summary(
         graph,
         nx,
