@@ -5,48 +5,48 @@ export function AboutPage() {
     <>
       <Section className="pb-12 pt-6">
         <Eyebrow>About</Eyebrow>
-        <PageTitle subtitle="FrameVitals is an installable Python package with optional web interfaces for structured tabular-data diagnostics. The analysis engine is evidence-first, while AI-assisted interpretation is an optional layer rather than a requirement.">
-          What this is, and isn't.
+        <PageTitle subtitle="FrameVitals is an open-source Python toolkit for understanding, trusting, transforming, comparing, and monitoring tabular data through a small protocol-first interface.">
+          Data analysis without the assembly work.
         </PageTitle>
       </Section>
 
-      <Hr label="Architecture" />
+      <Hr label="Design" />
 
       <Section>
         <SectionHeader
-          eyebrow="One pipeline"
-          title="Multiple lenses, one orchestrator."
-          description="A six-phase orchestrator runs profiling, quality scoring, deep statistics, anomaly analysis, modelling, time-series and text analysis, cleaning, visualization, and optional AI interpretation. Independent compute-heavy phases can run in parallel."
+          eyebrow="Protocol-first"
+          title="Choose the intent. FrameVitals handles the workflow."
+          description="The public experience is organized around Prism, Axiom, Forge, Tide, and Pulse. The implementation remains inspectable in the documentation and source code without turning the product surface into a list of internal stages."
         />
 
         <div className="grid gap-x-12 gap-y-8 md:grid-cols-2">
-          <Stat label="Core" value="Python 3.11–3.13 · pandas · NumPy" />
-          <Stat label="Web" value="Flask · React · Vite · Streamlit" />
-          <Stat label="Charts" value="Highcharts · seaborn · matplotlib" />
-          <Stat label="ML" value="scikit-learn · optional XGBoost / LightGBM / SHAP" />
-          <Stat label="Stats" value="SciPy · statsmodels" />
-          <Stat label="AI" value="Optional Ollama client with deterministic fallbacks" />
+          <Stat label="Prism" value="Understand a dataset as one coherent report." />
+          <Stat label="Axiom" value="Establish and test expectations." />
+          <Stat label="Forge" value="Prepare and apply careful transformations." />
+          <Stat label="Tide" value="Read meaningful change between dataset states." />
+          <Stat label="Pulse" value="Capture compact health states over time." />
+          <Stat label="Principle" value="Evidence first, protocol surface second, internals documented." />
         </div>
       </Section>
 
-      <Hr label="Honesty" />
+      <Hr label="Boundaries" />
 
       <Section>
-        <SectionHeader eyebrow="What it is" title="A structured, reproducible diagnostic report." />
+        <SectionHeader eyebrow="What it is" title="A structured, reproducible analysis layer." />
         <ul className="space-y-3 text-[14px] leading-7 text-[var(--ink-2)]">
-          <li>· Core diagnostics run without an LLM or cloud service.</li>
-          <li>· The model leaderboard is a baseline, not a tuned production model.</li>
-          <li>· Anomaly scores are signals from multiple detectors, not proof that a row is invalid.</li>
-          <li>· Optional AI summaries are grounded in structured analysis output and should still be reviewed.</li>
+          <li>· Designed to turn raw tabular data into a coherent set of findings and next actions.</li>
+          <li>· Built so protocol results can be inspected, exported, and reproduced.</li>
+          <li>· Intended to complement domain expertise rather than replace it.</li>
+          <li>· Optional interpretation features remain secondary to computed evidence.</li>
         </ul>
       </Section>
 
       <Section>
-        <SectionHeader eyebrow="And isn't" title="Not a replacement for expert judgment." />
+        <SectionHeader eyebrow="What it isn't" title="Not a black box." />
         <ul className="space-y-3 text-[14px] leading-7 text-[var(--ink-2)]">
-          <li>· Not a replacement for statistical sign-off on regulated decisions.</li>
-          <li>· Not a forensic tool — flagged rows can be valid.</li>
-          <li>· Not a black-box AutoML system — it surfaces structure and evidence for you to interpret.</li>
+          <li>· Protocol names simplify the user experience; they do not hide the implementation from developers.</li>
+          <li>· Findings are signals to investigate, not automatic proof that data is wrong.</li>
+          <li>· Model-oriented outputs are analytical baselines, not production sign-off.</li>
         </ul>
       </Section>
     </>
