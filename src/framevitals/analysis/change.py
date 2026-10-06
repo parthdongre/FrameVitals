@@ -212,8 +212,14 @@ def compare_graphs(reference: Any, current: Any) -> DriftResult:
     ref_m = int(reference.number_of_edges())
     cur_m = int(current.number_of_edges())
 
-    ref_density = float(reference.number_of_edges()) / max(1, ref_n * max(1, ref_n - 1))
-    cur_density = float(current.number_of_edges()) / max(1, cur_n * max(1, cur_n - 1))
+    try:
+        import networkx as nx
+
+        ref_density = float(nx.density(reference))
+        cur_density = float(nx.density(current))
+    except Exception:
+        ref_density = 0.0
+        cur_density = 0.0
 
     ref_p, cur_p = _rebin_degrees(reference, current)
     degree_js = (
