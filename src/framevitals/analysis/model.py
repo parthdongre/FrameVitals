@@ -101,7 +101,10 @@ def _gradient_summary(named_parameters: list[tuple[str, Any]], sample_limit: int
         if grad is None:
             continue
         present += 1
-        values = _sample_tensor(grad, sample_limit)
+        try:
+            values = _sample_tensor(grad, sample_limit)
+        except Exception:
+            continue
         if values.size == 0:
             continue
         if not np.isfinite(values).all():
