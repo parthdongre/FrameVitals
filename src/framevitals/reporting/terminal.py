@@ -82,8 +82,6 @@ def _source_lines(result: Mapping[str, Any]) -> list[str]:
             f"Isolated      {len(relational.get('isolated_tables', []) or [])}",
         ]
 
-    profile = result.get("profile", {}) or {}
-    shape = profile.get("shape", {}) or {}
     return [
         "Kind          TABULAR",
         f"Shape         {shape.get('rows', '?')} rows x {shape.get('columns', '?')} columns",
