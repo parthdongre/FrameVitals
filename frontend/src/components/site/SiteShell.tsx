@@ -76,7 +76,7 @@ function TopNav({ route, onNavigate }: { route: Route; onNavigate: (r: Route) =>
             FrameVitals
           </span>
           <span className="hidden font-mono text-[10px] uppercase tracking-[0.32em] text-[var(--ink-4)] sm:inline">
-            0.1 dev
+            0.3 dev
           </span>
         </button>
 
@@ -119,7 +119,7 @@ function Footer() {
       <div className="hr-rule mb-6">FIN</div>
       <div className="flex flex-col gap-4 text-[12px] text-[var(--ink-3)] sm:flex-row sm:items-center sm:justify-between">
         <span className="font-mono uppercase tracking-[0.32em]">
-          FrameVitals · protocol-first data analysis
+          FrameVitals · protocol-first structured diagnostics
         </span>
         <div className="flex flex-wrap gap-x-6 gap-y-1">
           <a href="https://framevitals.vercel.app/" className="hover:text-[var(--ink-1)]">Website</a>
