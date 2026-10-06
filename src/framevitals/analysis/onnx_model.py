@@ -7,7 +7,6 @@ from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 
 from framevitals.core.beacons import beacon
 from framevitals.quality_results import DriftResult
