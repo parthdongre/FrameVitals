@@ -144,38 +144,85 @@ def tensor_metrics(
 
     matrix = _full_matrix(tensor)
     if matrix is not None and np.isfinite(matrix).all():
+        min_dim = min(matrix.shape)
+        matrix_elements = int(matrix.size)
+        frobenius_sq = float(np.sum(matrix * matrix))
         try:
-            singular = np.linalg.svd(matrix, compute_uv=False)
-            if singular.size:
-                tol = max(matrix.shape) * np.finfo(float).eps * float(singular[0])
-                rank = int(np.sum(singular > tol))
-                nonzero = singular[singular > tol]
-                condition = (
-                    float(singular[0] / nonzero[-1])
-                    if nonzero.size
-                    else math.inf
+            if matrix_elements <= 250_000 or min_dim <= 64:
+                singular = np.linalg.svd(matrix, compute_uv=False)
+                if singular.size:
+                    tol = max(matrix.shape) * np.finfo(float).eps * float(singular[0])
+                    rank = int(np.sum(singular > tol))
+                    nonzero = singular[singular > tol]
+                    condition = (
+                        float(singular[0] / nonzero[-1])
+                        if nonzero.size
+                        else math.inf
+                    )
+                    energy = singular**2
+                    total_energy = float(np.sum(energy))
+                    effective_rank = 0.0
+                    if total_energy > 0:
+                        probs = energy / total_energy
+                        probs = probs[probs > 0]
+                        entropy = -float(np.sum(probs * np.log(probs)))
+                        effective_rank = float(np.exp(entropy))
+                    stable_rank = (
+                        frobenius_sq / float(singular[0] ** 2)
+                        if singular[0] > 0 else 0.0
+                    )
+                    result["matrix"] = {
+                        "method": "exact_svd",
+                        "approximate": False,
+                        "rank": rank,
+                        "rank_ratio": round(rank / max(1, min_dim), 8),
+                        "effective_rank": round(effective_rank, 6),
+                        "stable_rank": round(stable_rank, 6),
+                        "stable_rank_ratio": round(stable_rank / max(1, min_dim), 8),
+                        "condition_number": (
+                            round(condition, 6) if math.isfinite(condition) else None
+                        ),
+                        "largest_singular_value": round(float(singular[0]), 8),
+                        "smallest_nonzero_singular_value": (
+                            round(float(nonzero[-1]), 8) if nonzero.size else None
+                        ),
+                    }
+            else:
+                from sklearn.utils.extmath import randomized_svd
+
+                components = min(64, max(1, min_dim - 1))
+                _, singular, _ = randomized_svd(
+                    matrix,
+                    n_components=components,
+                    n_iter=3,
+                    random_state=42,
                 )
-                energy = singular**2
-                total_energy = float(np.sum(energy))
-                effective_rank = 0.0
-                if total_energy > 0:
-                    probs = energy / total_energy
-                    probs = probs[probs > 0]
-                    entropy = -float(np.sum(probs * np.log(probs)))
-                    effective_rank = float(np.exp(entropy))
-                result["matrix"] = {
-                    "rank": rank,
-                    "rank_ratio": round(rank / max(1, min(matrix.shape)), 8),
-                    "effective_rank": round(effective_rank, 6),
-                    "condition_number": (
-                        round(condition, 6) if math.isfinite(condition) else None
-                    ),
-                    "largest_singular_value": round(float(singular[0]), 8),
-                    "smallest_nonzero_singular_value": (
-                        round(float(nonzero[-1]), 8) if nonzero.size else None
-                    ),
-                }
-        except np.linalg.LinAlgError:
+                if singular.size:
+                    captured_energy = float(np.sum(singular**2))
+                    effective_rank = 0.0
+                    if captured_energy > 0:
+                        probs = (singular**2) / captured_energy
+                        probs = probs[probs > 0]
+                        entropy = -float(np.sum(probs * np.log(probs)))
+                        effective_rank = float(np.exp(entropy))
+                    stable_rank = (
+                        frobenius_sq / float(singular[0] ** 2)
+                        if singular[0] > 0 else 0.0
+                    )
+                    result["matrix"] = {
+                        "method": "randomized_svd",
+                        "approximate": True,
+                        "components": int(components),
+                        "effective_rank_topk": round(effective_rank, 6),
+                        "stable_rank": round(stable_rank, 6),
+                        "stable_rank_ratio": round(stable_rank / max(1, min_dim), 8),
+                        "captured_energy_ratio": (
+                            round(captured_energy / frobenius_sq, 8)
+                            if frobenius_sq > 0 else 0.0
+                        ),
+                        "largest_singular_value": round(float(singular[0]), 8),
+                    }
+        except (np.linalg.LinAlgError, ValueError):
             result["matrix"] = {"available": False, "reason": "svd_did_not_converge"}
 
     return result
@@ -247,6 +294,7 @@ def analyze_tensor(
 
     matrix = metrics.get("matrix") or {}
     rank_ratio = matrix.get("rank_ratio")
+    stable_rank_ratio = matrix.get("stable_rank_ratio")
     if isinstance(rank_ratio, (float, int)) and rank_ratio < 0.50:
         findings.append(
             beacon(
@@ -256,6 +304,25 @@ def analyze_tensor(
                 confidence=0.98,
                 summary=f"Observed rank uses only {float(rank_ratio):.1%} of available dimensions.",
                 recommendation="Inspect redundant dimensions, collapsed features, or degenerate weights.",
+                evidence=dict(matrix),
+            )
+        )
+    elif (
+        bool(matrix.get("approximate"))
+        and isinstance(stable_rank_ratio, (float, int))
+        and float(stable_rank_ratio) < 0.10
+    ):
+        findings.append(
+            beacon(
+                "tensor.low_effective_dimension",
+                "The matrix has very low stable rank",
+                severity="medium",
+                confidence=0.9,
+                summary=(
+                    f"Stable rank uses about {float(stable_rank_ratio):.1%} "
+                    "of available dimensions."
+                ),
+                recommendation="Inspect redundant or collapsed representation dimensions.",
                 evidence=dict(matrix),
             )
         )
@@ -279,6 +346,14 @@ def analyze_tensor(
     score -= min(20.0, max(0.0, zero_fraction - 0.80) * 100.0)
     if isinstance(rank_ratio, (float, int)):
         score -= min(25.0, max(0.0, 0.75 - float(rank_ratio)) * 50.0)
+    elif (
+        isinstance(stable_rank_ratio, (float, int))
+        and bool(matrix.get("approximate"))
+    ):
+        score -= min(
+            15.0,
+            max(0.0, 0.20 - float(stable_rank_ratio)) * 50.0,
+        )
     if isinstance(condition, (float, int)) and condition >= 1.0e8:
         score -= 10.0
     score = round(max(0.0, min(100.0, score)), 2)
