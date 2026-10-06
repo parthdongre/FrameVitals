@@ -15,7 +15,6 @@ import {
   Sparkles,
   Stethoscope,
   Table as TableIcon,
-  Timer,
   Waves,
 } from "lucide-react";
 import type { DashboardTelemetry } from "@/data/payload";
@@ -57,7 +56,7 @@ export const REPORT_TABS: TabDef[] = [
   },
   {
     id: "anomalies",
-    label: "Anomalies",
+    label: "Irregularity",
     Icon: AlertTriangle,
     hasData: (a) => {
       const adv = (a as unknown as { advanced?: { anomalies?: unknown } }).advanced;
@@ -146,13 +145,6 @@ export const REPORT_TABS: TabDef[] = [
     Icon: Eye,
     hasData: (a) => safeArr((a.profile as any)?.preview).length > 0,
     Component: lazy(() => import("./DataPreviewTab")),
-  },
-  {
-    id: "timings",
-    label: "Timing",
-    Icon: Timer,
-    hasData: (a) => isPresent((a as any).timings_ms),
-    Component: lazy(() => import("./TimingsTab")),
   },
   {
     id: "ask",
