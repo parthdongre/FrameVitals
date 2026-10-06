@@ -167,18 +167,37 @@ Each analysis includes `source_kind` so reporting layers can render
 modality-specific summaries without leaking algorithm choreography into the
 normal product UI.
 
+## Structured Tide
+
+Tide now dispatches by source kind as well:
+
+```python
+tensor_change = fv.tide(weights_v1, weights_v2)
+graph_change = fv.tide(graph_january, graph_february)
+model_change = fv.tide(checkpoint_model_a, checkpoint_model_b)
+```
+
+Tensor Tide reports aligned relative-L2 movement, cosine similarity,
+Wasserstein distance, dtype/shape changes, and bounded rank changes.
+
+Graph Tide reports node churn, node/edge count changes, density change, and
+Jensen-Shannon distance between degree distributions.
+
+Model Tide aligns parameters by name and reports additions/removals, shape and
+dtype changes, relative-L2 movement, cosine similarity, Wasserstein movement,
+and the most changed parameter tensors.
+
 ## Current limitations
 
-Reference-aware Axiom/Tide orchestration is still tabular in this first adapter
-release. Passing `reference=` or an Axiom to graph/tensor/model Prism currently
-raises an explicit `NotImplementedError` rather than silently applying tabular
-semantics.
+Reference-aware Axiom orchestration is still tabular in this adapter release.
+Passing a tabular Axiom/reference into graph/tensor/model Prism raises explicitly
+rather than silently applying tabular semantics. Structured Tide requires both
+inputs to be the same source kind.
 
 The next planned structured phases are:
 
-1. graph/tensor/model Tide comparison;
-2. model checkpoint and Safetensors inspection;
-3. ONNX graph + initializer analysis;
-4. temporary PyTorch forward/backward hooks for activation and gradient flow;
-5. nested JSON/Arrow-struct diagnostics;
-6. relational multi-table sources.
+1. Safetensors and checkpoint-file inspection;
+2. ONNX graph + initializer analysis;
+3. persistent Pulse histories for training/model state;
+4. nested JSON/Arrow-struct diagnostics;
+5. relational multi-table sources.
