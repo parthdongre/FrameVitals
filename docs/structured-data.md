@@ -341,3 +341,34 @@ Snapshots store compact modality-specific state rather than raw data or model
 weights. Existing SnapshotHistory can therefore track health, Beacons, model
 runtime summaries, optimizer configuration, graph size/connectivity, tensor
 rank/sparsity, nested structural health, and relational schema state over time.
+
+
+## Structured Axiom
+
+Axiom now works across implemented structured sources:
+
+```python
+graph_contract = fv.axiom(reference_graph)
+graph_check = fv.axiom(reference_graph, current=current_graph)
+
+tensor_check = fv.axiom(reference_tensor, current=current_tensor)
+model_check = fv.axiom(reference_model, current=current_model)
+nested_check = fv.axiom(reference_payload, current=current_payload)
+relational_check = fv.axiom(reference_project, current=current_project)
+```
+
+Structured contracts remain modality-specific:
+
+- graph contracts capture directionality, multigraph semantics, bounded node
+  counts, isolate tolerance, and minimum largest-component coverage;
+- tensor contracts capture shape, dtype, finite-value expectations, and bounded
+  rank floors;
+- model contracts capture source format/framework and parameter names,
+  shapes, and dtypes;
+- nested contracts capture required top-level keys, maximum depth, type-conflict
+  tolerance, and cycle policy;
+- relational contracts capture required tables/columns, preserved key
+  candidates, and inferred relationship cardinalities.
+
+Axiom validates structure rather than trying to impose tabular-column semantics
+on non-tabular sources.
