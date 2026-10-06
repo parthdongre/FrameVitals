@@ -6,9 +6,6 @@ import math
 import numpy as np
 import pandas as pd
 
-from framevitals.column_roles import (
-    get_meaningful_numeric_columns,
-)
 
 
 def format_bytes(value: int) -> str:
@@ -132,8 +129,24 @@ def build_dashboard_payload(
         if "boolean" in info.get("roles", [])
     )
 
-    meaningful_numeric = get_meaningful_numeric_columns(df, column_roles)
-    distribution_column = meaningful_numeric[0] if meaningful_numeric else None
+    # Pick a presentation column from the canonical profile rather than
+    # requiring the complete internal role schema. The web adapter should be
+    # able to project any valid AnalysisResult without re-running/inferencing
+    # analysis metadata.
+    profile_numeric = [
+        str(column)
+        for column in profile.get("numeric_columns", [])
+        if str(column) in df.columns
+    ]
+    meaningful_numeric = []
+    for column in profile_numeric:
+        role_info = column_roles.get(column, {})
+        roles = set(role_info.get("roles", [])) if isinstance(role_info, dict) else set()
+        if not roles.intersection({"id_like", "constant"}):
+            meaningful_numeric.append(column)
+    distribution_column = meaningful_numeric[0] if meaningful_numeric else (
+        profile_numeric[0] if profile_numeric else None
+    )
 
     if distribution_column is not None:
         distribution = _build_numeric_distribution(df, distribution_column)
