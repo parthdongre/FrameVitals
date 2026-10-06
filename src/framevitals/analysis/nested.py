@@ -102,11 +102,11 @@ def inspect_nested(
             if length == 0:
                 empty_arrays += 1
             if depth < max_depth:
-                for index, child in enumerate(value):
-                    # Collapse long-list positions into one wildcard path so
-                    # type conflicts are visible instead of fragmented by index.
-                    child_path = f"{path}[*]" if length > 8 else f"{path}[{index}]"
-                    stack.append((child_path, child, depth + 1))
+                for child in value:
+                    # Arrays describe repeated values/records. Use one wildcard
+                    # path regardless of array length so schema/type conflicts
+                    # are compared across elements instead of hidden by index.
+                    stack.append((f"{path}[*]", child, depth + 1))
             else:
                 truncated = True
             continue
