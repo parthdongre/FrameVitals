@@ -226,3 +226,69 @@ def test_optimizer_diagnostics_find_untracked_trainable_parameters_and_pulse_sta
     state = snapshot["state"]["structured"]["optimizer"]
     assert state["group_count"] == 1
     assert state["untracked_trainable_parameters"]
+
+
+
+def test_tensor_axiom_detects_shape_change():
+    reference = np.eye(4, dtype=float)
+    current = np.eye(5, dtype=float)
+
+    established = fv.axiom(reference)
+    assert established.contract["source_kind"] == "tensor"
+
+    checked = fv.axiom(reference, current=current)
+    assert checked.status == "fail"
+    assert any(
+        item["code"] == "axiom.tensor.shape"
+        for item in checked.validation.findings
+    )
+
+
+def test_nested_axiom_requires_reference_top_level_keys():
+    reference = {"user": {"id": 1}, "events": []}
+    current = {"user": {"id": 1}}
+
+    checked = fv.axiom(reference, current=current)
+
+    assert checked.status == "fail"
+    assert any(
+        item["code"] == "axiom.nested.keys"
+        for item in checked.validation.findings
+    )
+
+
+def test_relational_axiom_detects_missing_table():
+    reference = {
+        "customers": pd.DataFrame({"customer_id": [1, 2]}),
+        "orders": pd.DataFrame({
+            "order_id": [10, 11],
+            "customer_id": [1, 2],
+        }),
+    }
+    current = {
+        "customers": pd.DataFrame({"customer_id": [1, 2]}),
+    }
+
+    checked = fv.axiom(reference, current=current)
+
+    assert checked.status == "fail"
+    assert any(
+        item["code"] == "axiom.relational.tables"
+        for item in checked.validation.findings
+    )
+
+
+def test_model_axiom_detects_parameter_shape_change():
+    torch = pytest.importorskip("torch")
+    nn = torch.nn
+
+    reference = nn.Linear(4, 2)
+    current = nn.Linear(4, 3)
+
+    checked = fv.axiom(reference, current=current)
+
+    assert checked.status == "fail"
+    assert any(
+        item["code"] == "axiom.model.shape"
+        for item in checked.validation.findings
+    )
