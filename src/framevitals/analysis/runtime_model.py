@@ -71,6 +71,10 @@ def _tensor_observation(tensor: Any, *, sample_limit: int) -> dict[str, Any]:
             "max": round(float(np.max(finite_values)), 8),
             "abs_p99": round(float(np.quantile(np.abs(finite_values), 0.99)), 8),
             "l2_norm_sample": round(float(np.linalg.norm(finite_values)), 8),
+            "rms_sample": round(
+                float(np.linalg.norm(finite_values) / math.sqrt(finite_values.size)),
+                8,
+            ),
         })
     return result
 
@@ -317,11 +321,11 @@ def observe_model_runtime(
 
     activation_exploding, activation_vanishing = _robust_norm_outliers(
         activation_records,
-        key="l2_norm_sample",
+        key="rms_sample",
     )
     gradient_exploding, gradient_vanishing = _robust_norm_outliers(
         module_gradient_records,
-        key="l2_norm_sample",
+        key="rms_sample",
     )
 
     dead_activations = [
@@ -332,7 +336,7 @@ def observe_model_runtime(
             and float(record.get("zero_fraction") or 0.0) >= 0.95
         )
         or (
-            float(record.get("std") or 0.0) <= 1.0e-10
+            float(record.get("near_zero_fraction") or 0.0) >= 0.95
             and int(record.get("size") or 0) >= 16
         )
     ]
