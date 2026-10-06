@@ -10,7 +10,7 @@ import framevitals as fv
 result = fv.prism(
     "production.parquet",
     reference="training.parquet",
-    target="churn",
+    focus="churn",
 )
 ```
 
