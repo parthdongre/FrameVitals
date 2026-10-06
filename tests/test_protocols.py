@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 
 import framevitals as fv
@@ -113,6 +115,17 @@ def test_prism_is_one_orchestrated_workflow(monkeypatch):
     assert result.status == "pass"
     assert result.beacons[0]["title"] == "Example beacon"
     assert calls == {"analyze": 1, "infer_contract": 1, "gate": 1}
+
+    public_payload = json.loads(result.to_json())
+    assert public_payload["protocol"] == "prism"
+    assert public_payload["trust"]["status"] == "pass"
+    assert public_payload["change"]["severity"] == "stable"
+    assert "axiom" not in public_payload
+    assert "tide" not in public_payload
+
+    terminal = result.summary_text()
+    assert "Axiom" not in terminal
+    assert "Tide" not in terminal
 
 
 def test_prism_without_reference_remains_single_analysis(monkeypatch):
