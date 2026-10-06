@@ -75,6 +75,7 @@ def _detect_weight_attribute(graph: Any, *, sample_edges: int = 256) -> str | No
     """Use a conventional non-negative numeric weight attribute when it is reliable."""
     checked = 0
     valid = 0
+    negative = 0
     try:
         iterator = graph.edges(data=True)
     except Exception:
@@ -84,12 +85,15 @@ def _detect_weight_attribute(graph: Any, *, sample_edges: int = 256) -> str | No
         checked += 1
         value = data.get("weight") if isinstance(data, dict) else None
         numeric = _safe_float(value)
-        if numeric is not None and numeric >= 0:
-            valid += 1
+        if numeric is not None:
+            if numeric < 0:
+                negative += 1
+            else:
+                valid += 1
         if checked >= sample_edges:
             break
 
-    if checked == 0:
+    if checked == 0 or negative:
         return None
     return "weight" if valid / checked >= 0.80 else None
 
