@@ -22,19 +22,19 @@
 
 FrameVitals helps you decide whether a dataset is **healthy enough to trust** before it reaches a model, analytics workflow, dashboard, or production pipeline.
 
-It provides one consistent API for inspecting data quality, ML readiness, anomalies, drift, contracts, validation, snapshots, and CI-friendly quality gates.
+The public experience is organized around a small protocol system. **Prism** is the primary workflow: give it the data you have, plus optional context, and FrameVitals coordinates the analysis for you.
 
 ```python
 import framevitals as fv
 
-report = fv.analyze(data)
-drift = fv.compare(reference, current)
-contract = fv.infer_contract(reference)
-validation = fv.validate(current, contract)
-gate = fv.gate(current, reference=reference, contract=contract)
+result = fv.prism(
+    current,
+    reference=training,
+    target="churn",
+)
 ```
 
-The goal is simple: **catch bad data before it becomes a bad model, broken dashboard, or production incident.**
+The goal is simple: **choose the intent, not the implementation.** FrameVitals coordinates the underlying analysis while keeping the full technical composition inspectable in the documentation and source code.
 
 ## Installation
 
@@ -60,31 +60,52 @@ pip install "framevitals[all]"     # all optional runtime capabilities
 
 ## Quick Start
 
-Analyze a file directly:
+Run the **Prism Protocol** on a file:
 
 ```python
 import framevitals as fv
 
-report = fv.analyze("customers.csv")
+result = fv.prism("customers.csv")
 
-print(report.health["overall_score"])
-print(report.ml_readiness)
-print(report.findings[:3])
+print(result.analysis.health["overall_score"])
+print(result.beacons[:3])
 ```
 
-Or pass a pandas DataFrame:
+Give Prism more context when you have it:
 
 ```python
-import pandas as pd
-import framevitals as fv
-
-customers = pd.read_csv("customers.csv")
-report = fv.analyze(customers)
+result = fv.prism(
+    "production.parquet",
+    reference="training.parquet",
+    target="churn",
+)
 ```
+
+Prism remains one call whether it is working from a single dataset or coordinating a richer reference-aware workflow.
 
 FrameVitals also supports Parquet, PyArrow data, and lazy DuckDB relations when the corresponding optional dependencies are installed.
 
-## Common Workflows
+## Protocols
+
+The protocol surface is intentionally small:
+
+```python
+fv.prism(data, reference=reference, target="churn")
+fv.axiom(reference, current=current)
+fv.forge(data, apply=False)
+fv.tide(reference, current)
+fv.pulse(data, destination="pulse.json")
+```
+
+- **Prism** — the primary comprehensive workflow.
+- **Axiom** — establish and test dataset expectations.
+- **Forge** — prepare and optionally apply conservative transformations.
+- **Tide** — read change between two dataset states.
+- **Pulse** — capture compact health states over time.
+
+The lower-level functions remain available for advanced and compatibility use. Their composition, execution semantics, and protocol mapping are documented in [Protocol architecture](docs/protocols.md).
+
+## Advanced Workflows
 
 ### Run only the diagnostic you need
 
@@ -202,37 +223,20 @@ Where semantics allow it, large or lazy sources can use bounded or streaming exe
 
 ## Command Line
 
-The Python package also includes a CLI.
-
-Analyze a dataset:
+The CLI follows the same protocol surface:
 
 ```bash
-framevitals analyze customers.csv
+framevitals prism customers.csv
+framevitals prism production.parquet --reference training.parquet --target churn
+framevitals axiom training.parquet --current production.parquet
+framevitals forge customers.csv
+framevitals tide training.parquet production.parquet
+framevitals pulse production.parquet --output pulse.json
 ```
 
-Compare two datasets:
+The terminal keeps protocol execution intentionally high-level. Detailed method composition belongs in the documentation, not in routine command output.
 
-```bash
-framevitals compare reference.csv current.csv
-```
-
-Infer a contract:
-
-```bash
-framevitals infer-contract reference.csv
-```
-
-Create a monitoring snapshot:
-
-```bash
-framevitals snapshot customers.csv
-```
-
-Inspect dataset execution capabilities:
-
-```bash
-framevitals inspect customers.csv
-```
+The legacy low-level commands remain available during the compatibility window.
 
 See all commands and options with:
 
@@ -270,29 +274,19 @@ For production workflows, pin the action to a released tag or commit.
 
 ## Python API
 
-The main workflow entry points are available directly from `framevitals`:
+For most users, start with the protocol surface:
 
 ```python
-fv.analyze(...)
-fv.plan(...)
-fv.profile(...)
-fv.health(...)
-fv.quality(...)
-fv.ml_readiness(...)
-fv.statistics(...)
-fv.anomalies(...)
-fv.relationships(...)
-fv.compare(...)
-fv.infer_contract(...)
-fv.validate(...)
-fv.check(...)
-fv.run_checks(...)
-fv.gate(...)
-fv.create_snapshot(...)
-fv.compare_snapshots(...)
+fv.prism(...)
+fv.axiom(...)
+fv.forge(...)
+fv.tide(...)
+fv.pulse(...)
 ```
 
-For detailed API behaviour, configuration, source semantics, performance notes, and advanced usage, see [`docs/`](docs/).
+Focused and lower-level APIs remain available when you need direct control over a specific operation.
+
+For protocol composition, detailed API behaviour, configuration, source semantics, performance notes, and advanced usage, see [`docs/`](docs/).
 
 ## Development
 
