@@ -2,9 +2,9 @@
 
 # FrameVitals
 
-### Analyze, diagnose, clean, compare, model, and report on tabular data from one toolkit.
+### Diagnose structured data, graphs, tensors, and ML models through one protocol system.
 
-**FrameVitals is an open-source, source-aware Python data analysis toolkit for profiling, data quality, statistics, drift detection, anomaly analysis, data contracts, cleaning, ML readiness, model diagnostics, and shareable reports on tabular data.**
+**FrameVitals is an open-source diagnostic layer for structured data and ML systems: tabular data, graphs, tensors, and PyTorch models can enter the same Prism workflow while specialized engines handle their structure safely.**
 
 🌐 **Website:** https://framevitals.vercel.app/
 
@@ -52,7 +52,8 @@ Optional capabilities are available as extras:
 pip install "framevitals[arrow]"   # Arrow and Parquet interoperability
 pip install "framevitals[duckdb]"  # DuckDB relations
 pip install "framevitals[plot]"    # plotting and report charts
-pip install "framevitals[ml]"      # optional ML diagnostics
+pip install "framevitals[ml]"      # optional predictive diagnostics
+pip install "framevitals[graph]"   # NetworkX graph diagnostics
 pip install "framevitals[ai]"      # Ollama-backed AI capabilities
 pip install "framevitals[web]"     # Flask web runtime
 pip install "framevitals[all]"     # all optional runtime capabilities
@@ -84,6 +85,27 @@ result = fv.prism(
 Prism remains one call whether it is working from a single dataset or coordinating a richer reference-aware workflow.
 
 FrameVitals also supports Parquet, PyArrow data, and lazy DuckDB relations when the corresponding optional dependencies are installed.
+
+Prism can also recognize non-tabular structured objects:
+
+```python
+import numpy as np
+import framevitals as fv
+
+tensor_report = fv.prism(np.random.randn(256, 64))
+
+# With NetworkX installed:
+graph_report = fv.prism(graph)
+
+# If PyTorch is already installed in your environment:
+model_report = fv.prism(model)
+```
+
+The graph engine uses bounded connectivity, PageRank, approximate betweenness,
+community, cut-structure, clustering, and sampled shortest-path diagnostics.
+Weighted graphs with a reliable non-negative `weight` attribute automatically
+use Dijkstra for the sampled path analysis. PyTorch remains optional; FrameVitals
+does not install a deep-learning runtime merely to inspect a model.
 
 ## Protocols
 
@@ -217,7 +239,7 @@ Use `quick` for fast checks and the deeper modes when you want broader statistic
 
 ## Source-Aware Execution
 
-FrameVitals is designed to work with more than pandas alone. Supported sources can include DataFrames, files, Arrow-native data, and DuckDB relations.
+FrameVitals is designed to work with more than pandas alone. Mature tabular sources include DataFrames, files, Arrow-native data, and DuckDB relations; the structured adapter layer now also recognizes NetworkX graphs, NumPy/PyTorch tensors, and PyTorch models.
 
 Where semantics allow it, large or lazy sources can use bounded or streaming execution instead of being loaded fully into pandas. Operations that require exact results can still materialize the full dataset, and execution metadata reports those decisions.
 
