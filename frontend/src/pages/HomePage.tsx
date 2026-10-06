@@ -132,8 +132,8 @@ export function HomePage({ onNavigate }: HomePageProps) {
         <ul className="grid gap-3 text-[14px] leading-7 text-[var(--ink-2)] sm:grid-cols-2">
           <li>· Core analytics run locally. External AI services are only involved when you explicitly configure an optional integration.</li>
           <li>· ML metrics are baselines, not tuned production models. The leaderboard surfaces which model families respond well to the data.</li>
-          <li>· Anomaly scores represent detector agreement. A flagged row can still be a valid observation.</li>
-          <li>· AI-assisted summaries should be treated as interpretation aids, not authorities.</li>
+          <li>· Flagged rows are signals worth reviewing; they are not proof that an observation is invalid.</li>
+          <li>· Optional narratives are interpretation aids, not authorities.</li>
         </ul>
       </Section>
     </>
