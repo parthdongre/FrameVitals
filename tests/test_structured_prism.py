@@ -52,12 +52,18 @@ def test_pytorch_cnn_prism_inspects_model_without_owning_training():
     torch = pytest.importorskip("torch")
     nn = torch.nn
 
-    model = nn.Sequential(
-        nn.Conv2d(3, 4, kernel_size=3),
-        nn.ReLU(),
-    )
+    class TinyCNN(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.conv = nn.Conv2d(3, 4, kernel_size=3)
+            self.relu = nn.ReLU()
+
+        def forward(self, x):
+            return self.relu(self.conv(x))
+
+    model = TinyCNN()
     with torch.no_grad():
-        model[0].weight[0].zero_()
+        model.conv.weight[0].zero_()
 
     inspected = fv.inspect_source(model)
     assert inspected["kind"] == "model"
