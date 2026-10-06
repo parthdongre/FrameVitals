@@ -27,7 +27,7 @@ When a trusted reference is also supplied:
 result = fv.prism(
     current,
     reference=training,
-    target="churn",
+    focus="churn",
 )
 ```
 
