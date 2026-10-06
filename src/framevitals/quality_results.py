@@ -153,12 +153,19 @@ class DriftResult(_QualityResult):
             schema = {}
 
         source_kind = str(self.get("source_kind") or "tabular")
-        lines = [
-            "FrameVitals · Tide",
-            f"Kind            {source_kind.upper()}",
-            f"Gate            {self.status.upper()}",
-            f"Severity        {self.severity.upper()}",
-        ]
+        if source_kind == "tabular":
+            lines = [
+                "FrameVitals drift",
+                f"Gate            {self.status.upper()}",
+                f"Severity        {self.severity.upper()}",
+            ]
+        else:
+            lines = [
+                "FrameVitals · Tide",
+                f"Kind            {source_kind.upper()}",
+                f"Gate            {self.status.upper()}",
+                f"Severity        {self.severity.upper()}",
+            ]
 
         if source_kind == "model":
             model = self.get("model", {})
