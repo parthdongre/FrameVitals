@@ -143,19 +143,18 @@ export function HomePage({ onNavigate }: HomePageProps) {
 function HealthChip() {
   const { data, isLoading, isError } = useHealthQuery();
 
-  let label = "Backend offline";
+  let label = "System unavailable";
   let tone: "ok" | "warn" | "off" = "off";
 
   if (isLoading) {
-    label = "Probing backend…";
+    label = "Checking system…";
     tone = "warn";
   } else if (isError || !data?.flask) {
-    label = "Backend offline";
+    label = "System unavailable";
     tone = "off";
   } else {
-    const ai = data.ollama_reachable ? "Ollama" : data.openrouter_configured ? "OpenRouter" : "no LLM";
-    label = `Backend live · ${ai}`;
-    tone = data.ollama_reachable || data.openrouter_configured ? "ok" : "warn";
+    label = "System ready";
+    tone = "ok";
   }
 
   return (
