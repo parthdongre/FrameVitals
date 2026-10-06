@@ -67,6 +67,7 @@ def _structured_state(result: Mapping[str, Any], source_kind: str) -> dict[str, 
         model = _as_mapping(result.get("model"))
         runtime = _as_mapping(model.get("runtime"))
         runtime_summary = _as_mapping(runtime.get("summary"))
+        optimizer = _as_mapping(model.get("optimizer"))
         return {
             "framework": model.get("framework"),
             "architecture": model.get("architecture"),
@@ -77,6 +78,20 @@ def _structured_state(result: Mapping[str, Any], source_kind: str) -> dict[str, 
             "nodes": model.get("nodes"),
             "edges": model.get("edges"),
             "runtime": dict(runtime_summary),
+            "optimizer": {
+                "class_name": optimizer.get("class_name"),
+                "group_count": optimizer.get("group_count"),
+                "tracked_parameter_count": optimizer.get("tracked_parameter_count"),
+                "untracked_trainable_parameters": list(
+                    optimizer.get("untracked_trainable_parameters", []) or []
+                ),
+                "duplicate_parameter_assignments": list(
+                    optimizer.get("duplicate_parameter_assignments", []) or []
+                ),
+                "learning_rates": list(optimizer.get("learning_rates", []) or []),
+                "learning_rate_spread": optimizer.get("learning_rate_spread"),
+                "estimated_state_bytes": optimizer.get("estimated_state_bytes"),
+            } if optimizer else {},
         }
 
     if source_kind == "nested":
