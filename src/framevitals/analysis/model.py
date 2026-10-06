@@ -291,7 +291,15 @@ def analyze_model(
         "affected_layers": 0,
     }
 
-    findings: list[dict[str, Any]] = []
+    from framevitals.analysis.architectures import analyze_architecture
+
+    architecture_details, architecture_findings = analyze_architecture(
+        architecture,
+        named_parameters,
+        modules,
+    )
+
+    findings: list[dict[str, Any]] = list(architecture_findings)
     if nonfinite:
         findings.append(
             beacon(
@@ -426,6 +434,23 @@ def analyze_model(
     score -= min(20.0, len(norm_outliers) * 4.0)
     score -= min(20.0, len(low_rank) * 5.0)
     score -= min(20.0, int(cnn.get("dead_filters") or 0) * 1.5)
+    if architecture_findings:
+        architecture_cost = {
+            "critical": 18.0,
+            "high": 8.0,
+            "medium": 3.0,
+            "info": 0.0,
+        }
+        score -= min(
+            35.0,
+            sum(
+                architecture_cost.get(
+                    str(item.get("severity", "info")).lower(),
+                    1.0,
+                )
+                for item in architecture_findings
+            ),
+        )
 
     if optimizer_findings:
         severity_cost = {
@@ -472,6 +497,7 @@ def analyze_model(
         "rank_diagnostics": rank,
         "gradients": gradients,
         "cnn": cnn,
+        "architecture_diagnostics": architecture_details,
         "optimizer": optimizer_report,
         "runtime": runtime,
     }
