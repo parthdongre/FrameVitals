@@ -140,7 +140,7 @@ class DriftResult(_QualityResult):
     def summary_text(self) -> str:
         if not self.get("available"):
             return (
-                "FrameVitals drift\n"
+                "FrameVitals Tide\n"
                 "Status          UNAVAILABLE\n"
                 f"Reason          {self.get('reason')}"
             )
@@ -151,15 +151,69 @@ class DriftResult(_QualityResult):
             summary = {}
         if not isinstance(schema, dict):
             schema = {}
+
+        source_kind = str(self.get("source_kind") or "tabular")
         lines = [
-            "FrameVitals drift",
+            "FrameVitals · Tide",
+            f"Kind            {source_kind.upper()}",
             f"Gate            {self.status.upper()}",
             f"Severity        {self.severity.upper()}",
+        ]
+
+        if source_kind == "model":
+            model = self.get("model", {})
+            if not isinstance(model, dict):
+                model = {}
+            lines.extend([
+                f"Compared        {model.get('parameters_compared', 0)} parameters",
+                f"Added           {len(model.get('added_parameters', []))}",
+                f"Removed         {len(model.get('removed_parameters', []))}",
+                f"Shape changes   {len(model.get('shape_changes', []))}",
+                f"P95 movement    {model.get('p95_relative_l2', 'n/a')}",
+            ])
+            most_changed = model.get("most_changed", [])
+            if isinstance(most_changed, list) and most_changed:
+                lines.extend(["", "Most changed"])
+                for entry in most_changed[:8]:
+                    lines.append(
+                        f"- {entry.get('name')}: relative L2={entry.get('relative_l2')}"
+                    )
+            return "\n".join(lines)
+
+        if source_kind == "graph":
+            graph = self.get("graph", {})
+            if not isinstance(graph, dict):
+                graph = {}
+            lines.extend([
+                f"Nodes           {graph.get('reference_nodes', '?')} -> {graph.get('current_nodes', '?')}",
+                f"Edges           {graph.get('reference_edges', '?')} -> {graph.get('current_edges', '?')}",
+                f"Node overlap    {graph.get('node_jaccard', 'n/a')}",
+                f"Degree change   {graph.get('degree_js_distance', 'n/a')}",
+            ])
+            return "\n".join(lines)
+
+        if source_kind == "tensor":
+            tensor = self.get("tensor", {})
+            if not isinstance(tensor, dict):
+                tensor = {}
+            aligned = tensor.get("aligned", {})
+            if not isinstance(aligned, dict):
+                aligned = {}
+            lines.extend([
+                f"Shape           {tensor.get('reference_shape', '?')} -> {tensor.get('current_shape', '?')}",
+                f"Dtype           {tensor.get('reference_dtype', '?')} -> {tensor.get('current_dtype', '?')}",
+                f"Relative L2     {aligned.get('relative_l2', 'n/a')}",
+                f"Cosine          {aligned.get('cosine_similarity', 'n/a')}",
+                f"Wasserstein     {aligned.get('wasserstein', 'n/a')}",
+            ])
+            return "\n".join(lines)
+
+        lines.extend([
             f"Columns checked {summary.get('n_columns_compared', 0)}",
             f"Added columns   {len(schema.get('added_columns', []))}",
             f"Removed columns {len(schema.get('removed_columns', []))}",
             f"Type changes    {len(schema.get('dtype_changes', []))}",
-        ]
+        ])
         notable = [
             entry
             for entry in self.columns
