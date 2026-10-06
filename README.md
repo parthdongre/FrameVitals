@@ -54,6 +54,7 @@ pip install "framevitals[duckdb]"  # DuckDB relations
 pip install "framevitals[plot]"    # plotting and report charts
 pip install "framevitals[ml]"      # optional predictive diagnostics
 pip install "framevitals[graph]"   # NetworkX graph diagnostics
+pip install "framevitals[onnx]"    # ONNX model graph diagnostics
 pip install "framevitals[ai]"      # Ollama-backed AI capabilities
 pip install "framevitals[web]"     # Flask web runtime
 pip install "framevitals[all]"     # all optional runtime capabilities
@@ -111,6 +112,18 @@ runtime_report = fv.prism(
 
 # Metadata-first checkpoint inspection without loading tensor bodies:
 checkpoint_report = fv.prism("model.safetensors")
+
+# ONNX graph + initializer diagnostics:
+onnx_report = fv.prism("model.onnx")
+
+# Nested structured data:
+nested_report = fv.prism({"users": [{"id": 1}, {"id": 2}]})
+
+# Multi-table projects:
+project_report = fv.prism({
+    "customers": customers,
+    "orders": orders,
+})
 ```
 
 The graph engine uses bounded connectivity, PageRank, approximate betweenness,
