@@ -73,7 +73,20 @@ def _is_torch_tensor(value: Any) -> bool:
 
 def _is_tabular_object(value: Any) -> bool:
     module = type(value).__module__
-    return module.startswith(("pandas.", "polars.", "pyarrow."))
+    if module.startswith(("pandas.", "polars.", "pyarrow.")):
+        return True
+
+    # Fall back to stable dataframe/table capabilities instead of relying only
+    # on implementation module paths, which can differ across versions.
+    if hasattr(value, "shape") and hasattr(value, "columns"):
+        return True
+    if (
+        hasattr(value, "schema")
+        and hasattr(value, "column_names")
+        and hasattr(value, "num_rows")
+    ):
+        return True
+    return False
 
 
 def _is_relational_mapping(value: Any) -> bool:
