@@ -113,7 +113,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional existing Axiom JSON.",
     )
-    _add_runtime_arguments(prism_parser)
+    prism_parser.add_argument(
+        "--focus",
+        dest="target",
+        default=None,
+        help="Optional outcome column for a focused Prism run.",
+    )
+    prism_parser.add_argument(
+        "--depth",
+        dest="mode",
+        choices=["quick", "standard", "deep", "research"],
+        default=None,
+        help="How far Prism should investigate.",
+    )
     prism_parser.add_argument(
         "--artifacts",
         action=argparse.BooleanOptionalAction,
@@ -736,13 +748,9 @@ def main() -> int:
             args.file,
             reference=args.reference,
             contract=explicit_contract,
-            target=args.target,
-            mode=args.mode,
+            focus=args.target,
+            depth=args.mode,
             artifacts=args.artifacts,
-            workers=args.workers,
-            preset=args.preset,
-            config=args.config,
-            disabled_modules=args.disabled_modules,
         )
         if args.output is not None:
             result.to_json(args.output)
