@@ -219,8 +219,6 @@ def test_pulse_can_capture_an_existing_analysis(tmp_path):
     assert snapshot["source"]["filename"] == "current.csv"
     assert destination.exists()
 
-
-
 def test_prism_keeps_target_and_mode_as_compatibility_aliases(monkeypatch):
     analysis = _analysis_result()
     captured = {}
