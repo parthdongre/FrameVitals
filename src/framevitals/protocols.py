@@ -491,12 +491,17 @@ def pulse(
     data_or_result: Any,
     *,
     destination: str | Path | None = None,
-    mode: str = "quick",
+    depth: str | None = None,
+    mode: str | None = None,
     workers: int | None = None,
 ) -> AnalysisSnapshot:
     """Capture a compact health state from raw data or an existing analysis."""
     from framevitals.analysis_api import analyze
     from framevitals.snapshots import create_snapshot
+
+    if depth is not None and mode is not None and depth != mode:
+        raise ValueError("depth= and mode= cannot disagree.")
+    resolved_depth = depth if depth is not None else mode or "quick"
 
     if isinstance(data_or_result, AnalysisResult):
         analysis = data_or_result
@@ -508,7 +513,7 @@ def pulse(
     else:
         analysis = analyze(
             data_or_result,
-            mode=mode,
+            mode=resolved_depth,
             artifacts=False,
             workers=workers,
         )
