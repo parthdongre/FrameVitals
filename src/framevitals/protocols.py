@@ -339,6 +339,11 @@ def prism(
     max_relationship_pairs: int | None = None,
     max_memory_heavy_parallelism: int | None = None,
     max_streaming_profile_columns: int | None = None,
+    sample_batch: Any = None,
+    targets: Any = None,
+    loss_fn: Any = None,
+    backward: bool = False,
+    max_runtime_modules: int | None = None,
     derive_axiom: bool = True,
     custom_checks: Sequence[Any] | None = None,
     columns: list[str] | None = None,
@@ -372,7 +377,15 @@ def prism(
     # from pandas-specific execution while preserving one public Prism call.
     from framevitals.structured_analysis import analyze_structured
 
-    structured_analysis = analyze_structured(data, depth=resolved_depth)
+    structured_analysis = analyze_structured(
+        data,
+        depth=resolved_depth,
+        sample_batch=sample_batch,
+        targets=targets,
+        loss_fn=loss_fn,
+        backward=backward,
+        max_runtime_modules=max_runtime_modules,
+    )
     if structured_analysis is not None:
         if resolved_focus is not None:
             raise ValueError("focus=/target= is currently supported only for tabular Prism input.")
@@ -393,6 +406,18 @@ def prism(
             "change": None,
             "verdict": None,
         })
+
+    if (
+        sample_batch is not None
+        or targets is not None
+        or loss_fn is not None
+        or backward
+        or max_runtime_modules is not None
+    ):
+        raise ValueError(
+            "sample_batch=/targets=/loss_fn=/backward= are currently "
+            "supported only for model Prism input."
+        )
 
     analysis = analyze(
         data,
