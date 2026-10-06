@@ -212,6 +212,13 @@ class PrismResult(_ProtocolResult):
                 f"Dtype         {tensor.get('dtype', '?')}",
                 f"Values        {tensor.get('size', '?')}",
             ])
+        elif source_kind == "nested":
+            nested = analysis.get("nested", {})
+            lines.extend([
+                f"Nodes         {nested.get('nodes_observed', '?')}",
+                f"Depth         {nested.get('max_depth', '?')}",
+                f"Type conflicts {nested.get('path_type_conflict_count', '?')}",
+            ])
         else:
             lines.extend([
                 (
@@ -583,16 +590,24 @@ def pulse(
     depth: str | None = None,
     mode: str | None = None,
     workers: int | None = None,
+    sample_batch: Any = None,
+    targets: Any = None,
+    loss_fn: Any = None,
+    backward: bool = False,
+    max_runtime_modules: int | None = None,
 ) -> AnalysisSnapshot:
-    """Capture a compact health state from raw data or an existing analysis."""
+    """Capture a compact health state from tabular or structured sources."""
     from framevitals.analysis_api import analyze
     from framevitals.snapshots import create_snapshot
+    from framevitals.structured_analysis import analyze_structured
 
     if depth is not None and mode is not None and depth != mode:
         raise ValueError("depth= and mode= cannot disagree.")
     resolved_depth = depth if depth is not None else mode or "quick"
 
-    if isinstance(data_or_result, AnalysisResult):
+    if isinstance(data_or_result, PrismResult):
+        analysis = data_or_result.analysis
+    elif isinstance(data_or_result, AnalysisResult):
         analysis = data_or_result
     elif (
         isinstance(data_or_result, Mapping)
@@ -600,12 +615,34 @@ def pulse(
     ):
         analysis = AnalysisResult(dict(data_or_result))
     else:
-        analysis = analyze(
+        structured = analyze_structured(
             data_or_result,
-            mode=resolved_depth,
-            artifacts=False,
-            workers=workers,
+            depth=resolved_depth,
+            sample_batch=sample_batch,
+            targets=targets,
+            loss_fn=loss_fn,
+            backward=backward,
+            max_runtime_modules=max_runtime_modules,
         )
+        if structured is not None:
+            analysis = structured
+        else:
+            if (
+                sample_batch is not None
+                or targets is not None
+                or loss_fn is not None
+                or backward
+                or max_runtime_modules is not None
+            ):
+                raise ValueError(
+                    "Runtime model options are only valid for model Pulse input."
+                )
+            analysis = analyze(
+                data_or_result,
+                mode=resolved_depth,
+                artifacts=False,
+                workers=workers,
+            )
 
     snapshot = create_snapshot(analysis)
     if destination is not None:
