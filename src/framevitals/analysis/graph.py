@@ -198,10 +198,22 @@ def _sample_shortest_paths(
     possible = 0
 
     for source in sources:
-        if weight:
-            lengths = nx.single_source_dijkstra_path_length(graph, source, weight=weight)
-        else:
-            lengths = nx.single_source_shortest_path_length(graph, source)
+        try:
+            if weight:
+                lengths = nx.single_source_dijkstra_path_length(
+                    graph,
+                    source,
+                    weight=weight,
+                )
+            else:
+                lengths = nx.single_source_shortest_path_length(graph, source)
+        except Exception as exc:
+            return {
+                "available": False,
+                "reason": type(exc).__name__,
+                "weighted": bool(weight),
+                "weight_attribute": weight,
+            }
         for node, distance in lengths.items():
             if node == source:
                 continue
@@ -235,7 +247,13 @@ def _sample_shortest_paths(
     }
 
 
-def _centrality_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, Any]:
+def _centrality_summary(
+    graph: Any,
+    nx: Any,
+    budget: dict[str, int],
+    *,
+    weight: str | None = None,
+) -> dict[str, Any]:
     n = graph.number_of_nodes()
     m = graph.number_of_edges()
     result: dict[str, Any] = {}
@@ -245,7 +263,12 @@ def _centrality_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str
 
     if m <= budget["centrality_edges"]:
         try:
-            pagerank = nx.pagerank(graph, max_iter=100, tol=1.0e-6)
+            pagerank = nx.pagerank(
+                graph,
+                max_iter=100,
+                tol=1.0e-6,
+                weight=weight,
+            )
             result["pagerank"] = {"top": _top_items(pagerank)}
         except Exception as exc:
             result["pagerank"] = {"available": False, "reason": type(exc).__name__}
@@ -256,6 +279,7 @@ def _centrality_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str
                 graph,
                 k=k if k < n else None,
                 normalized=True,
+                weight=weight,
                 seed=42,
             )
             result["betweenness"] = {
@@ -305,7 +329,13 @@ def _cut_structure(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, Any
         return {"available": False, "reason": type(exc).__name__}
 
 
-def _community_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, Any]:
+def _community_summary(
+    graph: Any,
+    nx: Any,
+    budget: dict[str, int],
+    *,
+    weight: str | None = None,
+) -> dict[str, Any]:
     m = graph.number_of_edges()
     if m > budget["community_edges"] or graph.number_of_nodes() < 2:
         return {
@@ -318,14 +348,23 @@ def _community_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str,
     try:
         louvain = getattr(nx.algorithms.community, "louvain_communities", None)
         if callable(louvain):
-            communities = list(louvain(simple, seed=42))
+            communities = list(louvain(simple, seed=42, weight=weight))
             method = "louvain"
         else:
-            communities = list(nx.algorithms.community.greedy_modularity_communities(simple))
+            communities = list(
+                nx.algorithms.community.greedy_modularity_communities(
+                    simple,
+                    weight=weight,
+                )
+            )
             method = "greedy_modularity"
         sizes = sorted((len(c) for c in communities), reverse=True)
         modularity = (
-            nx.algorithms.community.modularity(simple, communities)
+            nx.algorithms.community.modularity(
+                simple,
+                communities,
+                weight=weight,
+            )
             if communities and simple.number_of_edges()
             else 0.0
         )
@@ -399,9 +438,19 @@ def analyze_graph(
         source_count=budget["path_sources"],
         weight=resolved_weight,
     )
-    centrality = _centrality_summary(graph, nx, budget)
+    centrality = _centrality_summary(
+        graph,
+        nx,
+        budget,
+        weight=resolved_weight,
+    )
     cuts = _cut_structure(graph, nx, budget)
-    communities = _community_summary(graph, nx, budget)
+    communities = _community_summary(
+        graph,
+        nx,
+        budget,
+        weight=resolved_weight,
+    )
     clustering = _clustering_summary(graph, nx, budget)
 
     findings: list[dict[str, Any]] = []
