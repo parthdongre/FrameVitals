@@ -50,12 +50,14 @@ def _is_graph_like(value: Any) -> bool:
 
 
 def _is_torch_model(value: Any) -> bool:
-    module = type(value).__module__
+    # User-defined nn.Module subclasses normally live in __main__ or an
+    # application package rather than a torch.* module, so use the stable
+    # nn.Module protocol instead of the class module path.
     return (
-        module.startswith("torch.")
-        and callable(getattr(value, "state_dict", None))
+        callable(getattr(value, "state_dict", None))
         and callable(getattr(value, "named_parameters", None))
         and callable(getattr(value, "named_modules", None))
+        and hasattr(value, "training")
     )
 
 
