@@ -28,6 +28,74 @@ def _number(value: Any) -> float | None:
     return converted if math.isfinite(converted) else None
 
 
+def _structured_state(result: Mapping[str, Any], source_kind: str) -> dict[str, Any]:
+    if source_kind == "graph":
+        graph = _as_mapping(result.get("graph"))
+        components = _as_mapping(graph.get("components"))
+        degree = _as_mapping(graph.get("degree"))
+        return {
+            "nodes": graph.get("nodes"),
+            "edges": graph.get("edges"),
+            "density": graph.get("density"),
+            "isolates": graph.get("isolates"),
+            "self_loops": graph.get("self_loops"),
+            "largest_component_ratio": components.get("largest_component_ratio"),
+            "component_count": components.get("component_count"),
+            "degree_mean": degree.get("mean"),
+            "degree_p95": degree.get("p95"),
+            "degree_max": degree.get("max"),
+        }
+
+    if source_kind == "tensor":
+        tensor = _as_mapping(result.get("tensor"))
+        matrix = _as_mapping(tensor.get("matrix"))
+        distribution = _as_mapping(tensor.get("distribution"))
+        return {
+            "shape": list(tensor.get("shape", []) or []),
+            "dtype": tensor.get("dtype"),
+            "size": tensor.get("size"),
+            "zero_fraction": tensor.get("zero_fraction_sample"),
+            "near_zero_fraction": tensor.get("near_zero_fraction_sample"),
+            "mean": distribution.get("mean"),
+            "std": distribution.get("std"),
+            "rank_ratio": matrix.get("rank_ratio"),
+            "effective_rank": matrix.get("effective_rank"),
+            "condition_number": matrix.get("condition_number"),
+        }
+
+    if source_kind == "model":
+        model = _as_mapping(result.get("model"))
+        runtime = _as_mapping(model.get("runtime"))
+        runtime_summary = _as_mapping(runtime.get("summary"))
+        return {
+            "framework": model.get("framework"),
+            "architecture": model.get("architecture"),
+            "parameters": model.get("parameters"),
+            "trainable_parameters": model.get("trainable_parameters"),
+            "modules": model.get("modules"),
+            "tensor_count": model.get("tensor_count"),
+            "nodes": model.get("nodes"),
+            "edges": model.get("edges"),
+            "runtime": dict(runtime_summary),
+        }
+
+    if source_kind == "nested":
+        nested = _as_mapping(result.get("nested"))
+        arrays = _as_mapping(nested.get("arrays"))
+        objects = _as_mapping(nested.get("objects"))
+        return {
+            "nodes_observed": nested.get("nodes_observed"),
+            "max_depth": nested.get("max_depth"),
+            "null_fraction": nested.get("null_fraction"),
+            "path_type_conflict_count": nested.get("path_type_conflict_count"),
+            "cyclic_references": nested.get("cyclic_references"),
+            "array_max_length": arrays.get("max_length"),
+            "unique_object_shapes": objects.get("unique_shapes"),
+        }
+
+    return {}
+
+
 def _state_payload(result: Mapping[str, Any]) -> dict[str, Any]:
     profile = _as_mapping(result.get("profile"))
     health = _as_mapping(result.get("health"))
@@ -36,9 +104,11 @@ def _state_payload(result: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(findings, list):
         findings = []
 
+    source_kind = str(result.get("source_kind") or "tabular")
     return {
         "result_schema_version": result.get("result_schema_version"),
         "analysis_mode": result.get("analysis_mode"),
+        "source_kind": source_kind,
         "dataset": {
             "shape": dict(_as_mapping(profile.get("shape"))),
             "dtypes": dict(_as_mapping(profile.get("dtypes"))),
@@ -46,6 +116,7 @@ def _state_payload(result: Mapping[str, Any]) -> dict[str, Any]:
             "duplicate_percent": profile.get("duplicate_percent"),
             "memory_usage_mb": profile.get("memory_usage_mb"),
         },
+        "structured": _structured_state(result, source_kind),
         "health": {
             "overall_score": health.get("overall_score"),
             "label": health.get("label"),
@@ -155,6 +226,7 @@ def create_snapshot(result: Mapping[str, Any]) -> AnalysisSnapshot:
         "source": {
             "dataset_id": result.get("dataset_id"),
             "filename": result.get("filename"),
+            "kind": result.get("source_kind", "tabular"),
         },
         "fingerprint": _fingerprint(state),
         "state": state,
@@ -222,6 +294,11 @@ def compare_snapshots(
     ref_findings = set(ref_state.get("finding_codes", []) or [])
     cur_findings = set(cur_state.get("finding_codes", []) or [])
 
+    ref_kind = str(ref_state.get("source_kind") or "tabular")
+    cur_kind = str(cur_state.get("source_kind") or "tabular")
+    ref_structured = dict(_as_mapping(ref_state.get("structured")))
+    cur_structured = dict(_as_mapping(cur_state.get("structured")))
+
     changed = bool(reference.get("fingerprint") != current.get("fingerprint"))
     return {
         "changed": changed,
@@ -243,6 +320,16 @@ def compare_snapshots(
             if ref_ml is not None and cur_ml is not None
             else None
         ),
+        "source_kind": {
+            "reference": ref_kind,
+            "current": cur_kind,
+            "changed": ref_kind != cur_kind,
+        },
+        "structured": {
+            "changed": ref_structured != cur_structured,
+            "reference": ref_structured,
+            "current": cur_structured,
+        },
         "findings": {
             "new": sorted(cur_findings - ref_findings),
             "resolved": sorted(ref_findings - cur_findings),
@@ -332,7 +419,9 @@ class SnapshotHistory:
                 "created_at": snapshot.get("created_at"),
                 "fingerprint": snapshot.get("fingerprint"),
                 "filename": _as_mapping(snapshot.get("source")).get("filename"),
+                "source_kind": state.get("source_kind", "tabular"),
                 "shape": dict(_as_mapping(dataset.get("shape"))),
+                "structured": dict(_as_mapping(state.get("structured"))),
                 "health_score": _number(health.get("overall_score")),
                 "ml_readiness_score": _number(ml.get("score")),
                 "finding_count": len(findings),
