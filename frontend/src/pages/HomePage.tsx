@@ -12,39 +12,33 @@ interface HomePageProps {
 const FEATURES: { eyebrow: string; title: string; body: string }[] = [
   {
     eyebrow: "01",
-    title: "Statistical depth",
+    title: "Prism",
     body:
-      "Per-column normality tests, distribution diagnostics, bootstrap confidence intervals, and bivariate tests surface structure that basic profiling misses.",
+      "Turn a dataset into one coherent view of its condition, structure, risks, and modelling potential.",
   },
   {
     eyebrow: "02",
-    title: "Anomaly ensemble",
+    title: "Axiom",
     body:
-      "Core detectors include IsolationForest, LOF, EllipticEnvelope, robust z-score, and Mahalanobis distance. Optional PyOD support adds ECOD and COPOD before scores are normalized into one ensemble view.",
+      "Establish expectations from trusted data and test whether new data still respects them.",
   },
   {
     eyebrow: "03",
-    title: "Model leaderboard + explainability",
+    title: "Forge",
     body:
-      "Target-aware baseline models are cross-validated and compared consistently. Optional XGBoost and LightGBM expand the leaderboard, while SHAP is used when available with deterministic feature-importance fallbacks otherwise.",
+      "Prepare a conservative transformation plan and apply it only when you are ready.",
   },
   {
     eyebrow: "04",
-    title: "Time-series and text",
+    title: "Tide",
     body:
-      "Date-like columns can be inspected for temporal structure and stationarity, while free-text columns receive dedicated profiling so they are not treated as ordinary categories.",
+      "Understand how a dataset changes between two points in time, releases, or pipeline states.",
   },
   {
     eyebrow: "05",
-    title: "Drift / compare mode",
+    title: "Pulse",
     body:
-      "Compare two datasets — or split one chronologically — and quantify column-by-column shift with PSI, Kolmogorov-Smirnov, and chi-square diagnostics.",
-  },
-  {
-    eyebrow: "06",
-    title: "Optional AI interpretation",
-    body:
-      "AI-assisted summaries can use a local Ollama service when configured. Core diagnostics do not require an LLM, and deterministic structured output remains available when AI integrations are absent.",
+      "Capture compact health states that can be retained and compared as the dataset evolves.",
   },
 ];
 
@@ -74,8 +68,8 @@ export function HomePage({ onNavigate }: HomePageProps) {
         </Parallax>
 
         <div className="relative">
-          <Eyebrow>Tabular data diagnostics</Eyebrow>
-          <PageTitle subtitle="Upload a dataset and get structured, evidence-backed diagnostics for data quality, ML readiness, anomaly behavior, time-series structure, text columns, drift, modelling, and optional AI-assisted interpretation.">
+          <Eyebrow>FrameVitals protocols</Eyebrow>
+          <PageTitle subtitle="A protocol-first way to understand, trust, transform, compare, and monitor tabular data without stitching together a dozen separate workflows.">
             Read the signal in your data.
           </PageTitle>
 
@@ -86,23 +80,23 @@ export function HomePage({ onNavigate }: HomePageProps) {
             className="flex flex-wrap items-center gap-3"
           >
             <button onClick={() => onNavigate("analyze")} className="btn-primary">
-              Analyze a dataset
+              Run Prism
             </button>
             <button onClick={() => onNavigate("modules")} className="btn-ghost">
-              See what it inspects →
+              Explore protocols →
             </button>
             <HealthChip />
           </motion.div>
         </div>
       </Section>
 
-      <Hr label="Inspection map" />
+      <Hr label="Protocol map" />
 
       <Section>
         <SectionHeader
-          eyebrow="What FrameVitals inspects"
-          title="Six analytical lenses."
-          description="Each lens is grounded in named algorithms and structured outputs. Optional integrations extend the core engine without becoming mandatory dependencies."
+          eyebrow="FrameVitals protocol system"
+          title="Five protocols. One coherent workflow."
+          description="Use Prism for the broad view, then reach for the more focused protocols when your workflow calls for them."
         />
 
         <motion.div
