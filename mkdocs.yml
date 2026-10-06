@@ -1,5 +1,5 @@
 site_name: FrameVitals
-site_description: Source-aware data health, drift, contracts, and quality gates for tabular pipelines.
+site_description: Diagnostics for structured data, graphs, tensors, ML models, data health, drift, and contracts.
 repo_name: parthdongre/FrameVitals
 repo_url: https://github.com/parthdongre/FrameVitals
 edit_uri: edit/dev/docs/
@@ -17,6 +17,7 @@ theme:
 nav:
   - Home: index.md
   - Protocol architecture: protocols.md
+  - Structured data and model diagnostics: structured-data.md
   - Configuration: configuration.md
   - Planning: planning.md
   - Planner scheduling: planner-scheduling.md
