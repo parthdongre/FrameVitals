@@ -186,7 +186,6 @@ def _rank_diagnostics(
         (name, parameter)
         for name, parameter in named_parameters
         if len(parameter.shape) == 2
-        and int(parameter.numel()) <= 2_000_000
         and min(int(v) for v in parameter.shape) >= 2
     ]
     candidates.sort(key=lambda item: int(item[1].numel()), reverse=True)
