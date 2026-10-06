@@ -64,16 +64,15 @@ export function ExplainabilityPanel({ explainability, backendBaseUrl = "" }: Exp
       <Card className="overflow-hidden border-white/5 bg-white/[0.03] shadow-panel">
         <CardHeader className="border-b border-white/5 bg-white/[0.015]">
           <CardTitle className="flex items-center gap-3 text-lg text-slate-50">
-            <span className="text-cyan-300">Model explainability</span>
-            <span className="text-xs font-mono tracking-[0.3em] text-slate-500">SHAP</span>
+            <span className="text-cyan-300">Explainability</span>
           </CardTitle>
           <CardDescription className="text-slate-400">
-            SHAP-based global + per-row attribution for the leaderboard winner.
+            A global and row-level view of which features shaped the focused outcome.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-6">
           <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-sm text-slate-400">
-            {explainability.message ?? "Run analysis with a target column to unlock SHAP explanations."}
+            {explainability.message ?? "Run Prism with a focus column to unlock explanations."}
           </div>
         </CardContent>
       </Card>
@@ -97,22 +96,11 @@ export function ExplainabilityPanel({ explainability, backendBaseUrl = "" }: Exp
     >
       <Card className="overflow-hidden border-white/5 bg-white/[0.03] shadow-panel">
         <CardHeader className="border-b border-white/5 bg-white/[0.015]">
-          <CardTitle className="flex items-center gap-3 text-lg text-slate-50">
-            <span className="text-cyan-300">Model explainability</span>
-            <span className="text-xs font-mono tracking-[0.3em] text-slate-500">SHAP</span>
+          <CardTitle className="text-lg text-slate-50">
+            <span className="text-cyan-300">Explainability</span>
           </CardTitle>
-          <CardDescription className="flex flex-wrap items-center gap-2 text-slate-400">
-            <span>method:</span>
-            <Badge variant="outline" className="border-cyan-400/20 text-cyan-100">
-              {explainability.method}
-            </Badge>
-            <span>·</span>
-            <span>model:</span>
-            <Badge variant="outline" className="border-violet-400/20 text-violet-100">
-              {explainability.model}
-            </Badge>
-            <span>·</span>
-            <span>{explainability.n_test_rows_explained ?? 0} test rows explained</span>
+          <CardDescription className="text-slate-400">
+            {explainability.n_test_rows_explained ?? 0} rows explained for the focused outcome.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 p-6">
@@ -153,19 +141,19 @@ export function ExplainabilityPanel({ explainability, backendBaseUrl = "" }: Exp
 
             <section>
               <p className="mb-3 text-xs uppercase tracking-[0.28em] text-slate-500">
-                Top SHAP summary plot
+                Contribution summary
               </p>
               {chartPath ? (
                 <div className="overflow-hidden rounded-2xl border border-white/5 bg-space-950/80">
                   <img
                     src={chartPath}
-                    alt="SHAP summary"
+                    alt="Contribution summary"
                     className="h-auto w-full object-contain"
                   />
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-sm text-slate-400">
-                  No SHAP summary plot was produced.
+                  No contribution summary was produced.
                 </div>
               )}
             </section>
