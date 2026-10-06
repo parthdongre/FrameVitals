@@ -407,3 +407,55 @@ def test_recurrent_architecture_diagnostics_include_gate_spectra():
     layer = details["modules"][0]["layers"][0]
     assert len(layer["gate_norms"]) == 4
     assert len(layer["spectral_radii"]) == 4
+
+
+
+def test_structured_prism_orchestrates_axiom_and_tide_from_reference():
+    reference = np.eye(4, dtype=float)
+    current = np.eye(5, dtype=float)
+
+    result = fv.prism(current, reference=reference, depth="quick")
+
+    assert result.analysis["source_kind"] == "tensor"
+    assert result.contract is not None
+    assert result.validation is not None
+    assert result.validation.status == "fail"
+    assert result.change is not None
+    assert result.change["source_kind"] == "tensor"
+    assert result.status == "fail"
+
+
+def test_structured_prism_reference_passes_for_matching_tensor():
+    reference = np.eye(4, dtype=float)
+    current = reference.copy()
+
+    result = fv.prism(current, reference=reference, depth="quick")
+
+    assert result.validation is not None
+    assert result.validation.status == "pass"
+    assert result.change is not None
+    assert result.change.status == "pass"
+    assert result.status == "pass"
+
+
+def test_structured_html_notebook_and_terminal_rendering():
+    nx = pytest.importorskip("networkx")
+    graph = nx.cycle_graph(10)
+
+    result = fv.prism(graph, depth="quick")
+    analysis = result.analysis
+
+    terminal = analysis.summary_text()
+    assert "Kind          GRAPH" in terminal
+    assert "Nodes" in terminal
+    assert "ML readiness" not in terminal
+
+    html = analysis.to_html()
+    assert "Graph overview" in html
+    assert "Nodes" in html
+    assert "Source kind" in html
+    assert "ML readiness" not in html
+
+    notebook = analysis._repr_html_()
+    assert "GRAPH" in notebook
+    assert "Nodes" in notebook
