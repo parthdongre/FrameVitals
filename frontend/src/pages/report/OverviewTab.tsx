@@ -22,7 +22,6 @@ export default function OverviewTab({ analysis }: TabComponentProps) {
   const lastScan = safeStr(t.lastScan, "—");
   const analysisDuration = safeNum(t.analysisDurationMs, 0);
 
-  const metrics = safeArr<{ label?: string; value?: string; hint?: string }>(t.metrics);
   const dataTypes = safeArr<{ label?: string; count?: number }>(t.dataTypes);
   const signals = safeArr<SignalItem>(t.signals);
 
@@ -56,31 +55,6 @@ export default function OverviewTab({ analysis }: TabComponentProps) {
           sub={pickStr(ml, "label", "")}
         />
       </motion.section>
-
-      {/* ------------------ Mission metrics --------------------------- */}
-      {metrics.length ? (
-        <motion.section variants={staggerChild}>
-          <Eyebrow className="mb-3">Mission metrics</Eyebrow>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {metrics.map((m, i) => (
-              <div
-                key={`${i}-${m.label ?? "metric"}`}
-                className="rounded-md border border-line bg-bg-1 p-4 transition-colors hover:border-line-strong"
-              >
-                <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-ink-3">
-                  {safeStr(m.label, "—")}
-                </p>
-                <p className="mt-2 text-[22px] font-semibold tabular-nums text-ink-1">
-                  {safeStr(m.value, "—")}
-                </p>
-                {m.hint ? (
-                  <p className="mt-1 text-[12px] leading-5 text-ink-3">{safeStr(m.hint, "")}</p>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </motion.section>
-      ) : null}
 
       {/* ------------------ Signals + Anomaly snapshot ---------------- */}
       <motion.section variants={staggerChild} className="grid gap-8 md:grid-cols-2">
