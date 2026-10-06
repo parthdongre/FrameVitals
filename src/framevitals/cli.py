@@ -576,7 +576,11 @@ def _render_pulse(snapshot: dict) -> str:
         "=" * 72,
         f"Dataset       {source.get('filename', 'unknown')}",
         f"Health        {health.get('overall_score', 'n/a')}  {health.get('label', '')}",
-        f"Shape         {shape.get('rows', 'unknown')} rows x {shape.get('columns', 'unknown')} columns",
+        (
+            "Shape         "
+            f"{shape.get('rows', 'unknown')} rows x "
+            f"{shape.get('columns', 'unknown')} columns"
+        ),
         f"Fingerprint   {snapshot.get('fingerprint', 'unknown')}",
         "=" * 72,
         "Pulse captured.",
