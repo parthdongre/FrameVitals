@@ -203,6 +203,11 @@ def analyze_model(
     model: Any,
     *,
     depth: str | None = None,
+    sample_batch: Any = None,
+    targets: Any = None,
+    loss_fn: Any = None,
+    backward: bool = False,
+    max_runtime_modules: int | None = None,
 ) -> AnalysisResult:
     """Inspect a PyTorch-style nn.Module without requiring PyTorch in FrameVitals."""
     if not (
@@ -375,12 +380,51 @@ def analyze_model(
             )
         )
 
+    runtime: dict[str, Any] | None = None
+    if sample_batch is not None:
+        from framevitals.analysis.runtime_model import observe_model_runtime
+
+        runtime_module_limit = (
+            int(max_runtime_modules)
+            if max_runtime_modules is not None
+            else {"quick": 48, "standard": 128, "deep": 256, "research": 512}.get(
+                mode,
+                128,
+            )
+        )
+        runtime = observe_model_runtime(
+            model,
+            sample_batch,
+            targets=targets,
+            loss_fn=loss_fn,
+            backward=backward,
+            max_modules=runtime_module_limit,
+            sample_values=sample_limit,
+        )
+        runtime_findings = runtime.get("findings", [])
+        if isinstance(runtime_findings, list):
+            findings.extend(runtime_findings)
+
     score = 100.0
     score -= min(60.0, len(nonfinite) * 15.0)
     score -= min(50.0, len(gradients.get("nonfinite_parameters") or []) * 10.0)
     score -= min(20.0, len(norm_outliers) * 4.0)
     score -= min(20.0, len(low_rank) * 5.0)
     score -= min(20.0, int(cnn.get("dead_filters") or 0) * 1.5)
+
+    if runtime is not None:
+        runtime_summary = runtime.get("summary", {})
+        if isinstance(runtime_summary, dict):
+            score -= min(
+                60.0,
+                float(runtime_summary.get("nonfinite_activations", 0)) * 15.0
+                + float(runtime_summary.get("nonfinite_gradients", 0)) * 15.0
+                + float(runtime_summary.get("gradient_explosions", 0)) * 10.0
+                + float(runtime_summary.get("gradient_vanishing", 0)) * 6.0
+                + float(runtime_summary.get("dead_activations", 0)) * 4.0
+                + float(runtime_summary.get("saturated_activations", 0)) * 4.0,
+            )
+
     score = round(max(0.0, min(100.0, score)), 2)
 
     model_summary = {
@@ -398,6 +442,7 @@ def analyze_model(
         "rank_diagnostics": rank,
         "gradients": gradients,
         "cnn": cnn,
+        "runtime": runtime,
     }
 
     return AnalysisResult(
