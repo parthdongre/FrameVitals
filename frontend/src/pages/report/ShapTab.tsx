@@ -17,10 +17,7 @@ function getBackendBaseUrl(): string {
   return "";
 }
 
-/**
- * SHAP tab — interactive global importance bars + the existing
- * ExplainabilityPanel (per-row stories, summary chart, errors).
- */
+/** Explainability view for the latest Prism result. */
 export default function ShapTab({ analysis }: TabComponentProps) {
   const t = analysis as unknown as { explainability?: Explainability };
   const exp = t.explainability;
@@ -28,26 +25,18 @@ export default function ShapTab({ analysis }: TabComponentProps) {
   if (!exp || !exp.available) {
     return (
       <EmptyState
-        title="SHAP not available for this dataset"
-        hint="The explainability module runs once the leaderboard has a winner. Re-run with a target column to populate it."
+        title="Explainability is not available for this dataset"
+        hint="Run Prism with a focus column to populate this view."
       />
     );
   }
 
   return (
     <motion.div variants={staggerParent} initial="initial" animate="animate" className="space-y-8">
-      <motion.section variants={staggerChild} className="grid gap-2 sm:grid-cols-3">
-        <span className="rounded-md border border-line bg-bg-1 px-3 py-2 font-mono text-[11px] text-ink-3">
-          <span className="uppercase tracking-[0.2em] text-ink-4">Method · </span>
-          <span className="text-ink-1">{exp.method ?? "—"}</span>
-        </span>
-        <span className="rounded-md border border-line bg-bg-1 px-3 py-2 font-mono text-[11px] text-ink-3">
-          <span className="uppercase tracking-[0.2em] text-ink-4">Model · </span>
-          <span className="text-ink-1">{exp.model ?? "—"}</span>
-        </span>
-        <span className="rounded-md border border-line bg-bg-1 px-3 py-2 font-mono text-[11px] text-ink-3">
-          <span className="uppercase tracking-[0.2em] text-ink-4">Test rows · </span>
-          <span className="text-ink-1 tabular-nums">{exp.n_test_rows_explained ?? 0}</span>
+      <motion.section variants={staggerChild}>
+        <span className="inline-flex rounded-md border border-line bg-bg-1 px-3 py-2 font-mono text-[11px] text-ink-3">
+          <span className="uppercase tracking-[0.2em] text-ink-4">Explained rows · </span>
+          <span className="ml-2 text-ink-1 tabular-nums">{exp.n_test_rows_explained ?? 0}</span>
         </span>
       </motion.section>
 
