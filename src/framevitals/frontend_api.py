@@ -27,8 +27,8 @@ from framevitals.target_leakage import (
 from framevitals.multicollinearity import (
     run_multicollinearity_analysis,
 )
-from framevitals.model_diagnostics import (
-    run_model_diagnostics,
+from framevitals.predictive_diagnostics import (
+    run_predictive_diagnostics,
 )
 from framevitals.segment_analysis import (
     run_segment_analysis,
@@ -181,7 +181,7 @@ def build_dashboard_payload(
             task_type=target_analysis["task_type"],
         )
         target_leakage = run_target_leakage_analysis(df=df, target_column=selected_target_column)
-        model_diagnostics = run_model_diagnostics(
+        model_diagnostics = run_predictive_diagnostics(
             df=df,
             target_column=selected_target_column,
             task_type=target_analysis["task_type"],
