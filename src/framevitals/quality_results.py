@@ -187,6 +187,19 @@ class DriftResult(_QualityResult):
                     )
             return "\n".join(lines)
 
+        if source_kind == "nested":
+            nested = self.get("nested", {})
+            if not isinstance(nested, dict):
+                nested = {}
+            lines.extend([
+                f"Nodes           {nested.get('reference_nodes', '?')} -> {nested.get('current_nodes', '?')}",
+                f"Depth           {nested.get('reference_depth', '?')} -> {nested.get('current_depth', '?')}",
+                f"Added keys      {len(nested.get('added_keys', []))}",
+                f"Removed keys    {len(nested.get('removed_keys', []))}",
+                f"Type conflicts  {nested.get('reference_type_conflicts', '?')} -> {nested.get('current_type_conflicts', '?')}",
+            ])
+            return "\n".join(lines)
+
         if source_kind == "graph":
             graph = self.get("graph", {})
             if not isinstance(graph, dict):
