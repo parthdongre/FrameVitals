@@ -127,12 +127,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="How far Prism should investigate.",
     )
     prism_parser.add_argument(
-        "--artifacts",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Enable or disable generated artifacts.",
-    )
-    prism_parser.add_argument(
         "--format",
         choices=["terminal", "json"],
         default="terminal",
@@ -751,7 +745,7 @@ def main() -> int:
             axiom=explicit_contract,
             focus=args.target,
             depth=args.mode,
-            artifacts=args.artifacts,
+            artifacts=False,
         )
         if args.output is not None:
             result.to_json(args.output)
