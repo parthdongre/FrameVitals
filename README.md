@@ -97,6 +97,7 @@ tensor_report = fv.prism(np.random.randn(256, 64))
 
 # With NetworkX installed:
 graph_report = fv.prism(graph)
+graph_file_report = fv.prism("network.graphml")
 
 # If PyTorch is already installed in your environment:
 model_report = fv.prism(model)
@@ -127,7 +128,9 @@ project_report = fv.prism({
 ```
 
 The graph engine uses bounded connectivity, PageRank, approximate betweenness,
-community, cut-structure, clustering, and sampled shortest-path diagnostics.
+community, cut-structure, clustering, k-core, spectral-connectivity, and sampled
+shortest-path diagnostics. Transformer and recurrent PyTorch models receive
+architecture-aware checks in addition to generic parameter/runtime analysis.
 Weighted graphs with a reliable non-negative `weight` attribute automatically
 use Dijkstra for the sampled path analysis. PyTorch remains optional; FrameVitals
 does not install a deep-learning runtime merely to inspect a model.
