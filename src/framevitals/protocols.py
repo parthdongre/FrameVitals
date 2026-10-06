@@ -129,11 +129,11 @@ class PrismResult(_ProtocolResult):
 
         validation = self.validation
         if validation is not None:
-            lines.append(f"Axiom         {validation.status.upper()}")
+            lines.append(f"Reference trust {validation.status.upper()}")
 
         tide_result = self.tide
         if tide_result is not None:
-            lines.append(f"Tide          {tide_result.severity.upper()}")
+            lines.append(f"Change        {tide_result.severity.upper()}")
 
         lines.extend([
             "=" * 72,
