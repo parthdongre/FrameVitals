@@ -307,3 +307,24 @@ def test_graph_prism_selects_dijkstra_only_for_safe_nonnegative_weights():
     negative_result = fv.prism(negative, depth="quick")
     assert negative_result.analysis["graph"]["weight_attribute"] is None
     assert negative_result.analysis["graph"]["shortest_paths"]["weighted"] is False
+
+
+
+def test_large_tensor_uses_bounded_matrix_sketch_for_rank_diagnostics():
+    left = np.linspace(1.0, 2.0, 2400, dtype=float)[:, None]
+    right = np.linspace(1.0, 3.0, 320, dtype=float)[None, :]
+    matrix = left @ right
+
+    result = fv.prism(matrix, depth="quick")
+    diagnostics = result.analysis["tensor"]["matrix"]
+
+    assert diagnostics["approximate"] is True
+    assert diagnostics["method"] == "sampled_submatrix_randomized_svd"
+    assert diagnostics["original_shape"] == [2400, 320]
+    assert diagnostics["analyzed_shape"][0] <= 768
+    assert diagnostics["analyzed_shape"][1] <= 768
+    assert diagnostics["stable_rank_ratio"] < 0.05
+    assert any(
+        item["code"] == "tensor.low_effective_dimension"
+        for item in result.beacons
+    )
