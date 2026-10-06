@@ -131,3 +131,11 @@ This separation is deliberate:
 Product-facing CLI and web interfaces should use protocol terminology and
 outcomes. Implementation details belong in documentation, debug output, and
 source code rather than the default user experience.
+
+
+## Structured Axiom contracts
+
+Axiom uses the same source-recognition layer as Prism and Tide. For graph,
+tensor, nested, relational, and model sources it derives a modality-specific
+structural contract and can validate a later source against it. Tabular Axiom
+behavior remains unchanged.
