@@ -358,6 +358,19 @@ def validate_structured(
                     field=table,
                 ))
 
+        for table, required_keys in expectations.get("key_candidates", {}).items():
+            if table not in tables:
+                continue
+            missing_keys = sorted(
+                set(required_keys) - set(tables[table]["key_candidates"])
+            )
+            if missing_keys:
+                findings.append(_finding(
+                    "axiom.relational.keys",
+                    f"Table {table!r} no longer preserves key uniqueness for: {missing_keys}.",
+                    field=table,
+                ))
+
         observed_relationships = {
             (
                 item["left_table"],
@@ -380,6 +393,36 @@ def validate_structured(
 
     elif kind == "model":
         observed = _model_structure(current, descriptor)
+
+        expected_format = expectations.get("format")
+        observed_format = observed.get("format")
+        if expected_format != observed_format:
+            findings.append(_finding(
+                "axiom.model.format",
+                f"Expected model format {expected_format!r}, observed {observed_format!r}.",
+            ))
+
+        expected_framework = expectations.get("framework")
+        observed_framework = observed.get("framework")
+        if expected_framework != observed_framework:
+            findings.append(_finding(
+                "axiom.model.framework",
+                f"Expected framework {expected_framework!r}, observed {observed_framework!r}.",
+            ))
+
+        expected_architecture = expectations.get("architecture")
+        observed_architecture = observed.get("architecture")
+        if (
+            expected_architecture
+            and observed_architecture
+            and expected_architecture != observed_architecture
+        ):
+            findings.append(_finding(
+                "axiom.model.architecture",
+                f"Expected architecture {expected_architecture!r}, observed {observed_architecture!r}.",
+                severity="warning",
+            ))
+
         expected_parameters = expectations.get("parameters", {})
         observed_parameters = observed.get("parameters", {})
 
