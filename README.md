@@ -108,6 +108,9 @@ runtime_report = fv.prism(
     loss_fn=criterion,
     backward=True,
 )
+
+# Metadata-first checkpoint inspection without loading tensor bodies:
+checkpoint_report = fv.prism("model.safetensors")
 ```
 
 The graph engine uses bounded connectivity, PageRank, approximate betweenness,
