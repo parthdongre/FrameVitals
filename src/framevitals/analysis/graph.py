@@ -8,6 +8,7 @@ Prism depth so diagnostics remain useful on real networks.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -30,6 +31,10 @@ _DEPTH_BUDGETS = {
         "cut_edges": 60_000,
         "clustering_nodes": 20_000,
         "clustering_edges": 40_000,
+        "spectral_nodes": 2_000,
+        "spectral_edges": 20_000,
+        "core_nodes": 50_000,
+        "core_edges": 100_000,
     },
     "standard": {
         "path_sources": 12,
@@ -44,6 +49,10 @@ _DEPTH_BUDGETS = {
         "cut_edges": 200_000,
         "clustering_nodes": 60_000,
         "clustering_edges": 120_000,
+        "spectral_nodes": 5_000,
+        "spectral_edges": 60_000,
+        "core_nodes": 150_000,
+        "core_edges": 300_000,
     },
     "deep": {
         "path_sources": 24,
@@ -58,6 +67,10 @@ _DEPTH_BUDGETS = {
         "cut_edges": 500_000,
         "clustering_nodes": 150_000,
         "clustering_edges": 300_000,
+        "spectral_nodes": 10_000,
+        "spectral_edges": 150_000,
+        "core_nodes": 300_000,
+        "core_edges": 750_000,
     },
     "research": {
         "path_sources": 48,
@@ -72,12 +85,33 @@ _DEPTH_BUDGETS = {
         "cut_edges": 1_000_000,
         "clustering_nodes": 300_000,
         "clustering_edges": 750_000,
+        "spectral_nodes": 20_000,
+        "spectral_edges": 400_000,
+        "core_nodes": 750_000,
+        "core_edges": 2_000_000,
     },
 }
 
 
 def _budget(depth: str | None) -> dict[str, int]:
     return _DEPTH_BUDGETS.get(str(depth or "standard").lower(), _DEPTH_BUDGETS["standard"])
+
+
+def _coerce_graph(graph: Any, nx: Any) -> tuple[Any, str | None]:
+    """Load supported graph files or return an existing graph object."""
+    if isinstance(graph, (str, Path)):
+        path = Path(graph)
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        suffix = path.suffix.lower()
+        if suffix == ".graphml":
+            return nx.read_graphml(path), path.name
+        if suffix == ".gexf":
+            return nx.read_gexf(path), path.name
+        if suffix == ".gml":
+            return nx.read_gml(path), path.name
+        raise ValueError(f"Unsupported graph file format: {suffix or '<none>'}")
+    return graph, None
 
 
 def _even_sample(values: list[Any], count: int) -> list[Any]:
@@ -434,6 +468,112 @@ def _clustering_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str
         return {"available": False, "reason": type(exc).__name__}
 
 
+def _core_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, Any]:
+    n = graph.number_of_nodes()
+    m = graph.number_of_edges()
+    if n > budget["core_nodes"] or m > budget["core_edges"]:
+        return {
+            "available": False,
+            "reason": "resource_budget",
+            "node_limit": budget["core_nodes"],
+            "edge_limit": budget["core_edges"],
+        }
+    try:
+        simple = nx.Graph(graph)
+        simple.remove_edges_from(list(nx.selfloop_edges(simple)))
+        if not simple.number_of_nodes():
+            return {"available": True, "max_core": 0, "degeneracy": 0}
+        core = nx.core_number(simple)
+        max_core = max(core.values(), default=0)
+        counts: dict[int, int] = {}
+        for value in core.values():
+            counts[int(value)] = counts.get(int(value), 0) + 1
+        assortativity = None
+        if simple.number_of_edges() > 0:
+            try:
+                raw = float(nx.degree_assortativity_coefficient(simple))
+                assortativity = round(raw, 8) if math.isfinite(raw) else None
+            except Exception:
+                assortativity = None
+        return {
+            "available": True,
+            "max_core": int(max_core),
+            "degeneracy": int(max_core),
+            "core_distribution": {
+                str(key): value for key, value in sorted(counts.items())
+            },
+            "degree_assortativity": assortativity,
+        }
+    except Exception as exc:
+        return {"available": False, "reason": type(exc).__name__}
+
+
+def _spectral_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, Any]:
+    n = graph.number_of_nodes()
+    m = graph.number_of_edges()
+    if n < 2:
+        return {"available": False, "reason": "too_small"}
+    if n > budget["spectral_nodes"] or m > budget["spectral_edges"]:
+        return {
+            "available": False,
+            "reason": "resource_budget",
+            "node_limit": budget["spectral_nodes"],
+            "edge_limit": budget["spectral_edges"],
+        }
+
+    simple = nx.Graph(graph)
+    simple.remove_edges_from(list(nx.selfloop_edges(simple)))
+    if simple.number_of_edges() == 0:
+        return {
+            "available": True,
+            "spectral_radius": 0.0,
+            "algebraic_connectivity": 0.0,
+            "connected": simple.number_of_nodes() <= 1,
+        }
+
+    try:
+        adjacency = nx.to_scipy_sparse_array(simple, dtype=float, weight=None, format="csr")
+        laplacian = nx.normalized_laplacian_matrix(simple, weight=None)
+        if n <= 64:
+            dense_a = np.asarray(adjacency.toarray(), dtype=float)
+            dense_l = np.asarray(laplacian.toarray(), dtype=float)
+            adjacency_values = np.linalg.eigvalsh(dense_a)
+            laplacian_values = np.linalg.eigvalsh(dense_l)
+            spectral_radius = float(np.max(np.abs(adjacency_values)))
+            ordered = np.sort(np.real(laplacian_values))
+            algebraic = float(ordered[1]) if ordered.size >= 2 else 0.0
+            method = "dense_eigvalsh"
+        else:
+            from scipy.sparse.linalg import eigsh
+
+            largest = eigsh(
+                adjacency,
+                k=1,
+                which="LM",
+                return_eigenvectors=False,
+            )
+            smallest = eigsh(
+                laplacian,
+                k=2,
+                which="SM",
+                return_eigenvectors=False,
+            )
+            spectral_radius = float(np.max(np.abs(largest)))
+            ordered = np.sort(np.real(smallest))
+            algebraic = float(ordered[1]) if ordered.size >= 2 else 0.0
+            method = "sparse_eigsh"
+
+        return {
+            "available": True,
+            "method": method,
+            "spectral_radius": round(spectral_radius, 8),
+            "algebraic_connectivity": round(max(0.0, algebraic), 10),
+            "connected": bool(nx.is_connected(simple)),
+        }
+    except Exception as exc:
+        return {"available": False, "reason": type(exc).__name__}
+
+
 def analyze_graph(
     graph: Any,
     *,
@@ -449,11 +589,13 @@ def analyze_graph(
             "pip install framevitals[graph]."
         ) from exc
 
+    graph, source_filename = _coerce_graph(graph, nx)
+
     if not (
         callable(getattr(graph, "number_of_nodes", None))
         and callable(getattr(graph, "number_of_edges", None))
     ):
-        raise TypeError("Expected a NetworkX-compatible graph object.")
+        raise TypeError("Expected a NetworkX-compatible graph object or supported graph file.")
 
     budget = _budget(depth)
     n = int(graph.number_of_nodes())
@@ -498,6 +640,8 @@ def analyze_graph(
         weight=resolved_weight,
     )
     clustering = _clustering_summary(graph, nx, budget)
+    core = _core_summary(graph, nx, budget)
+    spectral = _spectral_summary(graph, nx, budget)
 
     findings: list[dict[str, Any]] = []
     largest_ratio = float(components.get("largest_component_ratio") or 0.0)
@@ -581,6 +725,29 @@ def analyze_graph(
             )
         )
 
+    algebraic = spectral.get("algebraic_connectivity")
+    if (
+        spectral.get("available")
+        and spectral.get("connected")
+        and n >= 10
+        and isinstance(algebraic, (float, int))
+        and float(algebraic) <= 1.0e-4
+    ):
+        findings.append(
+            beacon(
+                "graph.spectral_fragility",
+                "The connected graph has extremely weak spectral connectivity",
+                severity="medium",
+                confidence=0.85,
+                summary=(
+                    "The normalized-Laplacian algebraic connectivity is "
+                    f"{float(algebraic):.3g}, indicating a fragile bottlenecked topology."
+                ),
+                recommendation="Inspect sparse cuts, bridges, and communities that can split the network.",
+                evidence=dict(spectral),
+            )
+        )
+
     if cuts.get("available") and cuts.get("articulation_points", 0):
         articulation_count = int(cuts["articulation_points"])
         articulation_ratio = articulation_count / n if n else 0.0
@@ -625,13 +792,15 @@ def analyze_graph(
         "cut_structure": cuts,
         "communities": communities,
         "clustering": clustering,
+        "core": core,
+        "spectral": spectral,
         "algorithm_budget": dict(budget),
     }
 
     return AnalysisResult(
         {
             "dataset_id": None,
-            "filename": type(graph).__name__,
+            "filename": source_filename or type(graph).__name__,
             "analysis_mode": str(depth or "standard"),
             "source_kind": "graph",
             "profile": {
