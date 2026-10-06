@@ -13,31 +13,15 @@ interface CleaningAction extends Record<string, unknown> {
   details?: string;
 }
 
-function getBackendBaseUrl(): string {
-  const env = (import.meta as any).env ?? {};
-  const configured = (env.VITE_BACKEND_URL ?? "").toString().trim();
-  if (configured) return configured.replace(/\/$/, "");
-  if (typeof window !== "undefined" && window.location.port === "5173") {
-    return "http://127.0.0.1:5055";
-  }
-  return "";
-}
-
-/**
- * Cleaning tab — before/after KPIs, the action log, and the cleaned-CSV
- * download link from `downloadLinks.cleaned`.
- */
+/** Transformation preview surfaced by Prism. Applying changes belongs to Forge. */
 export default function CleaningTab({ analysis }: TabComponentProps) {
   const t = analysis as unknown as Record<string, unknown>;
   const cleaning = safeObj(t.cleaning, {} as Record<string, unknown>);
-  const downloadLinks = safeObj(t.downloadLinks, {} as Record<string, unknown>);
-  const cleanedHref = safeStr(downloadLinks.cleaned, "");
-
   if (!isPresent(cleaning)) {
     return (
       <EmptyState
-        title="Cleaning summary not available for this dataset"
-        hint="The cleaner only runs in standard or deeper modes. Re-run with one of those modes to populate this tab."
+        title="Transformation preview not available for this dataset"
+        hint="Run Prism at Standard depth or above to populate this view."
       />
     );
   }
@@ -80,20 +64,12 @@ export default function CleaningTab({ analysis }: TabComponentProps) {
           higherIsBetter
         />
         <div className="bg-bg-1 p-5">
-          <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-ink-3">Cleaned CSV</p>
-          {cleanedHref ? (
-            <a
-              href={`${getBackendBaseUrl()}${cleanedHref}`}
-              className="btn-ghost mt-3"
-              download
-            >
-              Download cleaned CSV
-            </a>
-          ) : (
-            <p className="mt-3 text-[12px] text-ink-3">Path unavailable.</p>
-          )}
-          <p className="mt-2 font-mono text-[11px] tabular-nums text-ink-3">
-            {actions.length} action{actions.length === 1 ? "" : "s"} applied
+          <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-ink-3">Forge handoff</p>
+          <p className="mt-3 text-[13px] leading-6 text-ink-2">
+            {actions.length} suggested change{actions.length === 1 ? "" : "s"} available.
+          </p>
+          <p className="mt-2 text-[12px] leading-5 text-ink-3">
+            Review here; use Forge when you want to apply transformations.
           </p>
         </div>
       </motion.section>
@@ -108,14 +84,13 @@ export default function CleaningTab({ analysis }: TabComponentProps) {
           health points
         </Eyebrow>
         <p className="max-w-3xl text-[14px] leading-7 text-ink-2">
-          The cleaner imputes missing values (median for numeric, mode for categorical), removes
-          exact duplicate rows, clips extreme outliers, and rescores health on the cleaned dataset.
-          The diff shows the gain.
+          This preview estimates how the dataset could improve after the suggested transformations.
+          Prism does not ask you to accept those changes automatically.
         </p>
       </motion.section>
 
       <motion.section variants={staggerChild}>
-        <Eyebrow className="mb-3">Action log</Eyebrow>
+        <Eyebrow className="mb-3">Suggested changes</Eyebrow>
         {actions.length ? (
           <DataTable
             columns={actionColumns}
@@ -126,8 +101,8 @@ export default function CleaningTab({ analysis }: TabComponentProps) {
         ) : (
           <EmptyState
             compact
-            title="No cleaning actions were needed"
-            hint="The dataset arrived clean — no missing values, duplicates, or outliers to fix."
+            title="No transformations are suggested"
+            hint="Prism did not find changes worth proposing for this dataset."
           />
         )}
       </motion.section>

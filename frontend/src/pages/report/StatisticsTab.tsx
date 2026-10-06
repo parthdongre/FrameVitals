@@ -31,10 +31,9 @@ export default function StatisticsTab({ analysis }: TabComponentProps) {
     return (
       <motion.div variants={staggerParent} initial="initial" animate="animate" className="space-y-8">
         <motion.section variants={staggerChild}>
-          <Eyebrow className="mb-3">Deep statistics (legacy)</Eyebrow>
+          <Eyebrow className="mb-3">Statistics</Eyebrow>
           <p className="mb-4 text-[13px] leading-6 text-ink-3">
-            Deep Statistics v2 was not available for this dataset; falling back to the legacy
-            summary the pipeline emitted.
+            Prism produced the compatible statistical summary for this dataset.
           </p>
           <KeyValueGrid
             items={Object.entries(safeObj(legacy, {} as Record<string, unknown>))
@@ -64,7 +63,7 @@ export default function StatisticsTab({ analysis }: TabComponentProps) {
   return (
     <EmptyState
       title="Statistics not available for this dataset"
-      hint="Run the analyzer in standard or deeper mode to populate the deep-statistics panel."
+      hint="Run Prism at Standard depth or above to populate this view."
     />
   );
 }

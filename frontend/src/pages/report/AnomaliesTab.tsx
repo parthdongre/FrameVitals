@@ -10,11 +10,7 @@ import { formatLabel, formatNumber } from "@/lib/format";
 import type { AnomaliesV2 } from "@/data/payload";
 import type { TabComponentProps } from "./tabRegistry";
 
-/**
- * Anomalies tab — the full ensemble panel + an interactive heatmap of the
- * most flagged rows + the legacy `advanced.anomalies` summary block when
- * present.
- */
+/** Irregularity view for the latest Prism result. */
 export default function AnomaliesTab({ analysis }: TabComponentProps) {
   const t = analysis as unknown as Record<string, unknown>;
   const v2 = t.anomaliesV2 as AnomaliesV2 | undefined;
@@ -27,8 +23,8 @@ export default function AnomaliesTab({ analysis }: TabComponentProps) {
   if (!hasEnsemble && !hasAdvanced) {
     return (
       <EmptyState
-        title="Anomalies not available for this dataset"
-        hint="Run the analyzer in standard mode or higher to populate the anomaly ensemble."
+        title="Irregularity view is not available for this dataset"
+        hint="Run Prism at Standard depth or above to populate this view."
       />
     );
   }
@@ -48,7 +44,7 @@ export default function AnomaliesTab({ analysis }: TabComponentProps) {
 
       {hasAdvanced ? (
         <motion.section variants={staggerChild}>
-          <Eyebrow className="mb-3">Advanced anomaly snapshot</Eyebrow>
+          <Eyebrow className="mb-3">Additional irregularity signals</Eyebrow>
           <KeyValueGrid
             items={Object.entries(summary)
               .slice(0, 10)
@@ -71,7 +67,7 @@ export default function AnomaliesTab({ analysis }: TabComponentProps) {
           />
           {safeNum((summary as { count?: number }).count, 0) > 0 ? (
             <p className="mt-3 font-mono text-[11px] text-ink-3">
-              {safeNum((summary as { count?: number }).count, 0)} flagged from the advanced detector run.
+              {safeNum((summary as { count?: number }).count, 0)} rows flagged for review.
             </p>
           ) : null}
         </motion.section>

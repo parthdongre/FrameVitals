@@ -6,6 +6,16 @@ from typing import TYPE_CHECKING, Any
 
 from framevitals.config import AnalysisConfig, available_modules
 from framevitals.planning import AnalysisPlan
+from framevitals.protocols import (
+    AxiomResult,
+    ForgeResult,
+    PrismResult,
+    axiom,
+    forge,
+    prism,
+    pulse,
+    tide,
+)
 from framevitals.quality_results import (
     CheckResult,
     DriftResult,
@@ -353,8 +363,10 @@ def gate(
 
 __all__ = [
     "AnalysisConfig", "AnalysisPlan", "AnalysisResult", "AnalysisSnapshot", "SnapshotHistory",
+    "PrismResult", "AxiomResult", "ForgeResult",
     "CleaningPlan", "ColumnResult", "DiagnosticResult", "DataCheck", "CheckResult", "DriftResult",
-    "GateResult", "ValidationResult", "inspect_source", "profile", "roles", "health",
+    "GateResult", "ValidationResult", "prism", "axiom", "forge", "tide", "pulse",
+    "inspect_source", "profile", "roles", "health",
     "ml_readiness", "quality", "statistics", "anomalies", "relationships", "system_info",
     "target_analysis", "analyze", "plan", "plan_cleaning", "clean", "compare", "infer_contract",
     "validate", "check", "run_checks", "discover_checks", "gate", "available_modules",

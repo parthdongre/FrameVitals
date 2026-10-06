@@ -278,3 +278,69 @@ def test_cli_validate_warning_exit_is_opt_in(tmp_path, monkeypatch, capsys):
         ],
     )
     assert main() == 1
+
+
+
+def test_protocol_cli_parsers():
+    parser = build_parser()
+
+    prism_args = parser.parse_args([
+        "prism",
+        "current.csv",
+        "--reference",
+        "training.csv",
+        "--focus",
+        "churn",
+        "--depth",
+        "standard",
+        "--html-report",
+        "prism.html",
+    ])
+    axiom_args = parser.parse_args([
+        "axiom",
+        "training.csv",
+        "--current",
+        "current.csv",
+    ])
+    forge_args = parser.parse_args([
+        "forge",
+        "dataset.csv",
+        "--output",
+        "cleaned.csv",
+    ])
+    tide_args = parser.parse_args([
+        "tide",
+        "before.csv",
+        "after.csv",
+        "--fail-on",
+        "moderate",
+    ])
+    pulse_args = parser.parse_args([
+        "pulse",
+        "dataset.csv",
+        "--output",
+        "pulse.json",
+    ])
+
+    assert prism_args.command == "prism"
+    assert prism_args.file.name == "current.csv"
+    assert prism_args.reference.name == "training.csv"
+    assert prism_args.target == "churn"
+    assert prism_args.html_report.name == "prism.html"
+
+    assert axiom_args.command == "axiom"
+    assert axiom_args.reference.name == "training.csv"
+    assert axiom_args.current.name == "current.csv"
+
+    assert forge_args.command == "forge"
+    assert forge_args.file.name == "dataset.csv"
+    assert forge_args.output.name == "cleaned.csv"
+
+    assert tide_args.command == "tide"
+    assert tide_args.reference.name == "before.csv"
+    assert tide_args.current.name == "after.csv"
+    assert tide_args.fail_on == "moderate"
+
+    assert pulse_args.command == "pulse"
+    assert pulse_args.file.name == "dataset.csv"
+    assert pulse_args.output.name == "pulse.json"

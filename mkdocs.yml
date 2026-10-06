@@ -16,6 +16,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Protocol architecture: protocols.md
   - Configuration: configuration.md
   - Planning: planning.md
   - Planner scheduling: planner-scheduling.md

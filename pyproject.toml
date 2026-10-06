@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "framevitals"
 version = "0.3.0"
-description = "Data quality, drift detection, anomaly analysis, and ML-readiness diagnostics for pandas and tabular data."
+description = "Open-source data analysis, data quality, drift, anomaly detection, and ML-readiness toolkit for tabular data."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -13,8 +13,14 @@ authors = [
     { name = "Parth Dongre" }
 ]
 keywords = [
+    "data-analysis",
+    "exploratory-data-analysis",
     "data-quality",
     "data-profiling",
+    "data-validation",
+    "data-cleaning",
+    "data-observability",
+    "statistics",
     "machine-learning",
     "anomaly-detection",
     "data-drift",
@@ -112,6 +118,7 @@ dev = [
 framevitals = "framevitals.cli:main"
 
 [project.urls]
+Homepage = "https://framevitals.vercel.app/"
 Documentation = "https://github.com/parthdongre/FrameVitals/tree/main/docs"
 Repository = "https://github.com/parthdongre/FrameVitals"
 Issues = "https://github.com/parthdongre/FrameVitals/issues"

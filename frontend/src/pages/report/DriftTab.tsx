@@ -4,22 +4,15 @@ import { Eyebrow } from "@/components/site/SiteShell";
 import { staggerChild, staggerParent } from "@/components/site/Variants";
 import type { TabComponentProps } from "./tabRegistry";
 
-/**
- * Drift tab — embeds the existing DriftPanel which already owns its own
- * upload state and the two-files / split-by-date toggle. The tab adds an
- * editorial intro on top so the section's purpose is clear without scrolling
- * into the panel's own description.
- */
+/** Tide comparison view for dataset change over time or between states. */
 export default function DriftTab(_props: TabComponentProps) {
   return (
     <motion.div variants={staggerParent} initial="initial" animate="animate" className="space-y-6">
       <motion.section variants={staggerChild}>
-        <Eyebrow className="mb-3">Distribution shift</Eyebrow>
+        <Eyebrow className="mb-3">Tide</Eyebrow>
         <p className="max-w-3xl text-[14px] leading-7 text-ink-2">
-          Compare two datasets — or split one chronologically — and quantify how much each column
-          has shifted. Severity is bucketed into stable / minor / moderate / severe via PSI, with
-          KS and chi-square supporting evidence. Click a row in the table to overlay the reference
-          and current distributions.
+          Compare two dataset states — or split one chronologically — and see where meaningful
+          change has appeared. Open a column to compare the reference and current distributions.
         </p>
       </motion.section>
 

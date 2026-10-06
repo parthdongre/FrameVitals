@@ -14,10 +14,10 @@ interface AnalyzePageProps {
 }
 
 const MODES: { id: AnalysisMode; label: string; description: string }[] = [
-  { id: "quick",    label: "Quick",    description: "Profiling and signals only — under a second on most datasets." },
-  { id: "standard", label: "Standard", description: "Full v3 pipeline including deep stats, anomaly ensemble, ML leaderboard, and SHAP." },
-  { id: "deep",     label: "Deep",     description: "Same as standard, with extra bivariate budgets and exhaustive chart generation." },
-  { id: "research", label: "Research", description: "Maximum depth — slower, intended for research-grade reports." },
+  { id: "quick", label: "Quick", description: "A fast pass for immediate signal." },
+  { id: "standard", label: "Standard", description: "The recommended balance of coverage and speed." },
+  { id: "deep", label: "Deep", description: "Broader investigation when you want more evidence." },
+  { id: "research", label: "Research", description: "Maximum built-in depth for long-form investigation." },
 ];
 
 export function AnalyzePage({ onResult, onNavigate }: AnalyzePageProps) {
@@ -97,9 +97,9 @@ export function AnalyzePage({ onResult, onNavigate }: AnalyzePageProps) {
   return (
     <>
       <Section className="pb-10 pt-6">
-        <Eyebrow>Analyze</Eyebrow>
-        <PageTitle subtitle="Upload a dataset, choose how deep to go, and pick a target column when you want machine-learning outputs. Re-running with the same inputs is cached.">
-          Bring your data.
+        <Eyebrow>Prism protocol</Eyebrow>
+        <PageTitle subtitle="Give Prism a dataset, choose the depth, and optionally focus it on an outcome you care about.">
+          Run Prism.
         </PageTitle>
       </Section>
 
@@ -157,9 +157,9 @@ export function AnalyzePage({ onResult, onNavigate }: AnalyzePageProps) {
 
       <Section className="py-0">
         <SectionHeader
-          eyebrow="02 · Analysis depth"
+          eyebrow="02 · Prism depth"
           title="Pick a mode"
-          description="Quick is profiling-only. Standard runs the full v3 pipeline. Deep and Research add longer-running analytics."
+          description="Choose how far Prism should investigate. Standard is the recommended default."
         />
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -200,9 +200,9 @@ export function AnalyzePage({ onResult, onNavigate }: AnalyzePageProps) {
 
       <Section className="py-0">
         <SectionHeader
-          eyebrow="03 · Target column (optional)"
-          title="Unlock the ML lab"
-          description="Pick a column to predict. The system will infer classification vs regression, train a 7-8 model leaderboard, and produce SHAP explanations for the winner."
+          eyebrow="03 · Focus (optional)"
+          title="Focus Prism on an outcome"
+          description="Choose a column when you want the report to reason about a specific outcome."
         />
 
         {previewColumns.length > 0 ? (
@@ -238,7 +238,7 @@ export function AnalyzePage({ onResult, onNavigate }: AnalyzePageProps) {
             disabled={!file || isPending}
             className={cn("btn-primary disabled:cursor-not-allowed disabled:opacity-40")}
           >
-            {isPending ? "Running pipeline…" : "Run analysis →"}
+            {isPending ? "Prism is running…" : "Run Prism →"}
           </button>
           <AnimatePresence>
             {error ? (
@@ -256,7 +256,7 @@ export function AnalyzePage({ onResult, onNavigate }: AnalyzePageProps) {
                 animate={{ opacity: 1 }}
                 className="text-sm text-[var(--ink-3)]"
               >
-                Phases run in parallel — typically 1–8 seconds depending on dataset size.
+                Prism is building a coherent view of the dataset.
               </motion.span>
             ) : null}
           </AnimatePresence>
@@ -305,11 +305,8 @@ function ChipButton({
 }
 
 /**
- * Indeterminate animated progress bar with an elapsed counter and a phase
- * tagline that rotates based on real elapsed milliseconds. The tagline
- * sequence mirrors the actual pipeline order in `modules/pipeline.py` so the
- * user gets meaningful "what we are doing now" feedback instead of a generic
- * spinner.
+ * Deliberately opaque protocol progress. Product surfaces communicate the
+ * protocol state, while technical composition remains documented separately.
  */
 function ProgressBar() {
   const [elapsed, setElapsed] = useState(0);
@@ -322,13 +319,12 @@ function ProgressBar() {
     return () => window.clearInterval(id);
   }, []);
 
-  const phase = pickPhase(elapsed);
   const seconds = elapsed / 1000;
 
   return (
     <div className="rounded-xl border border-[var(--line)] bg-[var(--bg-1)] p-4">
       <div className="mb-3 flex items-baseline justify-between gap-3">
-        <p className="label-mono">Live</p>
+        <p className="label-mono">Prism · active</p>
         <p className="font-mono text-[11px] tabular-nums text-[var(--ink-3)]">
           {seconds.toFixed(1)} s
         </p>
@@ -341,51 +337,9 @@ function ProgressBar() {
           transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
         />
       </div>
-      <AnimatePresence mode="wait">
-        <motion.p
-          key={phase.id}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.25 }}
-          className="mt-3 text-xs leading-6 text-[var(--ink-3)]"
-        >
-          <span className="font-mono uppercase tracking-[0.2em] text-[var(--ink-2)]">
-            {phase.label}
-          </span>
-          <span> · {phase.detail}</span>
-        </motion.p>
-      </AnimatePresence>
+      <p className="mt-3 text-xs leading-6 text-[var(--ink-3)]">
+        Reading the signal and assembling your Prism report.
+      </p>
     </div>
   );
-}
-
-interface AnalyzePhase {
-  id: string;
-  label: string;
-  detail: string;
-  /** Lower-bound ms after which this phase becomes the displayed tagline. */
-  startMs: number;
-}
-
-const ANALYZE_PHASES: AnalyzePhase[] = [
-  { id: "load",     label: "Loading",      detail: "reading the file and inferring dtypes",                       startMs: 0     },
-  { id: "profile",  label: "Profiling",    detail: "shape, missingness, duplicates, correlations",                 startMs: 600   },
-  { id: "stats",    label: "Statistics",   detail: "normality, distribution fits, bivariate effect sizes",         startMs: 1500  },
-  { id: "anomaly",  label: "Anomalies",    detail: "seven-detector ensemble for agreement-based flagging",         startMs: 3000  },
-  { id: "ml",       label: "ML lab",       detail: "5-fold CV across baseline, tree, boosted, and linear models",  startMs: 4500  },
-  { id: "shap",     label: "SHAP",         detail: "global + per-row attributions for the leaderboard winner",     startMs: 7000  },
-  { id: "ts",       label: "Time-series",  detail: "STL decomposition, ADF/KPSS, ACF/PACF, Holt-Winters forecast", startMs: 9000  },
-  { id: "text",     label: "Text profile", detail: "TF-IDF + LSA, n-grams, regex pattern hits",                    startMs: 11000 },
-  { id: "cleaning", label: "Cleaning",     detail: "imputation, dedupe, outlier clipping, health rescore",         startMs: 13000 },
-  { id: "ai",       label: "AI report",    detail: "grounded narrative via local agent",                           startMs: 15000 },
-];
-
-function pickPhase(elapsedMs: number): AnalyzePhase {
-  let current = ANALYZE_PHASES[0];
-  for (const p of ANALYZE_PHASES) {
-    if (elapsedMs >= p.startMs) current = p;
-    else break;
-  }
-  return current;
 }

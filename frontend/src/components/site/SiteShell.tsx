@@ -6,10 +6,10 @@ export type Route = "home" | "analyze" | "report" | "charts" | "modules" | "abou
 
 const ROUTES: { id: Route; label: string }[] = [
   { id: "home", label: "Overview" },
-  { id: "analyze", label: "Analyze" },
-  { id: "report", label: "Report" },
+  { id: "analyze", label: "Prism" },
+  { id: "report", label: "Result" },
   { id: "charts", label: "Charts" },
-  { id: "modules", label: "Modules" },
+  { id: "modules", label: "Protocols" },
   { id: "about", label: "About" },
 ];
 
@@ -119,12 +119,12 @@ function Footer() {
       <div className="hr-rule mb-6">FIN</div>
       <div className="flex flex-col gap-4 text-[12px] text-[var(--ink-3)] sm:flex-row sm:items-center sm:justify-between">
         <span className="font-mono uppercase tracking-[0.32em]">
-          FrameVitals · 0.1 dev · tabular diagnostics
+          FrameVitals · protocol-first data analysis
         </span>
         <div className="flex flex-wrap gap-x-6 gap-y-1">
-          <span>Flask · 5055</span>
-          <span>Vite · 5173</span>
-          <span>Ollama · 11434 optional</span>
+          <a href="https://framevitals.vercel.app/" className="hover:text-[var(--ink-1)]">Website</a>
+          <a href="https://github.com/parthdongre/FrameVitals" className="hover:text-[var(--ink-1)]">GitHub</a>
+          <a href="https://pypi.org/project/framevitals/" className="hover:text-[var(--ink-1)]">PyPI</a>
         </div>
       </div>
     </footer>

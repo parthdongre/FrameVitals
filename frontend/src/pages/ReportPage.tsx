@@ -6,7 +6,6 @@ import { useHashRoute } from "@/router/HashRouter";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Tabs } from "@/components/ui/Tabs";
-import { HowThisWorks } from "@/components/site/HowThisWorks";
 import { findTab, REPORT_TABS } from "./report/tabRegistry";
 import { tabVariants } from "@/components/site/Variants";
 import { setAnalysis as cacheAnalysis, getAnalysis, subscribeAnalysis } from "@/lib/analysisStore";
@@ -63,12 +62,12 @@ export function ReportPage({ telemetry, onNavigate }: ReportPageProps) {
   if (!hasAnalysis) {
     return (
       <Section className="pt-6">
-        <Eyebrow>Report</Eyebrow>
-        <PageTitle subtitle="Run the analyzer first, then come back here for the structured report. The cache is per-session — refresh the analyze page to start a new one.">
-          No analysis yet.
+        <Eyebrow>Prism report</Eyebrow>
+        <PageTitle subtitle="Run Prism first, then return here for the report.">
+          No Prism result yet.
         </PageTitle>
         <button onClick={() => onNavigate("analyze")} className="btn-primary">
-          Go to Analyze →
+          Run Prism →
         </button>
       </Section>
     );
@@ -105,7 +104,6 @@ function ReportShell({
   const mode = safeStr(t.analysisMode, "");
 
   const downloadLinks = (t.downloadLinks ?? {}) as {
-    cleaned?: string;
     report?: string;
   };
   const backendBase = getBackendBaseUrl();
@@ -113,28 +111,23 @@ function ReportShell({
   return (
     <>
       <Section className="pb-6 pt-6">
-        <Eyebrow>Report</Eyebrow>
+        <Eyebrow>Prism report</Eyebrow>
         <PageTitle
           subtitle={`${filename} · ${rows.toLocaleString()} rows × ${cols.toLocaleString()} columns${
-            mode ? ` · mode ${mode.toUpperCase()}` : ""
+            mode ? ` · depth ${mode.toUpperCase()}` : ""
           }`}
         >
-          Read the report.
+          Prism, resolved.
         </PageTitle>
 
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-          {downloadLinks.cleaned ? (
-            <a className="btn-ghost" href={`${backendBase}${downloadLinks.cleaned}`}>
-              Download cleaned CSV
-            </a>
-          ) : null}
           {downloadLinks.report ? (
             <a className="btn-ghost" href={`${backendBase}${downloadLinks.report}`}>
               Download PDF report
             </a>
           ) : null}
           <button onClick={() => onNavigate("analyze")} className="btn-ghost">
-            Run again
+            Run Prism again
           </button>
         </div>
       </Section>
@@ -167,18 +160,11 @@ function ReportShell({
                 ) : (
                   <EmptyState
                     title={`${active.label} not available for this dataset`}
-                    hint="The backend did not produce data for this section. Try running the analyzer in standard or deeper mode, or pick a target column."
+                    hint="Prism did not produce this view for the current dataset. Try a deeper Prism run or add a focus column."
                   />
                 )}
               </Suspense>
             </ErrorBoundary>
-
-            <HowThisWorks
-              title={active.howItWorks.title}
-              body={active.howItWorks.body}
-              algorithms={active.howItWorks.algorithms}
-              source={active.howItWorks.source}
-            />
           </motion.section>
         </AnimatePresence>
       </Section>

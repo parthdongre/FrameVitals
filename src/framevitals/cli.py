@@ -82,8 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="framevitals",
         description=(
-            "Automated diagnostics, ML-readiness analysis, validation, and drift "
-            "comparison for tabular datasets."
+            "Protocol-first analysis for understanding, trusting, transforming, "
+            "comparing, and monitoring tabular data."
         ),
     )
 
@@ -94,6 +94,151 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command")
+
+    prism_parser = subparsers.add_parser(
+        "prism",
+        help="Run the Prism protocol.",
+    )
+    prism_parser.add_argument("file", type=Path, help="Current dataset path.")
+    prism_parser.add_argument(
+        "--reference",
+        type=Path,
+        default=None,
+        help="Optional reference dataset.",
+    )
+    prism_parser.add_argument(
+        "--axiom",
+        dest="contract",
+        type=Path,
+        default=None,
+        help="Optional existing Axiom JSON.",
+    )
+    prism_parser.add_argument(
+        "--focus",
+        dest="target",
+        default=None,
+        help="Optional outcome column for a focused Prism run.",
+    )
+    prism_parser.add_argument(
+        "--depth",
+        dest="mode",
+        choices=["quick", "standard", "deep", "research"],
+        default=None,
+        help="How far Prism should investigate.",
+    )
+    prism_parser.add_argument(
+        "--format",
+        choices=["terminal", "json"],
+        default="terminal",
+        help="Stdout format.",
+    )
+    prism_parser.add_argument(
+        "--html-report",
+        type=Path,
+        default=None,
+        help="Optional path to write the Prism report.",
+    )
+    _add_output_argument(prism_parser)
+
+    axiom_parser = subparsers.add_parser(
+        "axiom",
+        help="Establish or test an Axiom.",
+    )
+    axiom_parser.add_argument("reference", type=Path, help="Reference dataset path.")
+    axiom_parser.add_argument(
+        "--current",
+        type=Path,
+        default=None,
+        help="Optional current dataset to test against the Axiom.",
+    )
+    axiom_parser.add_argument(
+        "--format",
+        choices=["terminal", "json"],
+        default="terminal",
+        help="Stdout format.",
+    )
+    _add_output_argument(axiom_parser)
+
+    forge_parser = subparsers.add_parser(
+        "forge",
+        help="Prepare or apply the Forge protocol.",
+    )
+    forge_parser.add_argument("file", type=Path, help="Dataset path.")
+    forge_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Apply Forge and write the resulting CSV to this path.",
+    )
+    forge_parser.add_argument(
+        "--plan-output",
+        type=Path,
+        default=None,
+        help="Optional path to write the Forge plan as JSON.",
+    )
+    forge_parser.add_argument(
+        "--format",
+        choices=["terminal", "json"],
+        default="terminal",
+        help="Stdout format.",
+    )
+
+    tide_parser = subparsers.add_parser(
+        "tide",
+        help="Run the Tide protocol across two dataset states.",
+    )
+    tide_parser.add_argument("reference", type=Path, help="Reference dataset path.")
+    tide_parser.add_argument("current", type=Path, help="Current dataset path.")
+    tide_parser.add_argument(
+        "--columns",
+        default=None,
+        help="Optional comma-separated columns to include.",
+    )
+    tide_parser.add_argument(
+        "--max-columns",
+        type=int,
+        default=30,
+        help="Maximum number of shared columns to include.",
+    )
+    tide_parser.add_argument(
+        "--format",
+        choices=["terminal", "json"],
+        default="terminal",
+        help="Stdout format.",
+    )
+    tide_parser.add_argument(
+        "--fail-on",
+        choices=["minor", "moderate", "severe"],
+        default=None,
+        help="Return exit code 1 at or above this Tide severity.",
+    )
+    _add_output_argument(tide_parser)
+
+    pulse_parser = subparsers.add_parser(
+        "pulse",
+        help="Capture a compact Pulse state.",
+    )
+    pulse_parser.add_argument("file", type=Path, help="Dataset path.")
+    pulse_parser.add_argument(
+        "--depth",
+        dest="mode",
+        choices=["quick", "standard", "deep", "research"],
+        default="quick",
+        help="Depth used to capture the Pulse state.",
+    )
+    pulse_parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Optional worker count.",
+    )
+    pulse_parser.add_argument(
+        "--format",
+        choices=["terminal", "json"],
+        default="terminal",
+        help="Stdout format.",
+    )
+    _add_output_argument(pulse_parser)
 
     analyze_parser = subparsers.add_parser(
         "analyze",
@@ -427,6 +572,51 @@ def _render_source(source: dict) -> str:
     return "\n".join(lines)
 
 
+def _render_pulse(snapshot: dict) -> str:
+    state = snapshot.get("state", {})
+    source = snapshot.get("source", {})
+    dataset = state.get("dataset", {})
+    shape = dataset.get("shape", {})
+    health = state.get("health", {})
+    return "\n".join([
+        "FrameVitals · Pulse",
+        "=" * 72,
+        f"Dataset       {source.get('filename', 'unknown')}",
+        f"Health        {health.get('overall_score', 'n/a')}  {health.get('label', '')}",
+        (
+            "Shape         "
+            f"{shape.get('rows', 'unknown')} rows x "
+            f"{shape.get('columns', 'unknown')} columns"
+        ),
+        f"Fingerprint   {snapshot.get('fingerprint', 'unknown')}",
+        "=" * 72,
+        "Pulse captured.",
+    ])
+
+
+def _render_tide(report: dict) -> str:
+    if not report.get("available"):
+        return "\n".join([
+            "FrameVitals · Tide",
+            "=" * 72,
+            "Status        UNAVAILABLE",
+            f"Reason        {report.get('reason')}",
+            "=" * 72,
+        ])
+
+    summary = report.get("summary", {})
+    gate = report.get("gate", {})
+    return "\n".join([
+        "FrameVitals · Tide",
+        "=" * 72,
+        f"Status        {str(gate.get('status', 'unknown')).upper()}",
+        f"Severity      {str(summary.get('overall_verdict', 'unknown')).upper()}",
+        f"Compared      {summary.get('n_columns_compared', 0)} columns",
+        "=" * 72,
+        "Tide complete.",
+    ])
+
+
 def _render_snapshot(snapshot: dict) -> str:
     state = snapshot.get("state", {})
     source = snapshot.get("source", {})
@@ -542,6 +732,117 @@ def _render_gate(report: dict) -> str:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.command == "prism":
+        from framevitals.protocols import prism
+
+        explicit_contract = (
+            _load_contract(args.contract) if args.contract is not None else None
+        )
+        result = prism(
+            args.file,
+            reference=args.reference,
+            axiom=explicit_contract,
+            focus=args.target,
+            depth=args.mode,
+            artifacts=False,
+        )
+        if args.output is not None:
+            result.to_json(args.output)
+        if args.html_report is not None:
+            result.to_html(args.html_report)
+
+        if args.format == "json":
+            print(result.to_json())
+        else:
+            print(result.summary_text())
+            if args.output is not None:
+                print(f"Protocol JSON  {args.output}")
+            if args.html_report is not None:
+                print(f"Prism report   {args.html_report}")
+
+        verdict = result.verdict
+        return 1 if verdict is not None and not verdict.passed else 0
+
+    if args.command == "axiom":
+        from framevitals.protocols import axiom
+
+        result = axiom(args.reference, current=args.current)
+        if args.output is not None:
+            result.to_json(args.output)
+        if args.format == "json":
+            print(result.to_json())
+        else:
+            print(result.summary_text())
+            if args.output is not None:
+                print(f"Axiom JSON     {args.output}")
+
+        validation = result.validation
+        if validation is not None and validation.status == "fail":
+            return 2
+        return 0
+
+    if args.command == "forge":
+        from framevitals.protocols import forge
+        from framevitals.security import sanitize_csv_value
+
+        result = forge(args.file, apply=args.output is not None)
+        if args.plan_output is not None:
+            _write_json(result.plan, args.plan_output)
+
+        if args.output is not None:
+            if args.output.suffix.lower() != ".csv":
+                raise ValueError("Forge currently writes CSV output only.")
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            result.cleaned.map(sanitize_csv_value).to_csv(args.output, index=False)
+
+        if args.format == "json":
+            print(result.to_json())
+        else:
+            print(result.summary_text())
+            if args.output is not None:
+                print(f"Forged data    {args.output}")
+            if args.plan_output is not None:
+                print(f"Forge plan     {args.plan_output}")
+        return 0
+
+    if args.command == "tide":
+        from framevitals.drift_analysis import severity_at_least
+        from framevitals.protocols import tide
+
+        result = tide(
+            args.reference,
+            args.current,
+            columns=_parse_columns(args.columns),
+            max_columns=args.max_columns,
+        )
+        if args.output is not None:
+            _write_json(result, args.output)
+        if args.format == "json":
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            print(_render_tide(result))
+
+        if args.fail_on and severity_at_least(result.severity, args.fail_on):
+            return 1
+        return 0
+
+    if args.command == "pulse":
+        from framevitals.protocols import pulse
+
+        result = pulse(
+            args.file,
+            destination=args.output,
+            depth=args.mode,
+            workers=args.workers,
+        )
+        if args.format == "json":
+            print(result.to_json())
+        else:
+            print(_render_pulse(result))
+            if args.output is not None:
+                print(f"Pulse JSON     {args.output}")
+        return 0
 
     if args.command == "analyze":
         from framevitals.analysis_api import analyze

@@ -47,15 +47,6 @@ function severityForScore(s: number): "high" | "medium" | "low" | "muted" {
   return "muted";
 }
 
-function colorForScore(s: number): string {
-  // Continuous gradient from slate (low) → amber → rose (high)
-  if (s >= 0.85) return "rgba(244,63,94,0.85)"; // rose
-  if (s >= 0.6) return "rgba(251,146,60,0.85)"; // orange
-  if (s >= 0.4) return "rgba(245,158,11,0.7)"; // amber
-  if (s >= 0.2) return "rgba(56,189,248,0.55)"; // sky
-  return "rgba(148,163,184,0.35)"; // slate
-}
-
 export function AnomalyEnsemblePanel({ anomalies }: AnomalyEnsemblePanelProps) {
   if (!anomalies) return null;
 
@@ -63,27 +54,24 @@ export function AnomalyEnsemblePanel({ anomalies }: AnomalyEnsemblePanelProps) {
     return (
       <Card className="overflow-hidden border-white/5 bg-white/[0.03] shadow-panel">
         <CardHeader className="border-b border-white/5 bg-white/[0.015]">
-          <CardTitle className="flex items-center gap-3 text-lg text-slate-50">
-            <span className="text-cyan-300">Anomaly ensemble</span>
-            <span className="text-xs font-mono tracking-[0.3em] text-slate-500">7 detectors</span>
+          <CardTitle className="text-lg text-slate-50">
+            <span className="text-cyan-300">Irregular rows</span>
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Multi-detector anomaly scoring (IsolationForest, LOF, EllipticEnvelope, MAD, Mahalanobis, ECOD, COPOD).
+            Prism did not produce an irregularity view for this dataset.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-6">
           <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-sm text-slate-400">
-            {anomalies.message ?? "Anomaly ensemble unavailable for this dataset."}
+            {anomalies.message ?? "Irregularity view unavailable for this dataset."}
           </div>
         </CardContent>
       </Card>
     );
   }
 
-  const detectors = anomalies.detectors_run ?? [];
   const topRows = anomalies.top_rows ?? [];
   const summary = anomalies.ensemble_summary;
-  const threshold = anomalies.threshold ?? 0.6;
 
   return (
     <motion.div
@@ -93,15 +81,11 @@ export function AnomalyEnsemblePanel({ anomalies }: AnomalyEnsemblePanelProps) {
     >
       <Card className="overflow-hidden border-white/5 bg-white/[0.03] shadow-panel">
         <CardHeader className="border-b border-white/5 bg-white/[0.015]">
-          <CardTitle className="flex items-center gap-3 text-lg text-slate-50">
-            <span className="text-cyan-300">Anomaly ensemble</span>
-            <span className="text-xs font-mono tracking-[0.3em] text-slate-500">
-              {detectors.length} detectors
-            </span>
+          <CardTitle className="text-lg text-slate-50">
+            <span className="text-cyan-300">Irregular rows</span>
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Each detector emits a [0,1] score; ensemble is the per-row mean. Rows with ensemble ≥{" "}
-            <span className="font-mono text-cyan-200">{threshold}</span> are flagged.
+            Rows that differ meaningfully from the broader dataset and deserve review.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5 p-6">
@@ -118,13 +102,6 @@ export function AnomalyEnsemblePanel({ anomalies }: AnomalyEnsemblePanelProps) {
             <SummaryStat label="P99" value={fmt(summary?.p99)} tone="cyan" />
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {detectors.map((d) => (
-              <Badge key={d} variant="outline" className="border-white/10 text-slate-200">
-                {d}
-              </Badge>
-            ))}
-          </div>
 
           {topRows.length > 0 ? (
             <div className="overflow-x-auto rounded-2xl border border-white/5 bg-white/[0.02]">
@@ -134,16 +111,8 @@ export function AnomalyEnsemblePanel({ anomalies }: AnomalyEnsemblePanelProps) {
                     <th className="border-b border-white/5 px-3 py-2 font-semibold">#</th>
                     <th className="border-b border-white/5 px-3 py-2 font-semibold">Row</th>
                     <th className="border-b border-white/5 px-3 py-2 font-semibold">Severity</th>
-                    {detectors.map((d) => (
-                      <th
-                        key={d}
-                        className="border-b border-white/5 px-2 py-2 text-right font-semibold"
-                      >
-                        {d.replace(/_/g, " ")}
-                      </th>
-                    ))}
                     <th className="border-b border-white/5 px-3 py-2 text-right font-semibold text-cyan-200">
-                      ensemble
+                      score
                     </th>
                   </tr>
                 </thead>
@@ -176,26 +145,6 @@ export function AnomalyEnsemblePanel({ anomalies }: AnomalyEnsemblePanelProps) {
                             {sevBadge}
                           </Badge>
                         </td>
-                        {detectors.map((d) => {
-                          const v = typeof row[d] === "number" ? (row[d] as number) : null;
-                          return (
-                            <td
-                              key={d}
-                              className="border-b border-white/5 px-2 py-2 text-right font-mono text-xs"
-                              style={{
-                                background:
-                                  v !== null
-                                    ? `linear-gradient(90deg, transparent ${
-                                        100 - Math.min(100, v * 100)
-                                      }%, ${colorForScore(v)} ${100 - Math.min(100, v * 100)}%)`
-                                    : undefined,
-                                color: v !== null && v >= 0.6 ? "#fff" : "#cbd5e1",
-                              }}
-                            >
-                              {v !== null ? fmt(v, 3) : "—"}
-                            </td>
-                          );
-                        })}
                         <td className="border-b border-white/5 px-3 py-2 text-right font-mono font-semibold text-cyan-200">
                           {fmt(row.ensemble, 3)}
                         </td>
@@ -206,14 +155,10 @@ export function AnomalyEnsemblePanel({ anomalies }: AnomalyEnsemblePanelProps) {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-slate-500">No anomalies were ranked.</p>
+            <p className="text-sm text-slate-500">No irregular rows were ranked.</p>
           )}
 
-          {anomalies.used_columns && anomalies.used_columns.length > 0 ? (
-            <p className="text-xs text-slate-500">
-              Used columns: {anomalies.used_columns.join(", ")}
-            </p>
-          ) : null}
+
         </CardContent>
       </Card>
     </motion.div>

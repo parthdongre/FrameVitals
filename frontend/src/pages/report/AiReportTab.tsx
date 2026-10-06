@@ -6,19 +6,9 @@ import { Markdown } from "@/components/ui/Markdown";
 import { staggerChild, staggerParent } from "@/components/site/Variants";
 import { isPresent, safeObj, safeStr } from "@/lib/safe";
 import { useAiReportMutation } from "@/hooks/useAiReportMutation";
-import { cn } from "@/lib/utils";
 import type { TabComponentProps } from "./tabRegistry";
 
-/**
- * AI Report tab — renders the agent narrative as styled markdown.
- *
- * The pipeline skips the LLM call during /api/analyze by default (so the
- * report renders fast), so this tab also offers an on-demand "Generate now"
- * button that hits POST /api/ai-report and refreshes its own copy.
- *
- * Markdown rendering is delegated to `<Markdown>` so the same parser /
- * styling lives in one place — Ask Anything uses the same component.
- */
+/** Optional narrative view for the latest Prism result. */
 export default function AiReportTab({ analysis }: TabComponentProps) {
   const t = analysis as unknown as Record<string, unknown>;
   const initialAi = safeObj(t.aiReport, {} as Record<string, unknown>);
@@ -37,8 +27,8 @@ export default function AiReportTab({ analysis }: TabComponentProps) {
     return (
       <motion.div variants={staggerParent} initial="initial" animate="animate" className="space-y-6">
         <motion.section variants={staggerChild} className="flex flex-wrap items-center gap-3">
-          <Eyebrow>AI Narrative</Eyebrow>
-          <SourceBadge source="deferred" />
+          <Eyebrow>Narrative</Eyebrow>
+          <SourceBadge source="optional" />
         </motion.section>
 
         <motion.section
@@ -46,12 +36,11 @@ export default function AiReportTab({ analysis }: TabComponentProps) {
           className="rounded-md border border-line bg-bg-1 p-8 text-center"
         >
           <p className="font-display text-[20px] leading-7 text-ink-1">
-            AI report is on demand
+            Narrative is on demand
           </p>
           <p className="mx-auto mt-2 max-w-md text-[13px] leading-6 text-ink-3">
-            The LLM phase is skipped during analyze so the rest of the report renders fast.
-            Click below to generate the narrative whenever you want — typically 5-15 seconds
-            on local Ollama.
+            Generate an interpretation of the current Prism result when you want one.
+            This is optional and does not change the underlying analysis.
           </p>
           <button
             type="button"
@@ -63,7 +52,7 @@ export default function AiReportTab({ analysis }: TabComponentProps) {
               setAi(result as unknown as Record<string, unknown>);
             }}
           >
-            {mutation.isPending ? "Generating…" : "Generate AI report"}
+            {mutation.isPending ? "Generating…" : "Generate narrative"}
           </button>
           {mutation.error ? (
             <p className="mt-3 font-mono text-[11px] text-rose-300">
@@ -78,8 +67,8 @@ export default function AiReportTab({ analysis }: TabComponentProps) {
   if (!isPresent(ai) || !text) {
     return (
       <EmptyState
-        title="AI report not available for this dataset"
-        hint="The local agent (Ollama) was not reachable, or it produced no narrative for this run. Re-run with Ollama running, or configure OPENROUTER_API_KEY for a remote fallback."
+        title="Narrative is not available for this dataset"
+        hint="The optional narrative layer did not produce a result for this run."
       />
     );
   }
@@ -87,8 +76,8 @@ export default function AiReportTab({ analysis }: TabComponentProps) {
   return (
     <motion.div variants={staggerParent} initial="initial" animate="animate" className="space-y-6">
       <motion.section variants={staggerChild} className="flex flex-wrap items-center gap-3">
-        <Eyebrow>AI Narrative</Eyebrow>
-        <SourceBadge source={source || "unknown"} />
+        <Eyebrow>Narrative</Eyebrow>
+        <SourceBadge source={source ? "generated" : "optional"} />
         {datasetId ? (
           <button
             type="button"
@@ -114,30 +103,11 @@ export default function AiReportTab({ analysis }: TabComponentProps) {
   );
 }
 
-/* --------------------------------------------------------------------------
- * Source badge — small chip that signals where the narrative came from
- * (local Ollama / OpenRouter / heuristic fallback).
- * -------------------------------------------------------------------------- */
+/* Compact narrative-state badge. */
 
 function SourceBadge({ source }: { source: string }) {
-  const tone =
-    source.includes("ollama") || source.includes("local")
-      ? "ok"
-      : source.includes("openrouter")
-        ? "warn"
-        : source.includes("fallback") || source.includes("error")
-          ? "muted"
-          : "neutral";
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.24em]",
-        tone === "ok" && "border-accent-line bg-accent-soft text-accent",
-        tone === "warn" && "border-amber-300/30 bg-amber-300/10 text-amber-200",
-        tone === "muted" && "border-line bg-bg-2 text-ink-3",
-        tone === "neutral" && "border-line-strong bg-bg-2 text-ink-1",
-      )}
-    >
+    <span className="inline-flex items-center gap-2 rounded-full border border-line bg-bg-2 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-ink-3">
       <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
       {source}
     </span>

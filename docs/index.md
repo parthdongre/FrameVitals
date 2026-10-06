@@ -1,24 +1,20 @@
 # FrameVitals
 
-**FrameVitals is a source-aware data-health and quality-gate engine for tabular pipelines.**
+**FrameVitals is a source-aware data analysis toolkit for tabular data, organized around a small protocol-first public interface.**
 
-It provides one workflow for inspecting data health, comparing production batches,
-validating contracts, enforcing domain-specific invariants, and retaining compact
-monitoring history.
+Start with **Prism** and provide more context only when you have it:
 
 ```python
 import framevitals as fv
 
-source = fv.inspect_source("production.parquet")
-report = fv.analyze("production.parquet", mode="quick")
-drift = fv.compare("training.parquet", "production.parquet")
-validation = fv.validate("production.parquet", contract)
-gate = fv.gate(
+result = fv.prism(
     "production.parquet",
     reference="training.parquet",
-    contract=contract,
+    focus="churn",
 )
 ```
+
+Prism coordinates the appropriate FrameVitals workflows and returns one coherent result. The focused APIs remain available when you need direct control over a specific operation.
 
 ## Core design
 
@@ -33,24 +29,20 @@ FrameVitals is built around four constraints:
 4. **Execution transparency** — public results disclose whether work was exact,
    sampled, estimated, streamed, or fully materialized.
 
-## Main workflow
+## Protocol system
 
 ```text
-source
-  │
-  ├─► inspect_source
-  │
-  ├─► analyze ─► snapshot ─► SnapshotHistory
-  │
-  ├─► compare(reference, current)
-  │
-  ├─► validate(current, contract)
-  │
-  └─► gate
-        ├─ contract validation
-        ├─ drift
-        └─ custom checks / plugins
+                    FrameVitals
+                        │
+        ┌───────────────┼───────────────┐
+      Prism           Axiom           Forge
+   understand         trust         transform
+        │
+      Tide            Pulse
+     compare          monitor
 ```
+
+See [Protocol architecture](protocols.md) for the exact composition of each protocol and the lower-level APIs it coordinates.
 
 ## Supported source families
 
@@ -94,6 +86,7 @@ mkdocs serve
 
 ## Documentation map
 
+- [Protocol architecture](protocols.md)
 - [Source-aware execution](source-execution.md)
 - [Execution provenance](execution-provenance.md)
 - [Quality gates and custom checks](quality-gates.md)

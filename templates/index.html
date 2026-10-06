@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}DataLens AI - Live Console{% endblock %}
+{% block title %}FrameVitals — Prism{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -56,14 +56,12 @@
           <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6m6 0V5a2 2 0 012-2h2a2 2 0 012 2v14m-6 0h6m4 0v-9a2 2 0 00-2-2h-2a2 2 0 00-2 2v9m4 0h-4"/></svg>
         </div>
         <div>
-          <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Flask backend console</p>
-          <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">DataLens AI live analysis window</h1>
+          <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">FrameVitals</p>
+          <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Prism</h1>
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-        <span id="ollamaStatus" class="chip">Checking Ollama…</span>
-        <span id="openrouterStatus" class="chip">Checking OpenRouter…</span>
-        <span class="chip">Parallel pipeline</span>
+        <span class="chip">Prism ready</span>
         <a id="dashboardCta" href="http://127.0.0.1:5173" target="_blank" rel="noopener" class="chip border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100">Open React dashboard ↗</a>
       </div>
     </header>
@@ -90,7 +88,7 @@
             </label>
 
             <div>
-              <label class="mb-2 block text-xs font-bold uppercase tracking-[0.28em] text-slate-500">Analysis depth</label>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-[0.28em] text-slate-500">Prism depth</label>
               <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {% for value, label in [("quick", "Quick"), ("standard", "Standard"), ("deep", "Deep"), ("research", "Research")] %}
                 <label class="cursor-pointer">
@@ -104,13 +102,13 @@
             </div>
 
             <div>
-              <label class="mb-2 block text-xs font-bold uppercase tracking-[0.28em] text-slate-500">Target column</label>
-              <input id="targetInput" type="text" name="target_column" placeholder="Optional target column" class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100">
-              <p class="mt-2 text-xs text-slate-500">Needed for classification or regression analysis.</p>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-[0.28em] text-slate-500">Focus column</label>
+              <input id="targetInput" type="text" name="target_column" placeholder="Optional focus column" class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100">
+              <p class="mt-2 text-xs text-slate-500">Use a focus when you want Prism to reason about a specific outcome.</p>
             </div>
 
             <button id="runButton" type="submit" class="btn-glow inline-flex h-12 w-full items-center justify-center rounded-2xl bg-gradient-to-r from-brand-600 to-brand-500 text-sm font-bold text-white shadow-lg shadow-brand-500/20 transition hover:from-brand-700 hover:to-brand-600 disabled:cursor-not-allowed disabled:opacity-60">
-              <span id="runLabel">Run analysis</span>
+              <span id="runLabel">Run Prism</span>
               <svg id="runSpinner" class="ml-3 hidden h-5 w-5 animate-spin text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
             </button>
           </form>
@@ -130,9 +128,9 @@
         <section class="console-card rounded-3xl p-5 fade-in-up">
           <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Quick summary</p>
           <div class="mt-3 space-y-2 text-sm text-slate-600">
-            <p>Upload a dataset, choose the analysis depth, and optionally define a target column.</p>
-            <p>The backend will generate profiling, data quality, ML readiness, charts, and an AI report.</p>
-            <p>This page is designed to behave like a live console rather than a static landing page.</p>
+            <p>Upload a dataset, choose the Prism depth, and optionally define a focus.</p>
+            <p>Prism will assemble one coherent report and surface the signals that deserve attention.</p>
+            <p>This is the server-rendered Prism interface.</p>
           </div>
         </section>
       </aside>
@@ -141,20 +139,16 @@
         <section class="console-card rounded-3xl p-6 fade-in-up">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Backend execution window</p>
-              <h2 class="mt-1 text-3xl font-extrabold tracking-tight text-slate-900">DataLens AI <span class="gradient-text">v3</span> live console</h2>
-              <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Posts directly to <span class="font-semibold text-slate-700">/api/analyze</span>, runs the parallel v3 pipeline (deep stats, 7-detector anomaly ensemble, model leaderboard, SHAP, time-series, text/NLP, drift), and renders results inline.</p>
+              <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Prism</p>
+              <h2 class="mt-1 text-3xl font-extrabold tracking-tight text-slate-900">FrameVitals <span class="gradient-text">Prism</span></h2>
+              <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Read the signal in your data without assembling the underlying analysis workflow yourself.</p>
             </div>
             <div class="flex flex-wrap gap-2 text-xs">
-              <span class="chip">Profiling</span>
-              <span class="chip">Deep stats</span>
-              <span class="chip">Anomaly ensemble</span>
-              <span class="chip">ML leaderboard</span>
-              <span class="chip">SHAP</span>
-              <span class="chip">Time-series</span>
-              <span class="chip">NLP</span>
-              <span class="chip">Drift</span>
-              <span class="chip">Agent Q&amp;A</span>
+              <span class="chip">Health</span>
+              <span class="chip">Structure</span>
+              <span class="chip">Patterns</span>
+              <span class="chip">Focus</span>
+              <span class="chip">Beacons</span>
             </div>
           </div>
         </section>
@@ -163,7 +157,7 @@
           <div class="flex items-center justify-between gap-4">
             <div>
               <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Progress</p>
-              <h3 class="mt-1 text-lg font-semibold text-slate-900">Analysis pipeline</h3>
+              <h3 class="mt-1 text-lg font-semibold text-slate-900">Prism in progress</h3>
             </div>
             <div class="text-right">
               <div id="progressLabel" class="text-sm font-semibold text-slate-700">Idle</div>
@@ -183,21 +177,21 @@
           <div class="console-card rounded-3xl p-5"><div class="text-[11px] uppercase tracking-[0.28em] text-slate-500">ML readiness</div><div class="mt-2 text-3xl font-bold text-slate-900" id="metricMl">—</div></div>
         </section>
 
-        <section class="console-card rounded-3xl p-6 fade-in-up">
+        <section class="hidden console-card rounded-3xl p-6 fade-in-up">
           <div class="flex items-center justify-between gap-4">
             <div>
               <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Overview</p>
-              <h3 class="mt-1 text-lg font-semibold text-slate-900">Analysis plan and summary</h3>
+              <h3 class="mt-1 text-lg font-semibold text-slate-900">Prism summary</h3>
             </div>
             <div id="fileMetaPill" class="rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-xs text-slate-500">No dataset loaded</div>
           </div>
           <div class="mt-4 grid gap-4 lg:grid-cols-2">
             <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
-              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Selected analyses</p>
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Prism details</p>
               <div class="mt-3 flex flex-wrap gap-2" id="analysisSelectedPills"><span class="text-sm text-slate-500">No analysis has been run yet.</span></div>
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
-              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Recommended analyses</p>
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Suggested next steps</p>
               <div class="mt-3 flex flex-wrap gap-2" id="analysisRecommendedPills"><span class="text-sm text-slate-500">No recommendations yet.</span></div>
             </div>
           </div>
@@ -222,7 +216,7 @@
                   </tr>
                 </thead>
                 <tbody id="signalsBody">
-                  <tr><td class="px-4 py-4 text-slate-500" colspan="4">Run an analysis to populate the signal summary.</td></tr>
+                  <tr><td class="px-4 py-4 text-slate-500" colspan="4">Run Prism to populate the beacon summary.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -237,21 +231,21 @@
             </div>
           </div>
           <div id="chartsGrid" class="mt-4 grid gap-4 md:grid-cols-2">
-            <div class="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-6 text-sm text-slate-500">Charts will appear here after analysis completes.</div>
+            <div class="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-6 text-sm text-slate-500">Charts will appear here after Prism completes.</div>
           </div>
         </section>
 
         <div class="grid gap-4 xl:grid-cols-2">
           <section class="console-card rounded-3xl p-6 fade-in-up">
             <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Machine learning</p>
-            <h3 class="mt-1 text-lg font-semibold text-slate-900">Target analysis and baseline model</h3>
-            <div id="mlPanel" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-slate-500">Target-aware results will appear here after analysis.</div>
+            <h3 class="mt-1 text-lg font-semibold text-slate-900">Focused predictive view</h3>
+            <div id="mlPanel" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-slate-500">Focused results will appear here after Prism completes.</div>
           </section>
 
           <section class="console-card rounded-3xl p-6 fade-in-up">
             <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Diagnostics</p>
             <h3 class="mt-1 text-lg font-semibold text-slate-900">Leakage, multicollinearity, diagnostics</h3>
-            <div id="diagnosticsPanel" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-slate-500">Diagnostic output will appear here after analysis.</div>
+            <div id="diagnosticsPanel" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-slate-500">Diagnostic output will appear here after Prism completes.</div>
           </section>
         </div>
 
@@ -259,23 +253,23 @@
           <section class="console-card rounded-3xl p-6 fade-in-up">
             <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Segmentation</p>
             <h3 class="mt-1 text-lg font-semibold text-slate-900">Group-level analysis</h3>
-            <div id="segmentPanel" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-slate-500">Segment analysis will appear here after analysis.</div>
+            <div id="segmentPanel" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-slate-500">Segment analysis will appear here after Prism completes.</div>
           </section>
 
           <section class="console-card rounded-3xl p-6 fade-in-up">
             <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Cleaning</p>
-            <h3 class="mt-1 text-lg font-semibold text-slate-900">Cleaning summary and actions</h3>
-            <div id="cleaningPanel" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-slate-500">Cleaning actions will appear here after analysis.</div>
+            <h3 class="mt-1 text-lg font-semibold text-slate-900">Transformation preview</h3>
+            <div id="cleaningPanel" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm text-slate-500">Suggested transformations will appear here after Prism completes.</div>
           </section>
         </div>
 
-        <section class="console-card rounded-3xl p-6 fade-in-up">
+        <section class="hidden console-card rounded-3xl p-6 fade-in-up">
           <div class="flex items-center justify-between gap-4">
             <div>
-              <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">v3 analytics</p>
+              <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Internal analytics</p>
               <h3 class="mt-1 text-lg font-semibold text-slate-900">Advanced modules</h3>
             </div>
-            <div class="text-xs text-slate-500">Anomaly ensemble · ML leaderboard · SHAP · Time-series · Text · Drift</div>
+            <div class="text-xs text-slate-500">Additional analytical views</div>
           </div>
 
           <div class="mt-4 grid gap-4 lg:grid-cols-3">
@@ -285,11 +279,11 @@
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
               <p class="text-xs uppercase tracking-[0.28em] text-slate-500">ML leaderboard</p>
-              <div id="v3LeaderboardPanel" class="mt-2 text-sm text-slate-600">Set a target column to enable.</div>
+              <div id="v3LeaderboardPanel" class="mt-2 text-sm text-slate-600">Choose a focus column to enable.</div>
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
-              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">SHAP explainability</p>
-              <div id="v3ShapPanel" class="mt-2 text-sm text-slate-600">Set a target column to enable.</div>
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Explainability</p>
+              <div id="v3ShapPanel" class="mt-2 text-sm text-slate-600">Choose a focus column to enable.</div>
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
               <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Time-series</p>
@@ -307,16 +301,16 @@
         </section>
 
         <section class="console-card rounded-3xl p-6 fade-in-up">
-          <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">AI report</p>
-          <h3 class="mt-1 text-lg font-semibold text-slate-900">Generated narrative summary</h3>
-          <div id="aiReportPanel" class="mt-4 rounded-2xl border border-slate-200 bg-white/75 p-5 text-sm leading-7 text-slate-700">The AI report will appear here after analysis.</div>
+          <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Narrative</p>
+          <h3 class="mt-1 text-lg font-semibold text-slate-900">Optional narrative</h3>
+          <div id="aiReportPanel" class="mt-4 rounded-2xl border border-slate-200 bg-white/75 p-5 text-sm leading-7 text-slate-700">The optional narrative will appear here when available.</div>
         </section>
 
         <section class="console-card rounded-3xl p-6 fade-in-up">
           <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Data preview</p>
           <h3 class="mt-1 text-lg font-semibold text-slate-900">First rows of the dataset</h3>
           <div id="previewTableWrap" class="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/75">
-            <div class="p-5 text-sm text-slate-500">A preview of the uploaded dataset will appear after analysis.</div>
+            <div class="p-5 text-sm text-slate-500">A preview of the uploaded dataset will appear after Prism completes.</div>
           </div>
         </section>
 
@@ -365,33 +359,18 @@
   let progressTimer = null;
   let phaseTimer = null;
   let liveProgress = 0;
-  const phases = ['Uploading file', 'Profiling dataset', 'Running quality checks', 'Building charts', 'Finalizing report'];
+  const phases = ['Starting Prism', 'Reading the signal', 'Building the view', 'Resolving findings', 'Finalizing Prism'];
 
-  // ---- Health probe -----------------------------------------------------
-  // Populates the status chips and conditionally hides the React dashboard CTA.
+  // ---- System probe -----------------------------------------------------
   async function probeHealth() {
-    const ollamaPill = document.getElementById('ollamaStatus');
-    const openrouterPill = document.getElementById('openrouterStatus');
     const dashboardCta = document.getElementById('dashboardCta');
-
     try {
-      const response = await fetch('/api/health');
-      const status = response.ok ? await response.json() : null;
-      if (!status) throw new Error('health endpoint unreachable');
-
-      ollamaPill.textContent = status.ollama_reachable ? 'Ollama ✓' : 'Ollama offline';
-      ollamaPill.className = 'chip ' + (status.ollama_reachable ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white/70 text-slate-500');
-
-      openrouterPill.textContent = status.openrouter_configured ? 'OpenRouter ✓' : 'OpenRouter unset';
-      openrouterPill.className = 'chip ' + (status.openrouter_configured ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white/70 text-slate-500');
+      await fetch('/api/health');
     } catch {
-      ollamaPill.textContent = 'Ollama unknown';
-      openrouterPill.textContent = 'OpenRouter unknown';
+      // The page remains usable even when optional services are unavailable.
     }
 
     if (dashboardCta) {
-      // Probe the React dev server (5173) with a no-cors fetch so we can hide
-      // the CTA when the dev server isn't running.
       try {
         await fetch('http://127.0.0.1:5173', { mode: 'no-cors', cache: 'no-cache' });
       } catch {
@@ -563,7 +542,7 @@
 
     mlPanel.innerHTML = `
       <div class="grid gap-3 sm:grid-cols-2">
-        <div class="rounded-2xl border border-slate-200 bg-white/70 p-4"><p class="text-xs uppercase tracking-[0.28em] text-slate-500">Target column</p><p class="mt-2 text-lg font-semibold text-slate-800">${escapeHtml(target.target_column || 'Not set')}</p></div>
+        <div class="rounded-2xl border border-slate-200 bg-white/70 p-4"><p class="text-xs uppercase tracking-[0.28em] text-slate-500">Focus column</p><p class="mt-2 text-lg font-semibold text-slate-800">${escapeHtml(target.target_column || 'Not set')}</p></div>
         <div class="rounded-2xl border border-slate-200 bg-white/70 p-4"><p class="text-xs uppercase tracking-[0.28em] text-slate-500">Task type</p><p class="mt-2 text-lg font-semibold text-slate-800">${escapeHtml(target.task_type || 'Unknown')}</p></div>
       </div>
       <div class="mt-4 rounded-2xl border border-slate-200 bg-white/70 p-4"><p class="text-xs uppercase tracking-[0.28em] text-slate-500">Task reasoning</p><p class="mt-2 text-sm leading-6 text-slate-600">${escapeHtml(target.task_reason || 'No reasoning available.')}</p></div>
@@ -627,13 +606,11 @@
       v3AnomalyPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(a?.message || 'Not available.')}</span>`;
       return;
     }
-    const detectors = a.detectors_run || [];
-    const top = (a.top_rows || []).slice(0, 3);
+        const top = (a.top_rows || []).slice(0, 3);
     v3AnomalyPanel.innerHTML = `
       <div class="text-2xl font-extrabold text-slate-900">${a.flagged_count}/${a.n_rows_scored}</div>
       <div class="text-xs uppercase tracking-[0.28em] text-slate-500">flagged rows</div>
-      <div class="mt-2 text-xs text-slate-600">${detectors.length} detectors · threshold ${a.threshold}</div>
-      <div class="mt-2 flex flex-wrap gap-1">${detectors.slice(0, 4).map(d => `<span class="chip text-[10px]">${escapeHtml(d.replace(/_/g, ' '))}</span>`).join('')}${detectors.length > 4 ? `<span class="text-[10px] text-slate-500">+${detectors.length - 4}</span>` : ''}</div>
+      <div class="mt-2 text-xs text-slate-600">Rows worth reviewing</div>
       ${top.length ? `<div class="mt-2 text-xs text-slate-500">Top score ${top[0]?.ensemble?.toFixed?.(3) ?? '—'} · row ${top[0]?.row_index ?? '?'}</div>` : ''}
     `;
   }
@@ -641,7 +618,7 @@
   function renderV3LeaderboardPanel(result) {
     const lb = result?.modelLeaderboard;
     if (!lb || !lb.available) {
-      v3LeaderboardPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(lb?.message || 'Set a target column to enable.')}</span>`;
+      v3LeaderboardPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(lb?.message || 'Choose a focus column to enable.')}</span>`;
       return;
     }
     const winner = lb.winner;
@@ -659,13 +636,12 @@
   function renderV3ShapPanel(result) {
     const ex = result?.explainability;
     if (!ex || !ex.available) {
-      v3ShapPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(ex?.message || 'Set a target column to enable.')}</span>`;
+      v3ShapPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(ex?.message || 'Choose a focus column to enable.')}</span>`;
       return;
     }
     const top = (ex.global_importance || []).slice(0, 4);
     v3ShapPanel.innerHTML = `
-      <div class="text-xs uppercase tracking-[0.28em] text-slate-500">${escapeHtml(ex.method || 'shap')}</div>
-      <div class="text-sm font-bold text-slate-900">${escapeHtml(ex.model || '—')}</div>
+      <div class="text-xs uppercase tracking-[0.28em] text-slate-500">Contribution summary</div>
       <div class="mt-2 space-y-1 text-xs text-slate-500">
         ${top.map(f => `<div>${escapeHtml(f.feature)} · <span class="font-mono text-slate-600">${formatValue(f.importance)}</span></div>`).join('')}
       </div>
@@ -711,12 +687,9 @@
       return;
     }
     const total = t.total ?? 0;
-    const phase3 = t.phase3_parallel_total ?? t.phase3ParallelTotal ?? 0;
     v3TimingPanel.innerHTML = `
       <div class="text-2xl font-extrabold text-slate-900">${total.toFixed(0)} ms</div>
-      <div class="text-xs uppercase tracking-[0.28em] text-slate-500">total pipeline</div>
-      <div class="mt-2 text-xs text-slate-600">Phase 3 (parallel): ${phase3.toFixed(0)} ms</div>
-      <div class="text-xs text-slate-500">Profile: ${(t.profile ?? 0).toFixed(0)} ms · Charts: ${(t.charts ?? 0).toFixed(0)} ms</div>
+      <div class="text-xs uppercase tracking-[0.28em] text-slate-500">Prism completion</div>
     `;
   }
   // -----------------------------------------------------------------------
@@ -802,7 +775,7 @@
       setLog(error instanceof Error ? error.message : 'Analysis failed.', 'danger');
     } finally {
       runButton.disabled = false;
-      runLabel.textContent = 'Run analysis';
+      runLabel.textContent = 'Run Prism';
       runSpinner.classList.add('hidden');
     }
   });
