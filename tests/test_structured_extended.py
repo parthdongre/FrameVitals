@@ -290,3 +290,33 @@ def test_model_axiom_detects_parameter_shape_change():
         item["code"] == "axiom.model.shape"
         for item in checked.validation.findings
     )
+
+
+
+def test_onnx_independent_output_branches_are_not_false_disconnected(tmp_path):
+    onnx = pytest.importorskip("onnx")
+    helper = onnx.helper
+    TensorProto = onnx.TensorProto
+
+    x1 = helper.make_tensor_value_info("x1", TensorProto.FLOAT, [None, 2])
+    x2 = helper.make_tensor_value_info("x2", TensorProto.FLOAT, [None, 2])
+    y1 = helper.make_tensor_value_info("y1", TensorProto.FLOAT, [None, 2])
+    y2 = helper.make_tensor_value_info("y2", TensorProto.FLOAT, [None, 2])
+
+    first = helper.make_node("Identity", ["x1"], ["y1"], name="branch_one")
+    second = helper.make_node("Identity", ["x2"], ["y2"], name="branch_two")
+    graph = helper.make_graph([first, second], "multi", [x1, x2], [y1, y2])
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
+
+    path = tmp_path / "multi-output.onnx"
+    onnx.save(model, path)
+
+    result = fv.prism(path)
+    report = result.analysis["model"]
+
+    assert report["components"] == 2
+    assert report["disconnected_nodes"] == 0
+    assert not any(
+        item["code"] == "model.onnx.disconnected"
+        for item in result.beacons
+    )
