@@ -219,6 +219,13 @@ class PrismResult(_ProtocolResult):
                 f"Depth         {nested.get('max_depth', '?')}",
                 f"Type conflicts {nested.get('path_type_conflict_count', '?')}",
             ])
+        elif source_kind == "relational":
+            relational = analysis.get("relational", {})
+            lines.extend([
+                f"Tables        {relational.get('table_count', '?')}",
+                f"Relationships {relational.get('relationship_count', '?')}",
+                f"Isolated      {len(relational.get('isolated_tables', []))}",
+            ])
         else:
             lines.extend([
                 (
