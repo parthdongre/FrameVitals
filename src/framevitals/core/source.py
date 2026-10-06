@@ -146,6 +146,13 @@ def recognize_source(value: Any) -> SourceDescriptor:
                 capabilities=("checkpoint_metadata", "parameters", "weights"),
                 metadata={"framework": "safetensors", "format": "safetensors"},
             )
+        if suffix == ".onnx":
+            return SourceDescriptor(
+                kind=SourceKind.MODEL,
+                python_type=_type_name(value),
+                capabilities=("model_graph", "parameters", "initializers", "operators"),
+                metadata={"framework": "onnx", "format": "onnx"},
+            )
         return SourceDescriptor(
             kind=SourceKind.TABULAR,
             python_type=_type_name(value),
