@@ -106,6 +106,49 @@ The first model engine includes:
 
 This is inspection, not AutoML and not a replacement for PyTorch training.
 
+### Runtime activation and gradient diagnostics
+
+A caller can optionally give Prism a representative batch:
+
+```python
+report = fv.prism(
+    model,
+    sample_batch=x,
+)
+```
+
+Prism temporarily installs hooks on a bounded sample of leaf modules, runs one
+forward pass, captures activation statistics, and removes every hook in a
+`finally` block.
+
+For backward-flow diagnostics:
+
+```python
+report = fv.prism(
+    model,
+    sample_batch=x,
+    targets=y,
+    loss_fn=criterion,
+    backward=True,
+)
+```
+
+The runtime observer can surface:
+
+- dead or collapsed ReLU/module activations;
+- sigmoid/tanh saturation;
+- NaN/Inf activations;
+- robust activation-norm explosions or vanishing regions;
+- module gradient-flow explosions/vanishing;
+- non-finite gradients;
+- trainable parameters receiving effectively zero gradients.
+
+Backward observation uses `torch.autograd.grad` rather than `loss.backward()`.
+FrameVitals therefore does not accumulate, zero, or replace the caller's
+existing parameter `.grad` buffers.
+
+Runtime work is bounded by Prism depth and `max_runtime_modules=`.
+
 ## Common result contract
 
 Structured engines emit the existing `AnalysisResult` shape and common
