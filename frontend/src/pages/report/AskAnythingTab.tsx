@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
 import { Send, Sparkles } from "lucide-react";
 import { Eyebrow } from "@/components/site/SiteShell";
-import { Disclosure } from "@/components/ui/Disclosure";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Markdown } from "@/components/ui/Markdown";
 import { staggerChild, staggerParent } from "@/components/site/Variants";
@@ -56,7 +55,7 @@ export default function AskAnythingTab({ analysis }: TabComponentProps) {
     return (
       <EmptyState
         title="Ask Anything needs a dataset"
-        hint="Run an analysis first — the agent answers grounded in the cached payload from /api/analyze."
+        hint="Run Prism first. Answers stay grounded in the current Prism result."
       />
     );
   }
@@ -152,8 +151,8 @@ function SuggestedPrompts({ onPick }: { onPick: (q: string) => void }) {
     <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
       <Sparkles className="h-5 w-5 text-accent" aria-hidden />
       <p className="max-w-md text-[14px] leading-7 text-ink-2">
-        Ask about anything in the cached analysis. The agent answers from the same payload the
-        report tabs render — grounded, no hallucinations.
+        Ask about the current Prism result. Answers stay grounded in the evidence already
+        available for this dataset.
       </p>
       <div className="flex flex-wrap justify-center gap-2">
         {SUGGESTED_PROMPTS.map((p) => (
@@ -197,18 +196,7 @@ function MessageBlock({ message }: { message: ChatMessage }) {
             )}
           >
             <Markdown density="compact">{message.answer ?? ""}</Markdown>
-            {message.source ? (
-              <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-ink-3">
-                source · {message.source}
-              </p>
-            ) : null}
-            {message.trace ? (
-              <Disclosure label="Show trace" eyebrow="Agent" className="bg-bg-1">
-                <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-sm bg-bg-0 p-3 font-mono text-[11px] leading-5 text-ink-3">
-                  {safeJsonStringify(message.trace)}
-                </pre>
-              </Disclosure>
-            ) : null}
+
           </div>
         </div>
       ) : null}
@@ -223,10 +211,3 @@ function MessageBlock({ message }: { message: ChatMessage }) {
   );
 }
 
-function safeJsonStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
