@@ -208,6 +208,7 @@ def analyze_model(
     loss_fn: Any = None,
     backward: bool = False,
     max_runtime_modules: int | None = None,
+    optimizer: Any = None,
 ) -> AnalysisResult:
     """Inspect a PyTorch-style nn.Module without requiring PyTorch in FrameVitals."""
     if not (
@@ -380,6 +381,15 @@ def analyze_model(
             )
         )
 
+    optimizer_report: dict[str, Any] | None = None
+    if optimizer is not None:
+        from framevitals.analysis.optimizer import inspect_optimizer
+
+        optimizer_report = inspect_optimizer(model, optimizer)
+        optimizer_findings = optimizer_report.get("findings", [])
+        if isinstance(optimizer_findings, list):
+            findings.extend(optimizer_findings)
+
     runtime: dict[str, Any] | None = None
     if sample_batch is not None:
         from framevitals.analysis.runtime_model import observe_model_runtime
@@ -442,6 +452,7 @@ def analyze_model(
         "rank_diagnostics": rank,
         "gradients": gradients,
         "cnn": cnn,
+        "optimizer": optimizer_report,
         "runtime": runtime,
     }
 
