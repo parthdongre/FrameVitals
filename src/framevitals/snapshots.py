@@ -93,6 +93,25 @@ def _structured_state(result: Mapping[str, Any], source_kind: str) -> dict[str, 
             "unique_object_shapes": objects.get("unique_shapes"),
         }
 
+    if source_kind == "relational":
+        relational = _as_mapping(result.get("relational"))
+        tables = _as_mapping(relational.get("tables"))
+        return {
+            "table_count": relational.get("table_count"),
+            "relationship_count": relational.get("relationship_count"),
+            "isolated_tables": list(relational.get("isolated_tables", []) or []),
+            "tables": {
+                str(name): {
+                    "rows": _as_mapping(table).get("rows"),
+                    "columns": _as_mapping(table).get("columns"),
+                    "key_candidates": list(
+                        _as_mapping(table).get("key_candidates", []) or []
+                    ),
+                }
+                for name, table in tables.items()
+            },
+        }
+
     return {}
 
 
