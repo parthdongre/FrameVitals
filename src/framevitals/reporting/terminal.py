@@ -28,6 +28,69 @@ def _clean_line(value: Any, *, max_length: int = 110) -> str:
     return text[: max_length - 1].rstrip() + "…"
 
 
+def _source_lines(result: Mapping[str, Any]) -> list[str]:
+    kind = str(result.get("source_kind") or "tabular").lower()
+    if kind == "graph":
+        graph = result.get("graph", {}) or {}
+        components = graph.get("components", {}) or {}
+        core = graph.get("core", {}) or {}
+        spectral = graph.get("spectral", {}) or {}
+        return [
+            "Kind          GRAPH",
+            f"Nodes         {graph.get('nodes', '?')}",
+            f"Edges         {graph.get('edges', '?')}",
+            f"Components    {components.get('component_count', '?')}",
+            f"Max core      {core.get('max_core', 'n/a')}",
+            f"Spectral λ₂   {spectral.get('algebraic_connectivity', 'n/a')}",
+        ]
+    if kind == "tensor":
+        tensor = result.get("tensor", {}) or {}
+        matrix = tensor.get("matrix", {}) or {}
+        return [
+            "Kind          TENSOR",
+            f"Shape         {tensor.get('shape', '?')}",
+            f"Dtype         {tensor.get('dtype', '?')}",
+            f"Values        {tensor.get('size', '?')}",
+            f"Rank ratio    {matrix.get('rank_ratio', 'n/a')}",
+            f"Eff. rank     {matrix.get('effective_rank', 'n/a')}",
+        ]
+    if kind == "model":
+        model = result.get("model", {}) or {}
+        return [
+            "Kind          MODEL",
+            f"Framework     {model.get('framework', 'unknown')}",
+            f"Architecture  {model.get('architecture', 'unknown')}",
+            f"Parameters    {model.get('parameters', '?')}",
+            f"Trainable     {model.get('trainable_parameters', 'n/a')}",
+            f"Modules       {model.get('modules', model.get('nodes', 'n/a'))}",
+        ]
+    if kind == "nested":
+        nested = result.get("nested", {}) or {}
+        return [
+            "Kind          NESTED",
+            f"Nodes         {nested.get('nodes_observed', '?')}",
+            f"Depth         {nested.get('max_depth', '?')}",
+            f"Conflicts     {nested.get('path_type_conflict_count', '?')}",
+            f"Cycles        {nested.get('cyclic_references', '?')}",
+        ]
+    if kind == "relational":
+        relational = result.get("relational", {}) or {}
+        return [
+            "Kind          RELATIONAL",
+            f"Tables        {relational.get('table_count', '?')}",
+            f"Relationships {relational.get('relationship_count', '?')}",
+            f"Isolated      {len(relational.get('isolated_tables', []) or [])}",
+        ]
+
+    profile = result.get("profile", {}) or {}
+    shape = profile.get("shape", {}) or {}
+    return [
+        "Kind          TABULAR",
+        f"Shape         {shape.get('rows', '?')} rows x {shape.get('columns', '?')} columns",
+        f"Memory        {profile.get('memory_usage_mb', 'n/a')} MB",
+    ]
+
+
 def render_terminal_summary(result: Mapping[str, Any]) -> str:
     """Render a compact report suitable for interactive terminal output."""
     profile = result.get("profile", {}) or {}
@@ -37,24 +100,27 @@ def render_terminal_summary(result: Mapping[str, Any]) -> str:
     findings = result.get("findings", []) or []
     timings = result.get("timings_ms", {}) or {}
 
-    rows = shape.get("rows", "?")
-    columns = shape.get("columns", "?")
     health_score = health.get("overall_score")
     ml_score = ml.get("score")
+    source_kind = str(result.get("source_kind") or "tabular").lower()
 
     lines = [
         "FrameVitals Analysis",
         "=" * 72,
-        f"Dataset       {result.get('filename', '<unknown>')}",
-        f"Mode          {result.get('analysis_mode', 'unknown')}",
-        f"Shape         {rows} rows x {columns} columns",
-        f"Memory        {profile.get('memory_usage_mb', 'n/a')} MB",
+        f"Source        {result.get('filename', '<unknown>')}",
+        f"Depth         {result.get('analysis_mode', 'unknown')}",
+        *_source_lines(result),
         "",
         f"Health        {_score_bar(health_score)}  {_fmt_score(health_score)}  {health.get('label', '')}",
-        f"ML readiness  {_score_bar(ml_score)}  {_fmt_score(ml_score)}  {ml.get('label', '')}",
-        "",
-        f"Findings      {len(findings)} actionable issue(s)",
     ]
+    if source_kind == "tabular":
+        lines.append(
+            f"ML readiness  {_score_bar(ml_score)}  {_fmt_score(ml_score)}  {ml.get('label', '')}"
+        )
+    lines.extend([
+        "",
+        f"Beacons       {len(findings)} surfaced",
+    ])
 
     if findings:
         for finding in findings[:6]:
