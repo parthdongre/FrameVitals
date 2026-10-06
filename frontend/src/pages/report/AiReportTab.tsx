@@ -76,7 +76,7 @@ export default function AiReportTab({ analysis }: TabComponentProps) {
   return (
     <motion.div variants={staggerParent} initial="initial" animate="animate" className="space-y-6">
       <motion.section variants={staggerChild} className="flex flex-wrap items-center gap-3">
-        <Eyebrow>AI Narrative</Eyebrow>
+        <Eyebrow>Narrative</Eyebrow>
         <SourceBadge source={source ? "generated" : "optional"} />
         {datasetId ? (
           <button
@@ -103,10 +103,7 @@ export default function AiReportTab({ analysis }: TabComponentProps) {
   );
 }
 
-/* --------------------------------------------------------------------------
- * Source badge — small chip that signals where the narrative came from
- * (local Ollama / OpenRouter / heuristic fallback).
- * -------------------------------------------------------------------------- */
+/* Compact narrative-state badge. */
 
 function SourceBadge({ source }: { source: string }) {
   return (
