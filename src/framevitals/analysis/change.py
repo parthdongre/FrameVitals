@@ -197,6 +197,18 @@ def _rebin_degrees(reference: Any, current: Any, bins: int = 32) -> tuple[np.nda
 
 
 def compare_graphs(reference: Any, current: Any) -> DriftResult:
+    try:
+        import networkx as nx
+    except ImportError as exc:
+        raise ImportError(
+            "Graph Tide requires NetworkX. Install with pip install framevitals[graph]."
+        ) from exc
+
+    from framevitals.analysis.graph import _coerce_graph
+
+    reference, _ = _coerce_graph(reference, nx)
+    current, _ = _coerce_graph(current, nx)
+
     ref_nodes = set(reference.nodes())
     cur_nodes = set(current.nodes())
     node_union = ref_nodes | cur_nodes
