@@ -1,8 +1,9 @@
-"""FrameVitals Flask API and local report server.
+"""FrameVitals Flask API and generated-artifact server.
 
-The web layer intentionally stays thin: it reuses the same mode policy as the
-public Python API, bounds in-process cache state, and keeps filesystem/network
-side effects inside explicit request handlers.
+The React application is the single product UI. This backend stays thin: it
+reuses the same protocol/execution policy as the public Python API, bounds
+in-process cache state, and keeps filesystem/network side effects inside
+explicit API and artifact handlers.
 """
 
 from __future__ import annotations
