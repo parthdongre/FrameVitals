@@ -1,6 +1,7 @@
 import json
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import framevitals as fv
@@ -124,3 +125,70 @@ def test_onnx_prism_and_tide_when_optional_dependency_is_available(tmp_path):
     assert change["source_kind"] == "model"
     assert change["model"]["comparison_scope"] == "graph_and_metadata"
     assert len(change["model"]["shape_changes"]) >= 1
+
+
+
+def test_relational_prism_infers_keys_and_referential_gaps():
+    customers = pd.DataFrame({
+        "customer_id": [1, 2, 3],
+        "name": ["a", "b", "c"],
+    })
+    orders = pd.DataFrame({
+        "order_id": [10, 11, 12, 13],
+        "customer_id": [1, 2, 2, 99],
+        "amount": [5.0, 6.0, 7.0, 8.0],
+    })
+
+    project = {"customers": customers, "orders": orders}
+    inspected = fv.inspect_source(project)
+    assert inspected["kind"] == "relational"
+
+    result = fv.prism(project, depth="quick")
+    report = result.analysis["relational"]
+
+    assert result.analysis["source_kind"] == "relational"
+    assert report["table_count"] == 2
+    assert report["relationship_count"] >= 1
+    customer_links = [
+        item for item in report["relationships"]
+        if item["column"] == "customer_id"
+    ]
+    assert customer_links
+    assert customer_links[0]["child_reference_coverage"] < 1.0
+    assert any(
+        item["code"] == "relational.referential_gaps"
+        for item in result.beacons
+    )
+
+
+def test_relational_tide_and_pulse_track_project_change(tmp_path):
+    reference = {
+        "customers": pd.DataFrame({"customer_id": [1, 2]}),
+        "orders": pd.DataFrame({
+            "order_id": [10, 11],
+            "customer_id": [1, 2],
+        }),
+    }
+    current = {
+        "customers": pd.DataFrame({"customer_id": [1, 2, 3]}),
+        "orders": pd.DataFrame({
+            "order_id": [10, 11, 12],
+            "customer_id": [1, 2, 3],
+            "status": ["ok", "ok", "ok"],
+        }),
+        "products": pd.DataFrame({"product_id": [100, 101]}),
+    }
+
+    change = fv.tide(reference, current)
+    assert change["source_kind"] == "relational"
+    assert change["relational"]["added_tables"] == ["products"]
+    assert "orders" in change["relational"]["column_changes"]
+
+    snapshot = fv.pulse(current)
+    assert snapshot["state"]["source_kind"] == "relational"
+    assert snapshot["state"]["structured"]["table_count"] == 3
+
+    history = SnapshotHistory(tmp_path / "relational-history")
+    history.add(fv.pulse(reference), label="before")
+    history.add(snapshot, label="after")
+    assert history.compare_latest()["structured"]["changed"] is True
