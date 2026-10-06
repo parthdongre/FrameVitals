@@ -98,10 +98,14 @@ def compare_structured(reference: Any, current: Any):
     if reference_descriptor.kind is SourceKind.TENSOR:
         return compare_tensors(reference, current)
     if reference_descriptor.kind is SourceKind.MODEL:
-        if (
-            reference_descriptor.metadata.get("format") == "safetensors"
-            and current_descriptor.metadata.get("format") == "safetensors"
-        ):
+        reference_format = reference_descriptor.metadata.get("format")
+        current_format = current_descriptor.metadata.get("format")
+        if reference_format == "safetensors" or current_format == "safetensors":
+            if reference_format != current_format:
+                raise TypeError(
+                    "Model Tide cannot yet compare an in-memory model directly "
+                    "against a Safetensors file."
+                )
             from framevitals.analysis.safetensors import compare_safetensors
 
             return compare_safetensors(reference, current)
