@@ -57,3 +57,38 @@ def analyze_structured(
         )
 
     return None
+
+
+
+def compare_structured(reference: Any, current: Any):
+    """Compare supported non-tabular sources, returning None for tabular pairs."""
+    reference_descriptor = recognize_source(reference)
+    current_descriptor = recognize_source(current)
+
+    structured_kinds = {SourceKind.GRAPH, SourceKind.TENSOR, SourceKind.MODEL}
+    reference_structured = reference_descriptor.kind in structured_kinds
+    current_structured = current_descriptor.kind in structured_kinds
+
+    if not reference_structured and not current_structured:
+        return None
+
+    if reference_descriptor.kind is not current_descriptor.kind:
+        raise TypeError(
+            "Structured Tide requires reference and current inputs of the same source kind "
+            f"(got {reference_descriptor.kind.value} and {current_descriptor.kind.value})."
+        )
+
+    from framevitals.analysis.change import (
+        compare_graphs,
+        compare_models,
+        compare_tensors,
+    )
+
+    if reference_descriptor.kind is SourceKind.GRAPH:
+        return compare_graphs(reference, current)
+    if reference_descriptor.kind is SourceKind.TENSOR:
+        return compare_tensors(reference, current)
+    if reference_descriptor.kind is SourceKind.MODEL:
+        return compare_models(reference, current)
+
+    return None
