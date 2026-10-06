@@ -44,6 +44,15 @@ def analyze_structured(
         return analyze_tensor(data, depth=depth)
 
     if descriptor.kind is SourceKind.MODEL:
+        if descriptor.metadata.get("format") == "safetensors":
+            if runtime_requested:
+                raise ValueError(
+                    "Runtime model options require an in-memory model, not a Safetensors file."
+                )
+            from framevitals.analysis.safetensors import analyze_safetensors
+
+            return analyze_safetensors(data, depth=depth)
+
         from framevitals.analysis.model import analyze_model
 
         return analyze_model(
@@ -89,6 +98,13 @@ def compare_structured(reference: Any, current: Any):
     if reference_descriptor.kind is SourceKind.TENSOR:
         return compare_tensors(reference, current)
     if reference_descriptor.kind is SourceKind.MODEL:
+        if (
+            reference_descriptor.metadata.get("format") == "safetensors"
+            and current_descriptor.metadata.get("format") == "safetensors"
+        ):
+            from framevitals.analysis.safetensors import compare_safetensors
+
+            return compare_safetensors(reference, current)
         return compare_models(reference, current)
 
     return None
