@@ -71,6 +71,19 @@ def _is_torch_tensor(value: Any) -> bool:
     )
 
 
+def _is_tabular_object(value: Any) -> bool:
+    module = type(value).__module__
+    return module.startswith(("pandas.", "polars.", "pyarrow."))
+
+
+def _is_relational_mapping(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and bool(value)
+        and all(_is_tabular_object(item) for item in value.values())
+    )
+
+
 def recognize_source(value: Any) -> SourceDescriptor:
     """Describe the broad structured source kind for protocol dispatch.
 
@@ -157,6 +170,20 @@ def recognize_source(value: Any) -> SourceDescriptor:
             kind=SourceKind.TABULAR,
             python_type=_type_name(value),
             capabilities=("file", "columns", "rows"),
+        )
+
+    if _is_relational_mapping(value):
+        return SourceDescriptor(
+            kind=SourceKind.RELATIONAL,
+            python_type=_type_name(value),
+            capabilities=(
+                "tables",
+                "keys",
+                "relationships",
+                "referential_integrity",
+                "join_risk",
+            ),
+            metadata={"tables": len(value)},
         )
 
     if isinstance(value, (dict, list, tuple)):
