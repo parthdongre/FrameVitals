@@ -130,8 +130,8 @@ export function HomePage({ onNavigate }: HomePageProps) {
         />
 
         <ul className="grid gap-3 text-[14px] leading-7 text-[var(--ink-2)] sm:grid-cols-2">
-          <li>· Core analytics run locally. External AI services are only involved when you explicitly configure an optional integration.</li>
-          <li>· ML metrics are baselines, not tuned production models. The leaderboard surfaces which model families respond well to the data.</li>
+          <li>· FrameVitals describes the dataset you provide; it cannot supply missing domain context.</li>
+          <li>· Predictive signals are analytical baselines, not production approval or deployment guidance.</li>
           <li>· Flagged rows are signals worth reviewing; they are not proof that an observation is invalid.</li>
           <li>· Optional narratives are interpretation aids, not authorities.</li>
         </ul>
