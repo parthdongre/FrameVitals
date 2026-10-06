@@ -34,8 +34,8 @@ export default function MlLabTab({ analysis }: TabComponentProps) {
         title="ML Lab not available for this dataset"
         hint={
           target
-            ? "The pipeline did not produce ML outputs for this target column."
-            : "Pick a target column on the Analyze page to unlock the ML lab."
+            ? "Prism did not produce predictive outputs for this focus column."
+            : "Choose a focus column before running Prism to unlock this view."
         }
       />
     );
@@ -45,7 +45,7 @@ export default function MlLabTab({ analysis }: TabComponentProps) {
     <motion.div variants={staggerParent} initial="initial" animate="animate" className="space-y-10">
       <motion.section variants={staggerChild} className="grid gap-3 sm:grid-cols-3">
         <span className="rounded-md border border-line bg-bg-1 px-3 py-2 font-mono text-[11px] text-ink-3">
-          <span className="uppercase tracking-[0.2em] text-ink-4">Target · </span>
+          <span className="uppercase tracking-[0.2em] text-ink-4">Focus · </span>
           <span className="text-ink-1">{target || "(none)"}</span>
         </span>
         {targetAnalysis.task_type ? (
@@ -76,7 +76,7 @@ export default function MlLabTab({ analysis }: TabComponentProps) {
           <EmptyState
             compact
             title="No leaderboard for this run"
-            hint="Pick a target column and re-run in standard or deeper mode."
+            hint="Choose a focus column and re-run Prism at Standard depth or above."
           />
         </motion.div>
       )}
