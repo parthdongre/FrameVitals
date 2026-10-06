@@ -214,12 +214,11 @@ export function DriftPanel() {
     <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
       <Card className="overflow-hidden border-white/5 bg-white/[0.03] shadow-panel">
         <CardHeader className="border-b border-white/5 bg-white/[0.015]">
-          <CardTitle className="flex items-center gap-3 text-lg text-slate-50">
-            <span className="text-cyan-300">Drift / compare mode</span>
-            <span className="text-xs font-mono tracking-[0.3em] text-slate-500">PSI · KS · χ²</span>
+          <CardTitle className="text-lg text-slate-50">
+            <span className="text-cyan-300">Tide</span>
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Compare two datasets, or split one by a date column, and quantify how much each column has shifted.
+            Compare two dataset states, or split one by a date column, and read where meaningful change appeared.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5 p-6">
@@ -281,7 +280,7 @@ export function DriftPanel() {
               disabled={loading}
               className="rounded-2xl border border-cyan-400/15 bg-cyan-500 px-4 py-2 text-sm font-semibold text-space-950 transition hover:bg-cyan-400 disabled:opacity-40"
             >
-              {loading ? "Comparing…" : "Run drift comparison"}
+              {loading ? "Tide is running…" : "Run Tide"}
             </button>
             {error ? <span className="text-xs text-rose-300">{error}</span> : null}
           </div>
@@ -306,9 +305,9 @@ export function DriftPanel() {
                     <tr>
                       <th className="border-b border-white/5 px-3 py-2">Column</th>
                       <th className="border-b border-white/5 px-3 py-2">Type</th>
-                      <th className="border-b border-white/5 px-3 py-2 text-right">PSI</th>
+                      <th className="border-b border-white/5 px-3 py-2 text-right">Shift score</th>
                       <th className="border-b border-white/5 px-3 py-2">Severity</th>
-                      <th className="border-b border-white/5 px-3 py-2 text-right">Test p-value</th>
+                      <th className="border-b border-white/5 px-3 py-2 text-right">Evidence</th>
                       <th className="border-b border-white/5 px-3 py-2 text-right">Mean shift (z)</th>
                       <th className="border-b border-white/5 px-3 py-2">Notes</th>
                     </tr>
@@ -380,7 +379,7 @@ export function DriftPanel() {
             </>
           ) : report ? (
             <p className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-sm text-slate-400">
-              {report.reason ?? "Drift report unavailable."}
+              {report.reason ?? "Tide result unavailable."}
             </p>
           ) : null}
         </CardContent>
