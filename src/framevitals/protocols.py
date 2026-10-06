@@ -405,21 +405,67 @@ def prism(
     if structured_analysis is not None:
         if resolved_focus is not None:
             raise ValueError("focus=/target= is currently supported only for tabular Prism input.")
-        if (
-            reference is not None
-            or supplied_expectations is not None
-            or custom_checks
-        ):
+        if custom_checks:
             raise NotImplementedError(
-                "Reference/Axiom orchestration for structured non-tabular sources "
-                "is not available in this first adapter release."
+                "custom_checks= is currently available only for tabular Prism input."
             )
+
+        from framevitals.analysis.structured_contracts import (
+            infer_structured_contract,
+            validate_structured,
+        )
+        from framevitals.structured_analysis import compare_structured
+
+        resolved_contract = (
+            dict(supplied_expectations)
+            if isinstance(supplied_expectations, Mapping)
+            else None
+        )
+        if reference is not None and resolved_contract is None and derive_axiom:
+            resolved_contract = infer_structured_contract(reference)
+
+        validation_result: ValidationResult | None = None
+        if resolved_contract is not None:
+            validation_result = validate_structured(data, resolved_contract)
+
+        tide_result: DriftResult | None = None
+        if reference is not None:
+            compared = compare_structured(reference, data)
+            if isinstance(compared, DriftResult):
+                tide_result = compared
+            elif isinstance(compared, Mapping):
+                tide_result = DriftResult(dict(compared))
+
+        statuses = [
+            value
+            for value in (
+                validation_result.status if validation_result is not None else None,
+                tide_result.status if tide_result is not None else None,
+            )
+            if value
+        ]
+        if "fail" in statuses:
+            structured_status = "fail"
+        elif "warn" in statuses:
+            structured_status = "warn"
+        elif statuses:
+            structured_status = "pass"
+        else:
+            structured_status = "complete"
+
+        trust_payload = None
+        if resolved_contract is not None:
+            trust_payload = {
+                "expectations": resolved_contract,
+                "validation": validation_result,
+            }
+
         return PrismResult({
             "protocol": "prism",
-            "status": "complete",
+            "status": structured_status,
             "analysis": structured_analysis,
-            "trust": None,
-            "change": None,
+            "trust": trust_payload,
+            "change": tide_result,
             "verdict": None,
         })
 
