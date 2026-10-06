@@ -183,19 +183,48 @@ class PrismResult(_ProtocolResult):
         health = summary.get("health", {})
         ml = summary.get("ml_readiness", {})
 
+        source_kind = str(analysis.get("source_kind") or "tabular")
         lines = [
             "FrameVitals · Prism",
             "=" * 72,
-            f"Dataset       {summary.get('filename') or '<unknown>'}",
+            f"Source        {summary.get('filename') or '<unknown>'}",
+            f"Kind          {source_kind.upper()}",
             f"Status        {self.status.upper()}",
-            (
-                "Shape         "
-                f"{shape.get('rows', '?')} rows x {shape.get('columns', '?')} columns"
-            ),
-            f"Health        {health.get('overall_score', 'n/a')}  {health.get('label', '')}",
-            f"ML readiness  {ml.get('score', 'n/a')}  {ml.get('label', '')}",
-            f"Beacons       {len(self.beacons)}",
         ]
+
+        if source_kind == "graph":
+            graph = analysis.get("graph", {})
+            lines.extend([
+                f"Nodes         {graph.get('nodes', '?')}",
+                f"Edges         {graph.get('edges', '?')}",
+            ])
+        elif source_kind == "model":
+            model = analysis.get("model", {})
+            lines.extend([
+                f"Architecture  {model.get('architecture', 'unknown')}",
+                f"Parameters    {model.get('parameters', '?')}",
+                f"Trainable     {model.get('trainable_parameters', '?')}",
+            ])
+        elif source_kind == "tensor":
+            tensor = analysis.get("tensor", {})
+            lines.extend([
+                f"Shape         {tensor.get('shape', '?')}",
+                f"Dtype         {tensor.get('dtype', '?')}",
+                f"Values        {tensor.get('size', '?')}",
+            ])
+        else:
+            lines.extend([
+                (
+                    "Shape         "
+                    f"{shape.get('rows', '?')} rows x {shape.get('columns', '?')} columns"
+                ),
+                f"ML readiness  {ml.get('score', 'n/a')}  {ml.get('label', '')}",
+            ])
+
+        lines.extend([
+            f"Health        {health.get('overall_score', 'n/a')}  {health.get('label', '')}",
+            f"Beacons       {len(self.beacons)}",
+        ])
 
         validation = self.validation
         if validation is not None:
@@ -337,6 +366,33 @@ def prism(
     resolved_focus = focus if focus is not None else target
     resolved_depth = depth if depth is not None else mode
     supplied_expectations = axiom if axiom is not None else contract
+
+    # Structured non-tabular sources are recognized before entering the mature
+    # tabular dispatcher. This keeps graph/tensor/model diagnostics isolated
+    # from pandas-specific execution while preserving one public Prism call.
+    from framevitals.structured_analysis import analyze_structured
+
+    structured_analysis = analyze_structured(data, depth=resolved_depth)
+    if structured_analysis is not None:
+        if resolved_focus is not None:
+            raise ValueError("focus=/target= is currently supported only for tabular Prism input.")
+        if (
+            reference is not None
+            or supplied_expectations is not None
+            or custom_checks
+        ):
+            raise NotImplementedError(
+                "Reference/Axiom orchestration for structured non-tabular sources "
+                "is not available in this first adapter release."
+            )
+        return PrismResult({
+            "protocol": "prism",
+            "status": "complete",
+            "analysis": structured_analysis,
+            "trust": None,
+            "change": None,
+            "verdict": None,
+        })
 
     analysis = analyze(
         data,
