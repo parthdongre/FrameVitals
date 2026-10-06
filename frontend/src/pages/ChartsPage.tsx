@@ -18,7 +18,7 @@ interface ChartsPageProps {
 }
 
 /**
- * Full chart gallery — every backend PNG plus the SHAP summary, with a
+ * Full chart gallery for the latest Prism result, with a
  * type-based filter chip strip. Uses `StaticChartImage` so each tile fades
  * in once the PNG decodes.
  */
@@ -39,9 +39,9 @@ export function ChartsPage({ telemetry, onNavigate }: ChartsPageProps) {
       ...(shapPath
         ? [
             {
-              title: "SHAP Summary",
+              title: "Explainability Summary",
               type: "shap_summary",
-              description: "Mean |SHAP| values across the validation set.",
+              description: "Global contribution summary for the focused outcome.",
               path: shapPath,
             } as ChartItem,
           ]
@@ -61,11 +61,11 @@ export function ChartsPage({ telemetry, onNavigate }: ChartsPageProps) {
     return (
       <Section className="pt-6">
         <Eyebrow>Charts</Eyebrow>
-        <PageTitle subtitle="The full chart gallery — every backend PNG plus the SHAP summary plus interactive Highcharts — appears here after you analyze a dataset.">
-          No analysis yet.
+        <PageTitle subtitle="The chart gallery appears here after Prism has resolved a dataset.">
+          No Prism result yet.
         </PageTitle>
         <button onClick={() => onNavigate("analyze")} className="btn-primary">
-          Go to Analyze →
+          Run Prism →
         </button>
       </Section>
     );
@@ -75,7 +75,7 @@ export function ChartsPage({ telemetry, onNavigate }: ChartsPageProps) {
     <>
       <Section className="pb-8 pt-6">
         <Eyebrow>Charts</Eyebrow>
-        <PageTitle subtitle="Every chart the backend generated for the latest analysis. Static PNGs come straight from the pipeline; their interactive Highcharts twins live inside the relevant report tabs.">
+        <PageTitle subtitle="A visual view of the latest Prism result. Open a chart or return to the report for its surrounding context.">
           Chart gallery.
         </PageTitle>
         <p className="font-mono text-[11px] tabular-nums text-ink-3">
