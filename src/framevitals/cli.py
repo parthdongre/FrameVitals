@@ -107,16 +107,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional reference dataset.",
     )
     prism_parser.add_argument(
-        "--contract",
+        "--axiom",
+        dest="contract",
         type=Path,
         default=None,
         help="Optional existing Axiom JSON.",
-    )
-    prism_parser.add_argument(
-        "--derive-axiom",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Establish Axiom from the reference when no explicit Axiom is supplied.",
     )
     _add_runtime_arguments(prism_parser)
     prism_parser.add_argument(
@@ -744,7 +739,6 @@ def main() -> int:
             preset=args.preset,
             config=args.config,
             disabled_modules=args.disabled_modules,
-            derive_axiom=args.derive_axiom,
         )
         if args.output is not None:
             result.to_json(args.output)
