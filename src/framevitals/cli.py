@@ -839,7 +839,7 @@ def main() -> int:
         result = pulse(
             args.file,
             destination=args.output,
-            mode=args.mode,
+            depth=args.mode,
             workers=args.workers,
         )
         if args.format == "json":
