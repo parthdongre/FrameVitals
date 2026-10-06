@@ -62,7 +62,8 @@ export default function CleaningTab({ analysis }: TabComponentProps) {
           after={healthAfter}
           formatter={(v) => formatNumber(v, 1)}
           higherIsBetter
-        />        <div className="bg-bg-1 p-5">
+        />
+        <div className="bg-bg-1 p-5">
           <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-ink-3">Forge handoff</p>
           <p className="mt-3 text-[13px] leading-6 text-ink-2">
             {actions.length} suggested change{actions.length === 1 ? "" : "s"} available.
