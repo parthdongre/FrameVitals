@@ -50,6 +50,13 @@ def analyze_structured(
 
         return analyze_nested(data, depth=depth)
 
+    if descriptor.kind is SourceKind.RELATIONAL:
+        if runtime_requested:
+            raise ValueError("Runtime model options are only valid for model Prism input.")
+        from framevitals.analysis.relational import analyze_relational
+
+        return analyze_relational(data, depth=depth)
+
     if descriptor.kind is SourceKind.MODEL:
         model_format = descriptor.metadata.get("format")
         if model_format == "safetensors":
@@ -95,6 +102,7 @@ def compare_structured(reference: Any, current: Any):
         SourceKind.GRAPH,
         SourceKind.TENSOR,
         SourceKind.NESTED,
+        SourceKind.RELATIONAL,
         SourceKind.MODEL,
     }
     reference_structured = reference_descriptor.kind in structured_kinds
@@ -123,6 +131,10 @@ def compare_structured(reference: Any, current: Any):
         from framevitals.analysis.nested import compare_nested
 
         return compare_nested(reference, current)
+    if reference_descriptor.kind is SourceKind.RELATIONAL:
+        from framevitals.analysis.relational import compare_relational
+
+        return compare_relational(reference, current)
     if reference_descriptor.kind is SourceKind.MODEL:
         reference_format = reference_descriptor.metadata.get("format")
         current_format = current_descriptor.metadata.get("format")
