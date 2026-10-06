@@ -111,7 +111,7 @@ function ReportShell({
   return (
     <>
       <Section className="pb-6 pt-6">
-        <Eyebrow>Report</Eyebrow>
+        <Eyebrow>Prism report</Eyebrow>
         <PageTitle
           subtitle={`${filename} · ${rows.toLocaleString()} rows × ${cols.toLocaleString()} columns${
             mode ? ` · depth ${mode.toUpperCase()}` : ""
