@@ -167,6 +167,33 @@ Each analysis includes `source_kind` so reporting layers can render
 modality-specific summaries without leaking algorithm choreography into the
 normal product UI.
 
+## Safetensors checkpoint files
+
+Local Safetensors checkpoints are recognized as model sources without requiring
+PyTorch or the safetensors Python package:
+
+```python
+report = fv.prism("model.safetensors")
+```
+
+FrameVitals reads and validates the bounded Safetensors JSON header, then reports
+tensor names, shapes, dtypes, parameter counts, checkpoint size, architecture
+hints, precision mix, and largest tensors without loading tensor payloads.
+
+Metadata-only checkpoint structure can also be compared:
+
+```python
+change = fv.tide(
+    "checkpoint-1000.safetensors",
+    "checkpoint-5000.safetensors",
+)
+```
+
+This first file-level Tide detects added/removed tensors, shape changes, dtype
+changes, and parameter-count movement. Numeric weight movement remains available
+when comparing two in-memory PyTorch models; direct body-level Safetensors
+comparison will be added as a deeper optional path.
+
 ## Structured Tide
 
 Tide now dispatches by source kind as well:
@@ -196,8 +223,8 @@ inputs to be the same source kind.
 
 The next planned structured phases are:
 
-1. Safetensors and checkpoint-file inspection;
-2. ONNX graph + initializer analysis;
+1. ONNX graph + initializer analysis;
+2. deeper optional Safetensors tensor-body comparison;
 3. persistent Pulse histories for training/model state;
 4. nested JSON/Arrow-struct diagnostics;
 5. relational multi-table sources.
