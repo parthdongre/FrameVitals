@@ -382,12 +382,17 @@ def analyze_model(
         )
 
     optimizer_report: dict[str, Any] | None = None
+    optimizer_findings: list[dict[str, Any]] = []
     if optimizer is not None:
         from framevitals.analysis.optimizer import inspect_optimizer
 
         optimizer_report = inspect_optimizer(model, optimizer)
-        optimizer_findings = optimizer_report.get("findings", [])
-        if isinstance(optimizer_findings, list):
+        raw_optimizer_findings = optimizer_report.get("findings", [])
+        if isinstance(raw_optimizer_findings, list):
+            optimizer_findings = [
+                item for item in raw_optimizer_findings
+                if isinstance(item, dict)
+            ]
             findings.extend(optimizer_findings)
 
     runtime: dict[str, Any] | None = None
@@ -421,6 +426,21 @@ def analyze_model(
     score -= min(20.0, len(norm_outliers) * 4.0)
     score -= min(20.0, len(low_rank) * 5.0)
     score -= min(20.0, int(cnn.get("dead_filters") or 0) * 1.5)
+
+    if optimizer_findings:
+        severity_cost = {
+            "critical": 20.0,
+            "high": 10.0,
+            "medium": 4.0,
+            "info": 0.0,
+        }
+        score -= min(
+            40.0,
+            sum(
+                severity_cost.get(str(item.get("severity", "info")).lower(), 2.0)
+                for item in optimizer_findings
+            ),
+        )
 
     if runtime is not None:
         runtime_summary = runtime.get("summary", {})
