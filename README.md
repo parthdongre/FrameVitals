@@ -30,7 +30,7 @@ import framevitals as fv
 result = fv.prism(
     current,
     reference=training,
-    target="churn",
+    focus="churn",
 )
 ```
 
@@ -90,7 +90,7 @@ FrameVitals also supports Parquet, PyArrow data, and lazy DuckDB relations when 
 The protocol surface is intentionally small:
 
 ```python
-fv.prism(data, reference=reference, target="churn")
+fv.prism(data, reference=reference, focus="churn")
 fv.axiom(reference, current=current)
 fv.forge(data, apply=False)
 fv.tide(reference, current)
@@ -227,7 +227,7 @@ The CLI follows the same protocol surface:
 
 ```bash
 framevitals prism customers.csv
-framevitals prism production.parquet --reference training.parquet --target churn
+framevitals prism production.parquet --reference training.parquet --focus churn
 framevitals axiom training.parquet --current production.parquet
 framevitals forge customers.csv
 framevitals tide training.parquet production.parquet
