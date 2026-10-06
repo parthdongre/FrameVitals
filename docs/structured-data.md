@@ -12,10 +12,11 @@ The first structured source kinds are:
 | Kind | Current adapters | Status |
 | --- | --- | --- |
 | Tabular | pandas, files, Arrow, DuckDB | mature |
-| Graph | NetworkX-compatible graphs | initial |
-| Tensor | NumPy arrays, PyTorch tensors | initial |
-| Model | PyTorch-style modules | initial |
-| Nested | dict/list/tuple recognition | recognized; analyzer pending |
+| Graph | NetworkX, GraphML, GEXF, GML | implemented |
+| Tensor | NumPy arrays, PyTorch tensors | implemented |
+| Model | PyTorch modules, Safetensors, ONNX | implemented |
+| Nested | dict/list/tuple and JSON-like structures | implemented |
+| Relational | mappings of named tabular sources | implemented |
 
 Recognition never imports PyTorch or NetworkX just to inspect an object. Optional
 frameworks remain optional dependencies.
@@ -34,6 +35,7 @@ Then:
 import framevitals as fv
 
 report = fv.prism(graph, depth="standard")
+file_report = fv.prism("network.graphml")
 ```
 
 The graph engine is adaptive and resource bounded. Depending on graph size and
@@ -47,6 +49,8 @@ Prism depth it can use:
 - Louvain community detection when available, with greedy modularity fallback;
 - bridges and articulation points on the undirected structural projection;
 - clustering coefficient and transitivity;
+- k-core / degeneracy structure and degree assortativity;
+- bounded adjacency spectral radius and normalized-Laplacian algebraic connectivity;
 - sampled shortest paths;
 - Dijkstra shortest paths automatically when a reliable non-negative numeric
   `weight` edge attribute is detected.
@@ -102,7 +106,9 @@ The first model engine includes:
 - existing-gradient inspection when a backward pass has already populated
   `.grad`;
 - CNN-specific convolution filter analysis;
-- dead / near-zero convolution filter detection.
+- dead / near-zero convolution filter detection;
+- Transformer attention-head, Q/K/V projection, embedding, and normalization diagnostics;
+- RNN/LSTM/GRU gate-balance and bounded recurrent spectral diagnostics.
 
 This is inspection, not AutoML and not a replacement for PyTorch training.
 
@@ -214,20 +220,34 @@ Model Tide aligns parameters by name and reports additions/removals, shape and
 dtype changes, relative-L2 movement, cosine similarity, Wasserstein movement,
 and the most changed parameter tensors.
 
+## Reference-aware structured Prism
+
+Prism now composes the structured protocols as one workflow:
+
+```python
+result = fv.prism(
+    current_graph,
+    reference=baseline_graph,
+)
+```
+
+For supported structured source kinds, Prism can derive a modality-specific
+Axiom from the reference, validate the current source, run Tide, and return one
+combined trust/change status. The same pattern works for tensors, models,
+nested structures, and relational projects.
+
+Structured Tide still requires reference and current inputs of the same source
+kind. Custom Python checks remain a tabular quality-gate capability.
+
 ## Current limitations
 
-Reference-aware Axiom orchestration is still tabular in this adapter release.
-Passing a tabular Axiom/reference into graph/tensor/model Prism raises explicitly
-rather than silently applying tabular semantics. Structured Tide requires both
-inputs to be the same source kind.
+The next deeper integrations are focused on capability depth rather than adding
+new public protocol names:
 
-The next planned structured phases are:
-
-1. ONNX graph + initializer analysis;
-2. deeper optional Safetensors tensor-body comparison;
-3. persistent Pulse histories for training/model state;
-4. nested JSON/Arrow-struct diagnostics;
-5. relational multi-table sources.
+1. optional Safetensors tensor-body comparison without eager full-model loading;
+2. richer training-series Pulse aggregation across many steps/checkpoints;
+3. framework adapters beyond PyTorch where their runtime semantics can remain bounded;
+4. explicit user-declared relational keys/foreign keys in addition to inference.
 
 
 ## ONNX model files
