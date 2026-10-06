@@ -70,8 +70,8 @@ class PrismResult(_ProtocolResult):
         return None
 
     @property
-    def tide(self) -> DriftResult | None:
-        value = self.get("tide")
+    def change(self) -> DriftResult | None:
+        value = self.get("change")
         if isinstance(value, DriftResult):
             return value
         if isinstance(value, Mapping):
@@ -79,11 +79,16 @@ class PrismResult(_ProtocolResult):
         return None
 
     @property
+    def tide(self) -> DriftResult | None:
+        """Compatibility alias for the change outcome."""
+        return self.change
+
+    @property
     def validation(self) -> ValidationResult | None:
-        axiom = self.get("axiom")
-        if not isinstance(axiom, Mapping):
+        trust = self.get("trust")
+        if not isinstance(trust, Mapping):
             return None
-        value = axiom.get("validation")
+        value = trust.get("validation")
         if isinstance(value, ValidationResult):
             return value
         if isinstance(value, Mapping):
@@ -91,11 +96,15 @@ class PrismResult(_ProtocolResult):
         return None
 
     @property
+    def trust(self) -> ValidationResult | None:
+        return self.validation
+
+    @property
     def contract(self) -> dict[str, Any] | None:
-        axiom = self.get("axiom")
-        if not isinstance(axiom, Mapping):
+        trust = self.get("trust")
+        if not isinstance(trust, Mapping):
             return None
-        value = axiom.get("contract")
+        value = trust.get("expectations")
         return dict(value) if isinstance(value, Mapping) else None
 
     @property
@@ -109,6 +118,63 @@ class PrismResult(_ProtocolResult):
         if verdict is not None:
             return verdict.status
         return str(self.get("status", "complete"))
+
+    def to_public_dict(self) -> dict[str, Any]:
+        """Return the product-facing Prism payload without orchestration details."""
+        analysis_summary = self.analysis.summary()
+        validation = self.validation
+        change = self.change
+        verdict = self.verdict
+
+        trust_summary = None
+        if validation is not None:
+            details = validation.get("summary", {})
+            trust_summary = {
+                "status": validation.status,
+                "errors": details.get("errors", 0),
+                "warnings": details.get("warnings", 0),
+            }
+
+        change_summary = None
+        if change is not None:
+            details = change.get("summary", {})
+            change_summary = {
+                "status": change.status,
+                "severity": change.severity,
+                "columns_compared": details.get("n_columns_compared", 0),
+            }
+
+        verdict_summary = None
+        if verdict is not None:
+            verdict_summary = {
+                "status": verdict.status,
+                "passed": verdict.passed,
+                "reasons": verdict.reasons,
+            }
+
+        return {
+            "protocol": "prism",
+            "status": self.status,
+            "summary": analysis_summary,
+            "beacons": self.beacons,
+            "trust": trust_summary,
+            "change": change_summary,
+            "verdict": verdict_summary,
+        }
+
+    def to_json(
+        self,
+        destination: str | Path | None = None,
+        *,
+        indent: int = 2,
+    ) -> str | Path:
+        rendered = json.dumps(self.to_public_dict(), indent=indent, default=str)
+        if destination is None:
+            return rendered
+        path = Path(destination)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(rendered + "\n", encoding="utf-8")
+        return path
 
     def summary_text(self) -> str:
         analysis = self.analysis
@@ -229,6 +295,9 @@ def prism(
     data: Any,
     *,
     reference: Any = None,
+    axiom: Mapping[str, Any] | None = None,
+    focus: str | None = None,
+    depth: str | None = None,
     contract: Mapping[str, Any] | None = None,
     target: str | None = None,
     mode: str | None = None,
@@ -258,10 +327,21 @@ def prism(
     from framevitals.analysis_api import analyze
     from framevitals.operations import gate, infer_contract
 
+    if axiom is not None and contract is not None:
+        raise ValueError("Pass either axiom= or contract=, not both.")
+    if focus is not None and target is not None and focus != target:
+        raise ValueError("focus= and target= cannot disagree.")
+    if depth is not None and mode is not None and depth != mode:
+        raise ValueError("depth= and mode= cannot disagree.")
+
+    resolved_focus = focus if focus is not None else target
+    resolved_depth = depth if depth is not None else mode
+    supplied_expectations = axiom if axiom is not None else contract
+
     analysis = analyze(
         data,
-        target=target,
-        mode=mode,
+        target=resolved_focus,
+        mode=resolved_depth,
         artifacts=artifacts,
         workers=workers,
         preset=preset,
@@ -273,7 +353,11 @@ def prism(
         max_streaming_profile_columns=max_streaming_profile_columns,
     )
 
-    resolved_contract = dict(contract) if isinstance(contract, Mapping) else None
+    resolved_contract = (
+        dict(supplied_expectations)
+        if isinstance(supplied_expectations, Mapping)
+        else None
+    )
     if reference is not None and resolved_contract is None and derive_axiom:
         resolved_contract = infer_contract(reference)
 
@@ -307,10 +391,10 @@ def prism(
             elif isinstance(validation_payload, Mapping):
                 validation_result = ValidationResult(dict(validation_payload))
 
-    axiom_payload = None
+    trust_payload = None
     if resolved_contract is not None:
-        axiom_payload = {
-            "contract": resolved_contract,
+        trust_payload = {
+            "expectations": resolved_contract,
             "validation": validation_result,
         }
 
@@ -318,8 +402,8 @@ def prism(
         "protocol": "prism",
         "status": verdict.status if verdict is not None else "complete",
         "analysis": analysis,
-        "axiom": axiom_payload,
-        "tide": tide_result,
+        "trust": trust_payload,
+        "change": tide_result,
         "verdict": verdict,
     })
 
