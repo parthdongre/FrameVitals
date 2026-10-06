@@ -192,3 +192,37 @@ def test_relational_tide_and_pulse_track_project_change(tmp_path):
     history.add(fv.pulse(reference), label="before")
     history.add(snapshot, label="after")
     assert history.compare_latest()["structured"]["changed"] is True
+
+
+
+def test_optimizer_diagnostics_find_untracked_trainable_parameters_and_pulse_state():
+    torch = pytest.importorskip("torch")
+    nn = torch.nn
+
+    class TwoBlockNet(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.first = nn.Linear(4, 4)
+            self.second = nn.Linear(4, 1)
+
+        def forward(self, x):
+            return self.second(torch.relu(self.first(x)))
+
+    model = TwoBlockNet()
+    optimizer = torch.optim.Adam(model.first.parameters(), lr=1e-3)
+
+    result = fv.prism(model, optimizer=optimizer, depth="quick")
+    optimizer_report = result.analysis["model"]["optimizer"]
+
+    assert optimizer_report["available"] is True
+    assert optimizer_report["group_count"] == 1
+    assert optimizer_report["untracked_trainable_parameters"]
+    assert any(
+        item["code"] == "model.optimizer.untracked_parameters"
+        for item in result.beacons
+    )
+
+    snapshot = fv.pulse(model, optimizer=optimizer, depth="quick")
+    state = snapshot["state"]["structured"]["optimizer"]
+    assert state["group_count"] == 1
+    assert state["untracked_trainable_parameters"]
