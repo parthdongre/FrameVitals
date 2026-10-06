@@ -187,11 +187,11 @@
           </div>
           <div class="mt-4 grid gap-4 lg:grid-cols-2">
             <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
-              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Selected analyses</p>
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Prism details</p>
               <div class="mt-3 flex flex-wrap gap-2" id="analysisSelectedPills"><span class="text-sm text-slate-500">No analysis has been run yet.</span></div>
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
-              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Recommended analyses</p>
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Suggested next steps</p>
               <div class="mt-3 flex flex-wrap gap-2" id="analysisRecommendedPills"><span class="text-sm text-slate-500">No recommendations yet.</span></div>
             </div>
           </div>
@@ -269,7 +269,7 @@
               <p class="text-[11px] uppercase tracking-[0.32em] text-slate-500">Internal analytics</p>
               <h3 class="mt-1 text-lg font-semibold text-slate-900">Advanced modules</h3>
             </div>
-            <div class="text-xs text-slate-500">Anomaly ensemble · ML leaderboard · SHAP · Time-series · Text · Drift</div>
+            <div class="text-xs text-slate-500">Additional analytical views</div>
           </div>
 
           <div class="mt-4 grid gap-4 lg:grid-cols-3">
@@ -282,8 +282,8 @@
               <div id="v3LeaderboardPanel" class="mt-2 text-sm text-slate-600">Choose a focus column to enable.</div>
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
-              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">SHAP explainability</p>
-              <div id="v3ShapPanel" class="mt-2 text-sm text-slate-600">Set a target column to enable.</div>
+              <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Explainability</p>
+              <div id="v3ShapPanel" class="mt-2 text-sm text-slate-600">Choose a focus column to enable.</div>
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white/70 p-4">
               <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Time-series</p>
@@ -618,7 +618,7 @@
   function renderV3LeaderboardPanel(result) {
     const lb = result?.modelLeaderboard;
     if (!lb || !lb.available) {
-      v3LeaderboardPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(lb?.message || 'Set a target column to enable.')}</span>`;
+      v3LeaderboardPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(lb?.message || 'Choose a focus column to enable.')}</span>`;
       return;
     }
     const winner = lb.winner;
@@ -636,7 +636,7 @@
   function renderV3ShapPanel(result) {
     const ex = result?.explainability;
     if (!ex || !ex.available) {
-      v3ShapPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(ex?.message || 'Set a target column to enable.')}</span>`;
+      v3ShapPanel.innerHTML = `<span class="text-slate-500">${escapeHtml(ex?.message || 'Choose a focus column to enable.')}</span>`;
       return;
     }
     const top = (ex.global_importance || []).slice(0, 4);
