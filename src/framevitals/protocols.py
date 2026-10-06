@@ -11,8 +11,9 @@ surfaces should prefer protocol names and outcomes over implementation details.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from framevitals.quality_results import DriftResult, GateResult, ValidationResult
 from framevitals.result import AnalysisResult
@@ -121,7 +122,10 @@ class PrismResult(_ProtocolResult):
             "=" * 72,
             f"Dataset       {summary.get('filename') or '<unknown>'}",
             f"Status        {self.status.upper()}",
-            f"Shape         {shape.get('rows', '?')} rows x {shape.get('columns', '?')} columns",
+            (
+                "Shape         "
+                f"{shape.get('rows', '?')} rows x {shape.get('columns', '?')} columns"
+            ),
             f"Health        {health.get('overall_score', 'n/a')}  {health.get('label', '')}",
             f"ML readiness  {ml.get('score', 'n/a')}  {ml.get('label', '')}",
             f"Beacons       {len(self.beacons)}",
@@ -412,7 +416,10 @@ def pulse(
 
     if isinstance(data_or_result, AnalysisResult):
         analysis = data_or_result
-    elif isinstance(data_or_result, Mapping) and "result_schema_version" in data_or_result:
+    elif (
+        isinstance(data_or_result, Mapping)
+        and "result_schema_version" in data_or_result
+    ):
         analysis = AnalysisResult(dict(data_or_result))
     else:
         analysis = analyze(
