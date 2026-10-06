@@ -104,7 +104,6 @@ function ReportShell({
   const mode = safeStr(t.analysisMode, "");
 
   const downloadLinks = (t.downloadLinks ?? {}) as {
-    cleaned?: string;
     report?: string;
   };
   const backendBase = getBackendBaseUrl();
@@ -115,18 +114,13 @@ function ReportShell({
         <Eyebrow>Report</Eyebrow>
         <PageTitle
           subtitle={`${filename} · ${rows.toLocaleString()} rows × ${cols.toLocaleString()} columns${
-            mode ? ` · mode ${mode.toUpperCase()}` : ""
+            mode ? ` · depth ${mode.toUpperCase()}` : ""
           }`}
         >
           Prism, resolved.
         </PageTitle>
 
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-          {downloadLinks.cleaned ? (
-            <a className="btn-ghost" href={`${backendBase}${downloadLinks.cleaned}`}>
-              Download cleaned CSV
-            </a>
-          ) : null}
           {downloadLinks.report ? (
             <a className="btn-ghost" href={`${backendBase}${downloadLinks.report}`}>
               Download PDF report
@@ -166,7 +160,7 @@ function ReportShell({
                 ) : (
                   <EmptyState
                     title={`${active.label} not available for this dataset`}
-                    hint="The backend did not produce data for this section. Try running the analyzer in standard or deeper mode, or pick a target column."
+                    hint="Prism did not produce this view for the current dataset. Try a deeper Prism run or add a focus column."
                   />
                 )}
               </Suspense>
