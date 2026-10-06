@@ -12,12 +12,7 @@ import { cn } from "@/lib/utils";
 import type { TabComponentProps } from "./tabRegistry";
 import type { SignalItem } from "@/data/payload";
 
-/**
- * Overview tab — top-line KPIs, signals, anomaly snapshot, distribution,
- * health radar, ML readiness, analysis selection, and a compact pipeline
- * timing strip. Every section is wrapped in a defensive read so a missing
- * payload field renders an `EmptyState` instead of throwing.
- */
+/** Product-facing overview for the latest Prism result. */
 export default function OverviewTab({ analysis }: TabComponentProps) {
   const t = analysis as unknown as Record<string, unknown>;
 
@@ -197,7 +192,7 @@ export default function OverviewTab({ analysis }: TabComponentProps) {
           </div>
         </motion.section>
       ) : null}
-
+    </motion.div>
   );
 }
 
