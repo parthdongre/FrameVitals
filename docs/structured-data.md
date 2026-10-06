@@ -228,3 +228,116 @@ The next planned structured phases are:
 3. persistent Pulse histories for training/model state;
 4. nested JSON/Arrow-struct diagnostics;
 5. relational multi-table sources.
+
+
+## ONNX model files
+
+Install the optional adapter with:
+
+```bash
+pip install "framevitals[onnx]"
+```
+
+Then:
+
+```python
+report = fv.prism("model.onnx")
+change = fv.tide("before.onnx", "after.onnx")
+```
+
+ONNX Prism combines graph and model diagnostics. It inspects operator topology,
+declared inputs/outputs, graph connectivity, initializer tensors, operator
+counts, parameter counts, dtype distribution, unused initializers, dead-end
+operators, duplicate node names, disconnected graph regions, and basic
+architecture hints.
+
+ONNX Tide compares graph size, operator mix, initializer additions/removals,
+shape changes, dtype changes, and parameter-count movement.
+
+## Nested JSON and struct-like data
+
+Python dictionaries, lists, tuples, and JSON-like structures are recognized as
+nested sources:
+
+```python
+report = fv.prism(payload)
+change = fv.tide(payload_v1, payload_v2)
+```
+
+The nested engine uses bounded traversal to inspect nesting depth, array
+lengths, null density, object shapes, top keys, cyclic Python references, and
+field paths whose non-null values disagree on type.
+
+Long arrays use wildcard paths so repeated records are compared structurally
+instead of treating every array index as a different schema position.
+
+## Relational / multi-table projects
+
+Mappings of named tabular objects are recognized as relational projects:
+
+```python
+project = {
+    "customers": customers,
+    "orders": orders,
+    "products": products,
+}
+
+report = fv.prism(project)
+change = fv.tide(project_v1, project_v2)
+snapshot = fv.pulse(project)
+```
+
+The relational engine inspects:
+
+- table shape, dtypes, missingness, duplicate rows, and unique-key candidates;
+- shared columns between tables;
+- inferred one-to-one, one-to-many, many-to-one, and many-to-many relationships;
+- child-key/reference coverage and potential orphan entities;
+- sampled join-expansion risk;
+- ID-like columns that fail to behave as unique keys;
+- isolated tables in the inferred schema graph.
+
+Relational Tide compares tables, columns, row counts, and inferred relationship
+structure across project versions.
+
+## Optimizer diagnostics
+
+For in-memory PyTorch models, Prism and Pulse can also inspect an optimizer:
+
+```python
+report = fv.prism(
+    model,
+    optimizer=optimizer,
+    sample_batch=x,
+    targets=y,
+    loss_fn=criterion,
+    backward=True,
+)
+
+snapshot = fv.pulse(model, optimizer=optimizer)
+```
+
+Optimizer diagnostics cover parameter-group membership, learning-rate policy,
+duplicate assignments, trainable parameters that are missing from the
+optimizer, non-trainable parameters assigned to it, optimizer-state memory,
+step spread, and sampled NaN/Inf state tensors.
+
+## Structured Pulse
+
+Pulse now snapshots all implemented structured source kinds, not only tables:
+
+```python
+fv.pulse(graph)
+fv.pulse(tensor)
+fv.pulse(model)
+fv.pulse(model, optimizer=optimizer)
+fv.pulse(nested_payload)
+fv.pulse(relational_project)
+fv.pulse("model.safetensors")
+fv.pulse("model.onnx")
+```
+
+Snapshots store compact modality-specific state rather than raw data or model
+weights. Existing SnapshotHistory can therefore track health, Beacons, model
+runtime summaries, optimizer configuration, graph size/connectivity, tensor
+rank/sparsity, nested structural health, and relational schema state over time.
