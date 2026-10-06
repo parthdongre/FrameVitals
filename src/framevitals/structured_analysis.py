@@ -43,8 +43,16 @@ def analyze_structured(
 
         return analyze_tensor(data, depth=depth)
 
+    if descriptor.kind is SourceKind.NESTED:
+        if runtime_requested:
+            raise ValueError("Runtime model options are only valid for model Prism input.")
+        from framevitals.analysis.nested import analyze_nested
+
+        return analyze_nested(data, depth=depth)
+
     if descriptor.kind is SourceKind.MODEL:
-        if descriptor.metadata.get("format") == "safetensors":
+        model_format = descriptor.metadata.get("format")
+        if model_format == "safetensors":
             if runtime_requested:
                 raise ValueError(
                     "Runtime model options require an in-memory model, not a Safetensors file."
@@ -52,6 +60,15 @@ def analyze_structured(
             from framevitals.analysis.safetensors import analyze_safetensors
 
             return analyze_safetensors(data, depth=depth)
+
+        if model_format == "onnx":
+            if runtime_requested:
+                raise ValueError(
+                    "Runtime model options require an in-memory PyTorch model, not an ONNX file."
+                )
+            from framevitals.analysis.onnx_model import analyze_onnx
+
+            return analyze_onnx(data, depth=depth)
 
         from framevitals.analysis.model import analyze_model
 
@@ -74,7 +91,12 @@ def compare_structured(reference: Any, current: Any):
     reference_descriptor = recognize_source(reference)
     current_descriptor = recognize_source(current)
 
-    structured_kinds = {SourceKind.GRAPH, SourceKind.TENSOR, SourceKind.MODEL}
+    structured_kinds = {
+        SourceKind.GRAPH,
+        SourceKind.TENSOR,
+        SourceKind.NESTED,
+        SourceKind.MODEL,
+    }
     reference_structured = reference_descriptor.kind in structured_kinds
     current_structured = current_descriptor.kind in structured_kinds
 
@@ -97,18 +119,28 @@ def compare_structured(reference: Any, current: Any):
         return compare_graphs(reference, current)
     if reference_descriptor.kind is SourceKind.TENSOR:
         return compare_tensors(reference, current)
+    if reference_descriptor.kind is SourceKind.NESTED:
+        from framevitals.analysis.nested import compare_nested
+
+        return compare_nested(reference, current)
     if reference_descriptor.kind is SourceKind.MODEL:
         reference_format = reference_descriptor.metadata.get("format")
         current_format = current_descriptor.metadata.get("format")
-        if reference_format == "safetensors" or current_format == "safetensors":
+
+        if reference_format or current_format:
             if reference_format != current_format:
                 raise TypeError(
-                    "Model Tide cannot yet compare an in-memory model directly "
-                    "against a Safetensors file."
+                    "Model Tide requires matching model source formats when comparing files."
                 )
-            from framevitals.analysis.safetensors import compare_safetensors
+            if reference_format == "safetensors":
+                from framevitals.analysis.safetensors import compare_safetensors
 
-            return compare_safetensors(reference, current)
+                return compare_safetensors(reference, current)
+            if reference_format == "onnx":
+                from framevitals.analysis.onnx_model import compare_onnx
+
+                return compare_onnx(reference, current)
+
         return compare_models(reference, current)
 
     return None
