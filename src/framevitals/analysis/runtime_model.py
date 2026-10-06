@@ -223,22 +223,23 @@ def observe_model_runtime(
             if saturation is not None:
                 observation["saturation_fraction"] = round(saturation, 8)
             activations[name] = observation
-        return hook
 
-    def backward_hook(name: str, module_type: str):
-        def hook(_module, _grad_input, grad_output):
-            tensors = list(_iter_tensors(grad_output))
-            if not tensors:
-                return
-            try:
-                observation = _tensor_observation(
-                    tensors[0],
-                    sample_limit=max(1_024, sample_values // 2),
-                )
-            except Exception:
-                return
-            observation["module_type"] = module_type
-            module_gradients[name] = observation
+            if backward and bool(getattr(tensor, "requires_grad", False)):
+                register_hook = getattr(tensor, "register_hook", None)
+                if callable(register_hook):
+                    def capture_gradient(gradient):
+                        try:
+                            grad_observation = _tensor_observation(
+                                gradient,
+                                sample_limit=max(1_024, sample_values // 2),
+                            )
+                        except Exception:
+                            return gradient
+                        grad_observation["module_type"] = module_type
+                        module_gradients[name] = grad_observation
+                        return gradient
+
+                    handles.append(register_hook(capture_gradient))
         return hook
 
     parameter_gradients: list[dict[str, Any]] = []
@@ -249,10 +250,6 @@ def observe_model_runtime(
         for name, module in selected:
             module_type = type(module).__name__
             handles.append(module.register_forward_hook(forward_hook(name, module_type)))
-            if backward and callable(getattr(module, "register_full_backward_hook", None)):
-                handles.append(
-                    module.register_full_backward_hook(backward_hook(name, module_type))
-                )
 
         started = perf_counter()
         context = nullcontext() if backward else torch.no_grad()
