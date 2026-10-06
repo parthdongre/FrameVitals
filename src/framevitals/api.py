@@ -333,6 +333,11 @@ def gate(
 
 
 __all__ = [
+    "prism",
+    "axiom",
+    "forge",
+    "tide",
+    "pulse",
     "inspect_source",
     "profile",
     "roles",
@@ -355,3 +360,38 @@ __all__ = [
     "discover_checks",
     "gate",
 ]
+
+
+def prism(*args, **kwargs):
+    """Run the comprehensive Prism protocol."""
+    from framevitals.protocols import prism as _prism
+
+    return _prism(*args, **kwargs)
+
+
+def axiom(*args, **kwargs):
+    """Run the Axiom protocol."""
+    from framevitals.protocols import axiom as _axiom
+
+    return _axiom(*args, **kwargs)
+
+
+def forge(*args, **kwargs):
+    """Run the Forge protocol."""
+    from framevitals.protocols import forge as _forge
+
+    return _forge(*args, **kwargs)
+
+
+def tide(*args, **kwargs):
+    """Run the Tide protocol."""
+    from framevitals.protocols import tide as _tide
+
+    return _tide(*args, **kwargs)
+
+
+def pulse(*args, **kwargs):
+    """Run the Pulse protocol."""
+    from framevitals.protocols import pulse as _pulse
+
+    return _pulse(*args, **kwargs)
