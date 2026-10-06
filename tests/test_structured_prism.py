@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pytest
 
@@ -202,3 +204,84 @@ def test_structured_tide_rejects_mixed_source_kinds():
 
     with pytest.raises(TypeError, match="same source kind"):
         fv.tide(np.arange(4, dtype=float), nx.path_graph(4))
+
+
+
+def _write_fake_safetensors(path, tensors):
+    header = {}
+    offset = 0
+    payload = bytearray()
+
+    for name, spec in tensors.items():
+        shape = list(spec["shape"])
+        dtype = spec.get("dtype", "F32")
+        elements = int(np.prod(shape)) if shape else 1
+        item_size = 4 if dtype == "F32" else 2
+        size = elements * item_size
+        header[name] = {
+            "dtype": dtype,
+            "shape": shape,
+            "data_offsets": [offset, offset + size],
+        }
+        payload.extend(b"\x00" * size)
+        offset += size
+
+    raw = json.dumps(header, separators=(",", ":")).encode("utf-8")
+    padding = (-len(raw)) % 8
+    raw += b" " * padding
+    path.write_bytes(len(raw).to_bytes(8, "little") + raw + payload)
+
+
+def test_safetensors_prism_reads_metadata_without_tensor_runtime(tmp_path):
+    checkpoint = tmp_path / "tiny.safetensors"
+    _write_fake_safetensors(
+        checkpoint,
+        {
+            "model.layers.0.self_attn.q_proj.weight": {"shape": [2, 2]},
+            "model.layers.0.self_attn.k_proj.weight": {"shape": [2, 2]},
+            "model.embed_tokens.weight": {"shape": [8, 2]},
+        },
+    )
+
+    inspected = fv.inspect_source(checkpoint)
+    assert inspected["kind"] == "model"
+    assert inspected["metadata"]["format"] == "safetensors"
+
+    result = fv.prism(checkpoint, depth="quick")
+    model = result.analysis["model"]
+
+    assert result.analysis["source_kind"] == "model"
+    assert model["framework"] == "safetensors"
+    assert model["architecture"] == "transformer"
+    assert model["tensor_count"] == 3
+    assert model["parameters"] == 24
+    assert result.analysis["execution"]["tensor_payloads_loaded"] is False
+
+
+def test_safetensors_tide_detects_checkpoint_structure_change(tmp_path):
+    reference = tmp_path / "reference.safetensors"
+    current = tmp_path / "current.safetensors"
+
+    _write_fake_safetensors(
+        reference,
+        {
+            "layer.weight": {"shape": [2, 2]},
+            "layer.bias": {"shape": [2]},
+        },
+    )
+    _write_fake_safetensors(
+        current,
+        {
+            "layer.weight": {"shape": [3, 2]},
+            "layer.bias": {"shape": [2]},
+            "new.weight": {"shape": [2, 2]},
+        },
+    )
+
+    change = fv.tide(reference, current)
+
+    assert change["source_kind"] == "model"
+    assert change["model"]["comparison_scope"] == "metadata_only"
+    assert len(change["model"]["added_parameters"]) == 1
+    assert len(change["model"]["shape_changes"]) == 1
+    assert change.severity in {"minor", "moderate", "severe"}
