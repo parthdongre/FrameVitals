@@ -35,17 +35,10 @@ export default function OverviewTab({ analysis }: TabComponentProps) {
   const ml = safeObj(t.mlReadiness, {} as Record<string, unknown>);
 
   const distribution = t.distribution;
-  const analysisSelection = safeObj(
-    t.analysisSelection,
-    {} as Record<string, unknown>,
-  );
-
   const rolesSummary = safeObj(t.rolesSummary, {} as Record<string, unknown>);
   const datasetSignals = safeObj(t.datasetSignals, {} as Record<string, unknown>);
 
   const anomalies = safeObj(t.anomaliesV2, {} as Record<string, unknown>);
-  const timings = safeObj(t.timings_ms, {} as Record<string, unknown>);
-
   return (
     <motion.div
       variants={staggerParent}
@@ -97,7 +90,7 @@ export default function OverviewTab({ analysis }: TabComponentProps) {
       {/* ------------------ Signals + Anomaly snapshot ---------------- */}
       <motion.section variants={staggerChild} className="grid gap-8 md:grid-cols-2">
         <div>
-          <Eyebrow className="mb-3">Quality signals</Eyebrow>
+          <Eyebrow className="mb-3">Beacons</Eyebrow>
           {signals.length ? (
             <ul className="space-y-3">
               {signals.slice(0, 6).map((s, i) => (
@@ -119,12 +112,12 @@ export default function OverviewTab({ analysis }: TabComponentProps) {
               ))}
             </ul>
           ) : (
-            <EmptyState compact title="No signals raised" hint="Nothing in the dataset triggered a quality flag." />
+            <EmptyState compact title="No beacons raised" hint="Nothing currently needs your attention." />
           )}
         </div>
 
         <div>
-          <Eyebrow className="mb-3">Anomaly ensemble</Eyebrow>
+          <Eyebrow className="mb-3">Irregular rows</Eyebrow>
           {pickNum(anomalies, "n_rows_scored", 0) > 0 ? (
             <div className="rounded-md border border-line bg-bg-1 p-5">
               <p className="text-[28px] font-semibold tabular-nums text-ink-1">
@@ -134,20 +127,16 @@ export default function OverviewTab({ analysis }: TabComponentProps) {
                   / {formatCount(pickNum(anomalies, "n_rows_scored", 0))}
                 </span>
               </p>
-              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.32em] text-ink-3">flagged rows</p>
+              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.32em] text-ink-3">rows worth reviewing</p>
               <p className="mt-3 text-[13px] text-ink-2">
-                {safeArr(anomalies.detectors_run).length} detector{safeArr(anomalies.detectors_run).length === 1 ? "" : "s"} ran ·
-                threshold{" "}
-                <span className="font-mono text-accent">
-                  {pickNum(anomalies, "threshold", 0).toFixed(2)}
-                </span>
+                Prism found observations that differ meaningfully from the broader dataset.
               </p>
             </div>
           ) : (
             <EmptyState
               compact
-              title="Anomaly ensemble unavailable"
-              hint="Run the analyzer in standard or deeper mode to populate this snapshot."
+              title="Irregularity view unavailable"
+              hint="Run Prism at Standard depth or above to populate this view."
             />
           )}
         </div>
@@ -176,30 +165,6 @@ export default function OverviewTab({ analysis }: TabComponentProps) {
         </motion.section>
       ) : null}
 
-      {/* ------------------ Analysis selection chips ----------------- */}
-      {isPresent(analysisSelection) ? (
-        <motion.section variants={staggerChild}>
-          <Eyebrow className="mb-3">Analysis selection</Eyebrow>
-          <div className="grid gap-3 md:grid-cols-3">
-            <ChipColumn
-              title="Selected"
-              tone="accent"
-              items={safeArr<{ name?: string }>(analysisSelection.selectedAnalyses).map((x) => safeStr(x?.name, ""))}
-            />
-            <ChipColumn
-              title="Recommended"
-              tone="neutral"
-              items={safeArr<{ name?: string }>(analysisSelection.recommendedAnalyses).map((x) => safeStr(x?.name, ""))}
-            />
-            <ChipColumn
-              title="Skipped"
-              tone="muted"
-              items={safeArr<{ name?: string }>(analysisSelection.skippedAnalyses).map((x) => safeStr(x?.name, ""))}
-            />
-          </div>
-        </motion.section>
-      ) : null}
-
       {/* ------------------ Side rail: roles + dataset signals ------- */}
       {(isPresent(rolesSummary) || isPresent(datasetSignals)) ? (
         <motion.section variants={staggerChild} className="grid gap-6 md:grid-cols-2">
@@ -218,40 +183,21 @@ export default function OverviewTab({ analysis }: TabComponentProps) {
         </motion.section>
       ) : null}
 
-      {/* ------------------ Pipeline timings ------------------------- */}
-      <motion.section variants={staggerChild}>
-        <Eyebrow className="mb-3">Pipeline timings</Eyebrow>
-        {Object.keys(timings).length ? (
-          <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
-            {Object.entries(timings)
-              .filter(([k]) => !k.startsWith("phase3_tasks"))
-              .slice(0, 12)
-              .map(([k, v]) => (
-                <div
-                  key={k}
-                  className="rounded-md border border-line bg-bg-1 px-3 py-2"
-                >
-                  <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-ink-3">
-                    {formatLabel(k)}
-                  </p>
-                  <p className="mt-1 font-mono text-[13px] tabular-nums text-ink-1">
-                    {typeof v === "number" ? formatMs(v) : "—"}
-                  </p>
-                </div>
-              ))}
+      {analysisDuration > 0 ? (
+        <motion.section variants={staggerChild}>
+          <Eyebrow className="mb-3">Prism completion</Eyebrow>
+          <div className="rounded-md border border-line bg-bg-1 px-4 py-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-ink-3">
+              Completed
+            </p>
+            <p className="mt-1 font-mono text-[13px] tabular-nums text-ink-1">
+              {formatMs(analysisDuration)}
+              {lastScan && lastScan !== "—" ? <span className="text-ink-3"> · {lastScan}</span> : null}
+            </p>
           </div>
-        ) : (
-          <EmptyState compact title="No timings recorded" />
-        )}
-        {analysisDuration > 0 ? (
-          <p className="mt-3 font-mono text-[11px] tabular-nums text-ink-3">
-            <span className="uppercase tracking-[0.2em] text-ink-4">Total · </span>
-            {formatMs(analysisDuration)}
-            {lastScan && lastScan !== "—" ? <span> · {lastScan}</span> : null}
-          </p>
-        ) : null}
-      </motion.section>
-    </motion.div>
+        </motion.section>
+      ) : null}
+
   );
 }
 
@@ -299,44 +245,6 @@ function SeverityChip({ severity }: { severity: unknown }) {
     >
       {raw}
     </span>
-  );
-}
-
-function ChipColumn({
-  title,
-  tone,
-  items,
-}: {
-  title: string;
-  tone: "accent" | "neutral" | "muted";
-  items: string[];
-}) {
-  const filtered = items.filter(Boolean);
-  return (
-    <div className="rounded-md border border-line bg-bg-1 p-4">
-      <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-ink-3">
-        {title} · {filtered.length}
-      </p>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {filtered.length ? (
-          filtered.map((label, i) => (
-            <span
-              key={`${i}-${label}`}
-              className={cn(
-                "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px]",
-                tone === "accent" && "border-accent-line bg-accent-soft text-accent",
-                tone === "neutral" && "border-line-strong bg-bg-2 text-ink-1",
-                tone === "muted" && "border-line bg-bg-2 text-ink-3",
-              )}
-            >
-              {label}
-            </span>
-          ))
-        ) : (
-          <span className="text-[12px] text-ink-3">—</span>
-        )}
-      </div>
-    </div>
   );
 }
 
