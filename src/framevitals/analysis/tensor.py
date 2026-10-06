@@ -56,18 +56,49 @@ def _numpy_sample(tensor: Any, limit: int) -> np.ndarray:
     return np.asarray(flat.cpu().numpy())
 
 
-def _full_matrix(tensor: Any) -> np.ndarray | None:
+def _matrix_sketch(
+    tensor: Any,
+    *,
+    max_rows: int = 768,
+    max_columns: int = 768,
+) -> tuple[np.ndarray | None, bool, tuple[int, ...]]:
+    """Return a bounded 2-D matrix view for spectral diagnostics.
+
+    Small matrices are returned exactly. Large matrices are deterministically
+    strided along both axes, avoiding eager full CPU copies of large model
+    weights while retaining broad row/column coverage.
+    """
     shape = _shape(tensor)
-    if len(shape) != 2:
-        return None
-    if not shape or max(shape) > 2048 or math.prod(shape) > 2_000_000:
-        return None
-    if isinstance(tensor, np.ndarray):
-        return np.asarray(tensor, dtype=float)
+    if len(shape) != 2 or not shape:
+        return None, False, shape
+
+    rows, columns = shape
+    exact = (
+        max(shape) <= 2048
+        and math.prod(shape) <= 2_000_000
+    )
+
     try:
-        return np.asarray(tensor.detach().float().cpu().numpy(), dtype=float)
+        if isinstance(tensor, np.ndarray):
+            if exact:
+                return np.asarray(tensor, dtype=float), False, shape
+            row_step = max(1, math.ceil(rows / max_rows))
+            column_step = max(1, math.ceil(columns / max_columns))
+            sketch = tensor[::row_step, ::column_step][:max_rows, :max_columns]
+            return np.asarray(sketch, dtype=float), True, shape
+
+        detached = tensor.detach()
+        if exact:
+            matrix = detached.float().cpu().numpy()
+            return np.asarray(matrix, dtype=float), False, shape
+
+        row_step = max(1, math.ceil(rows / max_rows))
+        column_step = max(1, math.ceil(columns / max_columns))
+        sketch = detached[::row_step, ::column_step][:max_rows, :max_columns]
+        matrix = sketch.float().cpu().numpy()
+        return np.asarray(matrix, dtype=float), True, shape
     except Exception:
-        return None
+        return None, False, shape
 
 
 def _health_label(score: float) -> str:
@@ -142,13 +173,14 @@ def tensor_metrics(
             "l2_sample": round(float(np.linalg.norm(finite_values)), 8),
         }
 
-    matrix = _full_matrix(tensor)
+    matrix, matrix_sketch, original_shape = _matrix_sketch(tensor)
     if matrix is not None and np.isfinite(matrix).all():
         min_dim = min(matrix.shape)
+        original_min_dim = min(original_shape) if original_shape else min_dim
         matrix_elements = int(matrix.size)
         frobenius_sq = float(np.sum(matrix * matrix))
         try:
-            if matrix_elements <= 250_000 or min_dim <= 64:
+            if not matrix_sketch and (matrix_elements <= 250_000 or min_dim <= 64):
                 singular = np.linalg.svd(matrix, compute_uv=False)
                 if singular.size:
                     tol = max(matrix.shape) * np.finfo(float).eps * float(singular[0])
@@ -174,11 +206,13 @@ def tensor_metrics(
                     result["matrix"] = {
                         "method": "exact_svd",
                         "approximate": False,
+                        "original_shape": list(original_shape),
+                        "analyzed_shape": list(matrix.shape),
                         "rank": rank,
-                        "rank_ratio": round(rank / max(1, min_dim), 8),
+                        "rank_ratio": round(rank / max(1, original_min_dim), 8),
                         "effective_rank": round(effective_rank, 6),
                         "stable_rank": round(stable_rank, 6),
-                        "stable_rank_ratio": round(stable_rank / max(1, min_dim), 8),
+                        "stable_rank_ratio": round(stable_rank / max(1, original_min_dim), 8),
                         "condition_number": (
                             round(condition, 6) if math.isfinite(condition) else None
                         ),
@@ -210,8 +244,14 @@ def tensor_metrics(
                         if singular[0] > 0 else 0.0
                     )
                     result["matrix"] = {
-                        "method": "randomized_svd",
+                        "method": (
+                            "sampled_submatrix_randomized_svd"
+                            if matrix_sketch
+                            else "randomized_svd"
+                        ),
                         "approximate": True,
+                        "original_shape": list(original_shape),
+                        "analyzed_shape": list(matrix.shape),
                         "components": int(components),
                         "effective_rank_topk": round(effective_rank, 6),
                         "stable_rank": round(stable_rank, 6),
