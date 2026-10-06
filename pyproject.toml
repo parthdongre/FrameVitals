@@ -68,6 +68,9 @@ ml = [
 graph = [
     "networkx>=3.4",
 ]
+onnx = [
+    "onnx>=1.17",
+]
 ai = [
     "ollama>=0.3",
     "pydantic>=2.7",
@@ -98,6 +101,7 @@ all = [
     "pyod>=2.0",
     "shap>=0.45",
     "networkx>=3.4",
+    "onnx>=1.17",
     "ollama>=0.3",
     "pydantic>=2.7",
     "flask>=3.0",
