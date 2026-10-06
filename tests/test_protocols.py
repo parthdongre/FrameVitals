@@ -101,7 +101,7 @@ def test_prism_is_one_orchestrated_workflow(monkeypatch):
     result = fv.prism(
         "current.csv",
         reference="training.csv",
-        target="churn",
+        focus="churn",
     )
 
     assert isinstance(result, fv.PrismResult)
@@ -218,3 +218,21 @@ def test_pulse_can_capture_an_existing_analysis(tmp_path):
     assert isinstance(snapshot, fv.AnalysisSnapshot)
     assert snapshot["source"]["filename"] == "current.csv"
     assert destination.exists()
+
+
+
+def test_prism_keeps_target_and_mode_as_compatibility_aliases(monkeypatch):
+    analysis = _analysis_result()
+    captured = {}
+
+    def fake_analyze(data, **kwargs):
+        captured.update(kwargs)
+        return analysis
+
+    monkeypatch.setattr("framevitals.analysis_api.analyze", fake_analyze)
+
+    result = fv.prism("current.csv", target="churn", mode="quick")
+
+    assert result.analysis is analysis
+    assert captured["target"] == "churn"
+    assert captured["mode"] == "quick"
