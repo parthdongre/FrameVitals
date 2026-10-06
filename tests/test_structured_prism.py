@@ -89,3 +89,59 @@ def test_structured_prism_rejects_tabular_only_focus_for_now():
 
     with pytest.raises(ValueError, match="tabular Prism"):
         fv.prism(tensor, focus="target")
+
+
+def test_pytorch_runtime_prism_observes_activations_and_gradients_without_grad_side_effects():
+    torch = pytest.importorskip("torch")
+    nn = torch.nn
+
+    class TinyRuntimeNet(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = nn.Linear(4, 8)
+            self.relu = nn.ReLU()
+            self.fc2 = nn.Linear(8, 1)
+
+        def forward(self, x):
+            return self.fc2(self.relu(self.fc1(x)))
+
+    model = TinyRuntimeNet()
+    with torch.no_grad():
+        model.fc1.weight.zero_()
+        model.fc1.bias.fill_(-1.0)
+
+    x = torch.ones(6, 4)
+    y = torch.zeros(6, 1)
+
+    assert all(parameter.grad is None for parameter in model.parameters())
+
+    result = fv.prism(
+        model,
+        depth="quick",
+        sample_batch=x,
+        targets=y,
+        loss_fn=nn.MSELoss(),
+        backward=True,
+    )
+
+    runtime = result.analysis["model"]["runtime"]
+    assert runtime["available"] is True
+    assert runtime["backward"] is True
+    assert runtime["observed_modules"] >= 3
+    assert runtime["parameter_gradients"]
+    assert runtime["summary"]["dead_activations"] >= 1
+
+    codes = {item["code"] for item in result.beacons}
+    assert "model.runtime.dead_activations" in codes
+    assert all(parameter.grad is None for parameter in model.parameters())
+
+    for module in model.modules():
+        assert not module._forward_hooks
+        assert not module._backward_hooks
+
+
+def test_runtime_options_are_rejected_for_tensor_prism():
+    tensor = np.arange(8, dtype=float)
+
+    with pytest.raises(ValueError, match="only valid for model"):
+        fv.prism(tensor, sample_batch=np.arange(4))
