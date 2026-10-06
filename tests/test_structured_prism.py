@@ -145,3 +145,60 @@ def test_runtime_options_are_rejected_for_tensor_prism():
 
     with pytest.raises(ValueError, match="only valid for model"):
         fv.prism(tensor, sample_batch=np.arange(4))
+
+
+def test_tensor_tide_reports_aligned_change_metrics():
+    reference = np.eye(6, dtype=float)
+    current = reference.copy()
+    current[0, 0] = 4.0
+
+    change = fv.tide(reference, current)
+
+    assert change["source_kind"] == "tensor"
+    assert change["tensor"]["aligned"]["relative_l2"] > 0
+    assert change["tensor"]["aligned"]["cosine_similarity"] < 1.0
+    assert "TENSOR" in change.summary_text()
+
+
+def test_graph_tide_reports_topology_change():
+    nx = pytest.importorskip("networkx")
+
+    reference = nx.path_graph(6)
+    current = nx.star_graph(7)
+
+    change = fv.tide(reference, current)
+
+    assert change["source_kind"] == "graph"
+    assert change["graph"]["reference_nodes"] == 6
+    assert change["graph"]["current_nodes"] == 8
+    assert change["graph"]["degree_js_distance"] > 0
+    assert change.severity in {"minor", "moderate", "severe"}
+    assert "GRAPH" in change.summary_text()
+
+
+def test_model_tide_ranks_parameter_movement():
+    torch = pytest.importorskip("torch")
+    nn = torch.nn
+
+    reference = nn.Sequential(nn.Linear(4, 4), nn.ReLU(), nn.Linear(4, 2))
+    current = nn.Sequential(nn.Linear(4, 4), nn.ReLU(), nn.Linear(4, 2))
+    current.load_state_dict(reference.state_dict())
+
+    with torch.no_grad():
+        current[0].weight.add_(3.0)
+
+    change = fv.tide(reference, current)
+
+    assert change["source_kind"] == "model"
+    assert change["model"]["parameters_compared"] > 0
+    assert change["model"]["most_changed"]
+    assert change["model"]["most_changed"][0]["name"] == "0.weight"
+    assert change["model"]["p95_relative_l2"] > 0
+    assert "MODEL" in change.summary_text()
+
+
+def test_structured_tide_rejects_mixed_source_kinds():
+    nx = pytest.importorskip("networkx")
+
+    with pytest.raises(TypeError, match="same source kind"):
+        fv.tide(np.arange(4, dtype=float), nx.path_graph(4))
