@@ -82,8 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="framevitals",
         description=(
-            "Automated diagnostics, ML-readiness analysis, validation, and drift "
-            "comparison for tabular datasets."
+            "Protocol-first analysis for understanding, trusting, transforming, "
+            "comparing, and monitoring tabular data."
         ),
     )
 
@@ -226,7 +226,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pulse_parser.add_argument("file", type=Path, help="Dataset path.")
     pulse_parser.add_argument(
-        "--mode",
+        "--depth",
+        dest="mode",
         choices=["quick", "standard", "deep", "research"],
         default="quick",
         help="Depth used to capture the Pulse state.",
@@ -747,7 +748,7 @@ def main() -> int:
         result = prism(
             args.file,
             reference=args.reference,
-            contract=explicit_contract,
+            axiom=explicit_contract,
             focus=args.target,
             depth=args.mode,
             artifacts=args.artifacts,
