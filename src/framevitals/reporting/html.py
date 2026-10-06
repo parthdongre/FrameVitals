@@ -221,9 +221,6 @@ def render_html_report(result: Mapping[str, Any]) -> str:
 
     health_score = _score(health.get("overall_score"))
     ml_score = _score(ml.get("score"))
-    missing_percent = health.get("details", {}).get("missing_percent", 0)
-    duplicate_percent = profile.get("duplicate_percent", 0)
-    memory = profile.get("memory_usage_mb", "n/a")
     total_ms = (result.get("timings_ms", {}) or {}).get("total")
     duration = f"{float(total_ms) / 1000:.2f}s" if isinstance(total_ms, (int, float)) else "n/a"
 
