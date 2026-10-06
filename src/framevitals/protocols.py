@@ -534,7 +534,15 @@ def tide(
     columns: list[str] | None = None,
     max_columns: int = 30,
 ) -> DriftResult:
-    """Run the FrameVitals change protocol across two dataset states."""
+    """Run the FrameVitals change protocol across two source states."""
+    from framevitals.structured_analysis import compare_structured
+
+    structured = compare_structured(reference, current)
+    if structured is not None:
+        if columns is not None:
+            raise ValueError("columns= is only valid for tabular Tide comparisons.")
+        return structured
+
     from framevitals.operations import compare
 
     return compare(reference, current, columns=columns, max_columns=max_columns)
