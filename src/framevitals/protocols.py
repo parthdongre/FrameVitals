@@ -519,6 +519,47 @@ def axiom(
     allow_extra_columns: bool = False,
 ) -> AxiomResult:
     """Establish expectations from a reference and optionally test current data."""
+    from framevitals.core.source import SourceKind, recognize_source
+
+    descriptor = recognize_source(reference)
+    structured_kinds = {
+        SourceKind.GRAPH,
+        SourceKind.TENSOR,
+        SourceKind.NESTED,
+        SourceKind.RELATIONAL,
+        SourceKind.MODEL,
+    }
+
+    if descriptor.kind in structured_kinds:
+        from framevitals.analysis.structured_contracts import (
+            infer_structured_contract,
+            validate_structured,
+        )
+
+        resolved = (
+            dict(contract)
+            if isinstance(contract, Mapping)
+            else infer_structured_contract(
+                reference,
+                tolerance=max(float(numeric_tolerance), 0.0),
+            )
+        )
+        if resolved is None:
+            raise TypeError(
+                f"Axiom does not support source kind {descriptor.kind.value!r}."
+            )
+        validation = (
+            validate_structured(current, resolved)
+            if current is not None
+            else None
+        )
+        return AxiomResult({
+            "protocol": "axiom",
+            "status": validation.status if validation is not None else "established",
+            "contract": resolved,
+            "validation": validation,
+        })
+
     from framevitals.operations import infer_contract, validate
 
     resolved = (
