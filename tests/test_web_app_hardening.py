@@ -49,3 +49,26 @@ def test_web_cache_is_bounded(monkeypatch):
         assert list(web_app.ANALYSIS_CACHE) == ["000000000002", "000000000003"]
         web_app.ANALYSIS_CACHE.clear()
         web_app.REPORT_JOBS.clear()
+
+
+
+def test_backend_root_redirects_to_single_product_ui(monkeypatch):
+    monkeypatch.setenv("FRAMEVITALS_FRONTEND_URL", "https://example.test/framevitals")
+    client = web_app.app.test_client()
+
+    response = client.get("/")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "https://example.test/framevitals"
+
+
+def test_legacy_html_routes_are_explicitly_retired():
+    client = web_app.app.test_client()
+
+    analyze_response = client.post("/analyze")
+    assert analyze_response.status_code == 410
+    assert analyze_response.get_json()["use"] == "/api/analyze"
+
+    ask_response = client.post("/ask")
+    assert ask_response.status_code == 410
+    assert ask_response.get_json()["use"] == "/api/ask"
