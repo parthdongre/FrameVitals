@@ -285,3 +285,25 @@ def test_safetensors_tide_detects_checkpoint_structure_change(tmp_path):
     assert len(change["model"]["added_parameters"]) == 1
     assert len(change["model"]["shape_changes"]) == 1
     assert change.severity in {"minor", "moderate", "severe"}
+
+
+
+def test_graph_prism_selects_dijkstra_only_for_safe_nonnegative_weights():
+    nx = pytest.importorskip("networkx")
+
+    weighted = nx.Graph()
+    weighted.add_edge("a", "b", weight=1.5)
+    weighted.add_edge("b", "c", weight=2.0)
+    weighted.add_edge("c", "d", weight=0.5)
+
+    weighted_result = fv.prism(weighted, depth="quick")
+    assert weighted_result.analysis["graph"]["weight_attribute"] == "weight"
+    assert weighted_result.analysis["graph"]["shortest_paths"]["weighted"] is True
+
+    negative = nx.Graph()
+    negative.add_edge("a", "b", weight=1.0)
+    negative.add_edge("b", "c", weight=-2.0)
+
+    negative_result = fv.prism(negative, depth="quick")
+    assert negative_result.analysis["graph"]["weight_attribute"] is None
+    assert negative_result.analysis["graph"]["shortest_paths"]["weighted"] is False
