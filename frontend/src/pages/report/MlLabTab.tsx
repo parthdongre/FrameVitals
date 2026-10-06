@@ -6,7 +6,7 @@ import { FeatureImportanceBars } from "@/charts/FeatureImportanceBars";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { KeyValueGrid, type KeyValueItem } from "@/components/ui/KeyValueGrid";
 import { staggerChild, staggerParent } from "@/components/site/Variants";
-import { isPresent, safeArr, safeNum, safeObj, safeStr } from "@/lib/safe";
+import { isPresent, safeArr, safeObj, safeStr } from "@/lib/safe";
 import { formatLabel, formatNumber, formatPercent } from "@/lib/format";
 import type { TabComponentProps } from "./tabRegistry";
 
@@ -17,16 +17,41 @@ import type { TabComponentProps } from "./tabRegistry";
 export default function MlLabTab({ analysis }: TabComponentProps) {
   const t = analysis as unknown as Record<string, unknown>;
   const leaderboard = t.modelLeaderboard;
-  const targetAnalysis = safeObj(t.targetAnalysis, {} as Record<string, unknown>);
-  const featureImportance = safeObj(t.featureImportance, {} as Record<string, unknown>);
+  const targetIntelligence = safeObj(
+    t.targetIntelligence,
+    {} as Record<string, unknown>,
+  );
+  const targetAnalysis = safeObj(
+    targetIntelligence.target_profile ?? t.targetAnalysis,
+    {} as Record<string, unknown>,
+  );
+  const explainability = safeObj(
+    t.explainability ?? t.featureImportance,
+    {} as Record<string, unknown>,
+  );
   const baseline = safeObj(t.baselineModel, {} as Record<string, unknown>);
-  const target = safeStr(t.selectedTargetColumn, safeStr(targetAnalysis.target_column, ""));
+  const target = safeStr(
+    targetIntelligence.target_column,
+    safeStr(t.selectedTargetColumn, safeStr(targetAnalysis.target_column, "")),
+  );
   const candidates = safeArr<string>(t.targetCandidates);
+  const associations = safeArr<Record<string, unknown>>(
+    targetIntelligence.top_associations,
+  ).map((item) => ({
+    feature: safeStr(item.feature, ""),
+    importance:
+      typeof item.score === "number" && Number.isFinite(item.score)
+        ? item.score
+        : 0,
+  })).filter((item) => item.feature);
 
   const lbAvailable = Boolean((leaderboard as { available?: boolean })?.available);
-  const targetAvailable = isPresent(targetAnalysis) && targetAnalysis.available !== false;
-  const fiAvailable = isPresent(featureImportance) && featureImportance.available !== false;
-  const baselineAvailable = isPresent(baseline) && baseline.available !== false;
+  const targetAvailable =
+    targetIntelligence.available === true ||
+    (isPresent(targetAnalysis) && targetAnalysis.available !== false);
+  const fiAvailable =
+    explainability.available === true || associations.length > 0;
+  const baselineAvailable = isPresent(baseline) && baseline.available === true;
 
   if (!lbAvailable && !targetAvailable && !fiAvailable && !baselineAvailable) {
     return (
@@ -98,10 +123,26 @@ export default function MlLabTab({ analysis }: TabComponentProps) {
       {fiAvailable ? (
         <motion.div variants={staggerChild}>
           <FeatureImportanceBars
-            importance={featureImportance}
-            eyebrow="Feature importance"
-            title="Feature importance"
-            description="Mean absolute importance per feature."
+            importance={
+              explainability.available === true
+                ? explainability
+                : associations
+            }
+            eyebrow={
+              explainability.available === true
+                ? "Explainability"
+                : "Target association"
+            }
+            title={
+              explainability.available === true
+                ? "Feature contribution"
+                : "Strongest target associations"
+            }
+            description={
+              explainability.available === true
+                ? "Attribution produced by the canonical Prism explainability stage."
+                : "Bounded, interpretable feature-to-target association strength from Target Intelligence."
+            }
           />
         </motion.div>
       ) : null}
