@@ -138,6 +138,14 @@ def recognize_source(value: Any) -> SourceDescriptor:
         )
 
     if isinstance(value, (str, Path)):
+        suffix = Path(value).suffix.lower()
+        if suffix == ".safetensors":
+            return SourceDescriptor(
+                kind=SourceKind.MODEL,
+                python_type=_type_name(value),
+                capabilities=("checkpoint_metadata", "parameters", "weights"),
+                metadata={"framework": "safetensors", "format": "safetensors"},
+            )
         return SourceDescriptor(
             kind=SourceKind.TABULAR,
             python_type=_type_name(value),
