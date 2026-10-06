@@ -358,6 +358,7 @@ def prism(
     loss_fn: Any = None,
     backward: bool = False,
     max_runtime_modules: int | None = None,
+    optimizer: Any = None,
     derive_axiom: bool = True,
     custom_checks: Sequence[Any] | None = None,
     columns: list[str] | None = None,
@@ -399,6 +400,7 @@ def prism(
         loss_fn=loss_fn,
         backward=backward,
         max_runtime_modules=max_runtime_modules,
+        optimizer=optimizer,
     )
     if structured_analysis is not None:
         if resolved_focus is not None:
@@ -427,6 +429,7 @@ def prism(
         or loss_fn is not None
         or backward
         or max_runtime_modules is not None
+        or optimizer is not None
     ):
         raise ValueError(
             "sample_batch=/targets=/loss_fn=/backward= are currently "
@@ -602,6 +605,7 @@ def pulse(
     loss_fn: Any = None,
     backward: bool = False,
     max_runtime_modules: int | None = None,
+    optimizer: Any = None,
 ) -> AnalysisSnapshot:
     """Capture a compact health state from tabular or structured sources."""
     from framevitals.analysis_api import analyze
@@ -630,6 +634,7 @@ def pulse(
             loss_fn=loss_fn,
             backward=backward,
             max_runtime_modules=max_runtime_modules,
+            optimizer=optimizer,
         )
         if structured is not None:
             analysis = structured
@@ -640,6 +645,7 @@ def pulse(
                 or loss_fn is not None
                 or backward
                 or max_runtime_modules is not None
+                or optimizer is not None
             ):
                 raise ValueError(
                     "Runtime model options are only valid for model Pulse input."
