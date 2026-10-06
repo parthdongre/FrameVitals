@@ -99,6 +99,15 @@ graph_report = fv.prism(graph)
 
 # If PyTorch is already installed in your environment:
 model_report = fv.prism(model)
+
+# Observe one bounded forward/backward pass without taking over training:
+runtime_report = fv.prism(
+    model,
+    sample_batch=x,
+    targets=y,
+    loss_fn=criterion,
+    backward=True,
+)
 ```
 
 The graph engine uses bounded connectivity, PageRank, approximate betweenness,
