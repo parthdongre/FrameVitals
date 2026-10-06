@@ -17,6 +17,7 @@ def analyze_structured(
     loss_fn: Any = None,
     backward: bool = False,
     max_runtime_modules: int | None = None,
+    optimizer: Any = None,
 ) -> AnalysisResult | None:
     """Analyze supported non-tabular sources, returning None for tabular input."""
     descriptor = recognize_source(data)
@@ -27,6 +28,7 @@ def analyze_structured(
         or loss_fn is not None
         or bool(backward)
         or max_runtime_modules is not None
+        or optimizer is not None
     )
 
     if descriptor.kind is SourceKind.GRAPH:
@@ -87,6 +89,7 @@ def analyze_structured(
             loss_fn=loss_fn,
             backward=backward,
             max_runtime_modules=max_runtime_modules,
+            optimizer=optimizer,
         )
 
     return None
