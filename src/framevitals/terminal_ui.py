@@ -209,6 +209,15 @@ def _finding_lines(report: TerminalReport) -> list[str]:
 def view_lines(state: TerminalState) -> list[str]:
     if state.page == 3:
         return render_formats().splitlines()
+    if state.error and state.notice and state.report is None:
+        return [
+            "ANALYSIS ERROR",
+            "",
+            state.notice,
+            "",
+            "Check the file format (L), select a valid file (P),",
+            "or run 'framevitals doctor' for installation help.",
+        ]
     if state.report is None:
         return [
             "WELCOME TO FRAMEVITALS",
@@ -506,7 +515,8 @@ def _screen(stdscr: Any) -> int:
         )
         if state.notice:
             msg_color = curses.color_pair(4) if state.error and curses.has_colors() else yellow
-            put(height - 3, 2, state.notice[:sidebar - 3], attr=msg_color)
+            put(height - 3, x, " " * max(1, area_width))
+            put(height - 3, x, state.notice[:area_width], attr=msg_color)
         stdscr.refresh()
 
     while True:
