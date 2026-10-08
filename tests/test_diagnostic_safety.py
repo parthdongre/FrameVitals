@@ -125,6 +125,11 @@ def test_graph_weight_validation_checks_beyond_first_256_edges():
 
     assert structure["weight_attribute"] is None
     assert structure["shortest_paths"]["weighted"] is False
+    assert structure["weight_validation"]["negative_weights"] == 1
+    assert any(
+        item["code"] == "graph.invalid_edge_weights"
+        for item in report.beacons
+    )
 
 
 def test_structured_beacon_confidence_is_not_claimed_as_calibrated():
