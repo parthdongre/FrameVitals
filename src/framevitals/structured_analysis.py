@@ -8,6 +8,15 @@ from framevitals.core.source import SourceKind, recognize_source
 from framevitals.result import AnalysisResult
 
 
+def _annotate_diagnostic_score(result: AnalysisResult) -> AnalysisResult:
+    """Mark structured health scores as heuristic rather than calibrated risk."""
+    health = result.get("health")
+    if isinstance(health, dict):
+        health.setdefault("score_basis", "heuristic")
+        health.setdefault("calibrated", False)
+    return result
+
+
 def analyze_structured(
     data: Any,
     *,
@@ -36,28 +45,28 @@ def analyze_structured(
             raise ValueError("Runtime model options are only valid for model Prism input.")
         from framevitals.analysis.graph import analyze_graph
 
-        return analyze_graph(data, depth=depth)
+        return _annotate_diagnostic_score(analyze_graph(data, depth=depth))
 
     if descriptor.kind is SourceKind.TENSOR:
         if runtime_requested:
             raise ValueError("Runtime model options are only valid for model Prism input.")
         from framevitals.analysis.tensor import analyze_tensor
 
-        return analyze_tensor(data, depth=depth)
+        return _annotate_diagnostic_score(analyze_tensor(data, depth=depth))
 
     if descriptor.kind is SourceKind.NESTED:
         if runtime_requested:
             raise ValueError("Runtime model options are only valid for model Prism input.")
         from framevitals.analysis.nested import analyze_nested
 
-        return analyze_nested(data, depth=depth)
+        return _annotate_diagnostic_score(analyze_nested(data, depth=depth))
 
     if descriptor.kind is SourceKind.RELATIONAL:
         if runtime_requested:
             raise ValueError("Runtime model options are only valid for model Prism input.")
         from framevitals.analysis.relational import analyze_relational
 
-        return analyze_relational(data, depth=depth)
+        return _annotate_diagnostic_score(analyze_relational(data, depth=depth))
 
     if descriptor.kind is SourceKind.MODEL:
         model_format = descriptor.metadata.get("format")
@@ -68,7 +77,7 @@ def analyze_structured(
                 )
             from framevitals.analysis.safetensors import analyze_safetensors
 
-            return analyze_safetensors(data, depth=depth)
+            return _annotate_diagnostic_score(analyze_safetensors(data, depth=depth))
 
         if model_format == "onnx":
             if runtime_requested:
@@ -77,11 +86,11 @@ def analyze_structured(
                 )
             from framevitals.analysis.onnx_model import analyze_onnx
 
-            return analyze_onnx(data, depth=depth)
+            return _annotate_diagnostic_score(analyze_onnx(data, depth=depth))
 
         from framevitals.analysis.model import analyze_model
 
-        return analyze_model(
+        return _annotate_diagnostic_score(analyze_model(
             data,
             depth=depth,
             sample_batch=sample_batch,
@@ -90,7 +99,7 @@ def analyze_structured(
             backward=backward,
             max_runtime_modules=max_runtime_modules,
             optimizer=optimizer,
-        )
+        ))
 
     return None
 
