@@ -65,6 +65,18 @@ def test_tui_formats_page_uses_same_registry():
     assert ".onnx" in content
 
 
+def test_terminal_shows_actionable_error_message():
+    state = TerminalState(
+        page=0,
+        error=True,
+        notice="ImportError: PDF support requires framevitals[documents]",
+    )
+    message = "\n".join(view_lines(state))
+    assert "ANALYSIS ERROR" in message
+    assert "framevitals[documents]" in message
+    assert "framevitals doctor" in message
+
+
 def test_unknown_and_unsafe_files_fail_early(tmp_path):
     source = tmp_path / "unknown.xyz"
     source.write_bytes(b"content")
