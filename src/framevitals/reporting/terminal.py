@@ -54,6 +54,17 @@ def _source_lines(result: Mapping[str, Any]) -> list[str]:
             f"Rank ratio    {matrix.get('rank_ratio', 'n/a')}",
             f"Eff. rank     {matrix.get('effective_rank', 'n/a')}",
         ]
+    if kind == "document":
+        document = result.get("document", {}) or {}
+        return [
+            "Kind          DOCUMENT",
+            f"Format        {document.get('format', 'unknown')}",
+            f"Pages         {document.get('pages', document.get('slides', 'n/a'))}",
+            f"Words         {document.get('words', 0)}",
+            f"Characters    {document.get('characters', 0)}",
+            f"Text missing  {document.get('empty_text', False)}",
+            f"Partial scan  {document.get('truncated', False)}",
+        ]
     if kind == "model":
         model = result.get("model", {}) or {}
         return [
