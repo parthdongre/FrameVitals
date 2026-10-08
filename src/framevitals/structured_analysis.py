@@ -8,6 +8,19 @@ from framevitals.core.source import SourceKind, recognize_source
 from framevitals.result import AnalysisResult
 
 
+def normalize_structured_input(value: Any) -> Any:
+    """Load safe structured serializations; preserve tabular/model file paths."""
+    from pathlib import Path
+
+    if isinstance(value, (str, Path)):
+        from framevitals.file_formats import format_for, prepare_file_source
+
+        spec = format_for(value)
+        if spec is not None and spec.category in {"Tensor", "Nested"}:
+            return prepare_file_source(value)
+    return value
+
+
 def _annotate_diagnostic_score(result: AnalysisResult) -> AnalysisResult:
     """Mark structured health scores as heuristic rather than calibrated risk."""
     health = result.get("health")
@@ -29,6 +42,7 @@ def analyze_structured(
     optimizer: Any = None,
 ) -> AnalysisResult | None:
     """Analyze supported non-tabular sources, returning None for tabular input."""
+    data = normalize_structured_input(data)
     descriptor = recognize_source(data)
 
     runtime_requested = (
@@ -39,6 +53,13 @@ def analyze_structured(
         or max_runtime_modules is not None
         or optimizer is not None
     )
+
+    if descriptor.kind is SourceKind.DOCUMENT:
+        if runtime_requested:
+            raise ValueError("Runtime model options are not valid for document Prism input.")
+        from framevitals.analysis.document import analyze_document
+
+        return _annotate_diagnostic_score(analyze_document(data, depth=depth))
 
     if descriptor.kind is SourceKind.GRAPH:
         if runtime_requested:
@@ -107,6 +128,8 @@ def analyze_structured(
 
 def compare_structured(reference: Any, current: Any):
     """Compare supported non-tabular sources, returning None for tabular pairs."""
+    reference = normalize_structured_input(reference)
+    current = normalize_structured_input(current)
     reference_descriptor = recognize_source(reference)
     current_descriptor = recognize_source(current)
 
@@ -115,6 +138,7 @@ def compare_structured(reference: Any, current: Any):
         SourceKind.TENSOR,
         SourceKind.NESTED,
         SourceKind.RELATIONAL,
+        SourceKind.DOCUMENT,
         SourceKind.MODEL,
     }
     reference_structured = reference_descriptor.kind in structured_kinds
@@ -135,6 +159,10 @@ def compare_structured(reference: Any, current: Any):
         compare_tensors,
     )
 
+    if reference_descriptor.kind is SourceKind.DOCUMENT:
+        from framevitals.analysis.document import compare_documents
+
+        return compare_documents(reference, current)
     if reference_descriptor.kind is SourceKind.GRAPH:
         return compare_graphs(reference, current)
     if reference_descriptor.kind is SourceKind.TENSOR:
