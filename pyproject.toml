@@ -128,6 +128,7 @@ dev = [
 
 [project.scripts]
 framevitals = "framevitals.cli:main"
+fv = "framevitals.cli:main"
 
 [project.urls]
 Homepage = "https://framevitals.vercel.app/"
