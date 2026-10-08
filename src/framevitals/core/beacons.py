@@ -19,12 +19,17 @@ def beacon(
 
     The result intentionally remains a plain dictionary so it is compatible
     with the existing 0.x AnalysisResult/findings schema.
+
+    Confidence is an uncalibrated rule-strength indicator, NOT the probability
+    that a diagnosis is correct. Grounded counts and measurements belong in
+    evidence; model/domain validity requires separate evaluation.
     """
     item: dict[str, Any] = {
         "code": str(code),
         "severity": str(severity),
         "title": str(title),
         "confidence": round(max(0.0, min(float(confidence), 1.0)), 4),
+        "confidence_calibrated": False,
     }
     if summary:
         item["summary"] = str(summary)
