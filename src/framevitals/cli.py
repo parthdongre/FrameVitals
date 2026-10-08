@@ -95,6 +95,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command")
 
+    subparsers.add_parser(
+        "doctor",
+        help="Check CLI installation, terminal support, and optional file parsers.",
+    )
+
     formats_parser = subparsers.add_parser(
         "formats",
         help="List supported file formats and missing optional packages.",
@@ -824,6 +829,32 @@ def _render_gate(report: dict) -> str:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.command == "doctor":
+        import importlib.util
+        import os
+        import shutil
+        import sys
+
+        import framevitals
+        from framevitals.file_formats import FORMATS, is_available
+
+        print(f"FrameVitals       {framevitals.__version__}")
+        print(f"Package path      {framevitals.__file__}")
+        print(f"Python            {sys.executable}")
+        print(f"CLI 'fv' on PATH  {shutil.which('fv') or 'not found'}")
+        print(f"TTY support       {'yes' if sys.stdin.isatty() and sys.stdout.isatty() else 'no'}")
+        print(f"TERM              {os.environ.get('TERM', '<unset>')}")
+        print(f"curses module     {'available' if importlib.util.find_spec('curses') else 'missing'}")
+        for spec in FORMATS:
+            if spec.dependency and not is_available(spec):
+                print(
+                    f"Optional parser   {spec.label}: missing {spec.dependency}; "
+                    f"install framevitals[{spec.extra}]"
+                )
+        print("Tip: python -m framevitals ui --plain")
+        print("Tip: python -m framevitals formats")
+        return 0
 
     if args.command == "formats":
         from framevitals.file_formats import format_catalog, render_formats
