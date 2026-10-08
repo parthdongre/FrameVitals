@@ -95,6 +95,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command")
 
+    tui_parser = subparsers.add_parser(
+        "tui",
+        aliases=["ui"],
+        help="Open the keyboard-driven terminal dashboard.",
+    )
+    tui_parser.add_argument(
+        "--plain",
+        action="store_true",
+        help="Use the line-oriented terminal menu instead of full-screen mode.",
+    )
+
     prism_parser = subparsers.add_parser(
         "prism",
         help="Run the Prism protocol.",
@@ -805,6 +816,21 @@ def _render_gate(report: dict) -> str:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.command in {"tui", "ui"}:
+        from framevitals.terminal_ui import launch_terminal
+
+        return launch_terminal(plain=args.plain)
+
+    if args.command is None:
+        import sys
+
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            from framevitals.terminal_ui import launch_terminal
+
+            return launch_terminal()
+        parser.print_help()
+        return 0
 
     if args.command == "prism":
         from framevitals.protocols import prism
