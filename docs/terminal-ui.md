@@ -37,9 +37,25 @@ Use `framevitals prism ...` and the other existing subcommands for automation.
 | Inspect | Source | Recognition metadata and capabilities |
 | Forge preview | Tabular source | Conservative cleaning plan; changes are **not** applied |
 
-FrameVitals supports CSV, TSV, Parquet, GraphML, GEXF, GML, ONNX,
-Safetensors, NumPy `.npy` files, and nested JSON, subject to each format's
-normal optional Python dependencies.
+The terminal's **L** key displays the complete, live support catalog.
+The file explorer marks unsupported extensions and shows which formats need
+an additional dependency. You can also list supported formats without a
+terminal UI:
+
+```bash
+framevitals formats
+fv formats --json
+```
+
+Supported groups include CSV/TSV/Parquet/Excel, structured JSON/JSONL/YAML/
+TOML/Jupyter notebooks, NumPy tensors, GraphML/GEXF/GML, ONNX/Safetensors,
+and document formats: PDF, DOCX, PPTX, TXT, Markdown, HTML, XML, and common
+source-code text files.
+
+Install document parsers with `pip install "framevitals[documents]"`. PDF
+inspection extracts text and metadata from a bounded sample of pages; it does
+**not** perform OCR on scanned PDFs. The terminal reads files locally, and
+optional parser errors include specific installation guidance.
 
 ## Keyboard controls
 
@@ -56,6 +72,7 @@ normal optional Python dependencies.
 | Tab or Left/Right | Overview, Beacons, Details |
 | Page Up/Down, Home/End | Scroll results |
 | E | Export JSON or HTML (where supported) |
+| L | List all supported file formats and dependency requirements |
 | Q | Quit |
 
 When a diagnostic runs, the UI remains responsive and displays a running
