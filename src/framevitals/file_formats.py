@@ -117,7 +117,7 @@ def prepare_file_source(path: str | Path) -> Any:
     Large text-like documents are handled by the bounded document analyzer.
     """
     value = Path(path).expanduser()
-    spec = check_file_format(value)
+    check_file_format(value)
     suffix = value.suffix.lower()
     if suffix == ".npy":
         import numpy as np
