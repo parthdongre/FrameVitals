@@ -17,6 +17,7 @@ The first structured source kinds are:
 | Model | PyTorch modules, Safetensors, ONNX | implemented |
 | Nested | dict/list/tuple and JSON-like structures | implemented |
 | Relational | mappings of named tabular sources | implemented |
+| Document | PDF, DOCX, PPTX, TXT, Markdown, HTML, XML, source code | implemented; some parsers optional |
 
 Recognition never imports PyTorch or NetworkX just to inspect an object. Optional
 frameworks remain optional dependencies.
@@ -223,6 +224,30 @@ This first file-level Tide detects added/removed tensors, shape changes, dtype
 changes, and parameter-count movement. Numeric weight movement remains available
 when comparing two in-memory PyTorch models; direct body-level Safetensors
 comparison will be added as a deeper optional path.
+
+## Document Prism
+
+PDF, DOCX, PPTX, plain text, Markdown, HTML, XML and source-code files are
+analyzed as **documents**, rather than coerced into rows and columns.
+
+```bash
+python -m pip install "framevitals[documents]"
+framevitals formats
+framevitals prism report.pdf --depth quick
+framevitals prism thesis.docx
+framevitals tide previous.pdf revised.pdf
+```
+
+Document Prism reports page/slide counts where available, inspected text
+statistics, structural metadata, duplicate lines, extraction/encoding warnings,
+and a text-only signature. Image-only PDFs receive an explicit no-text/OCR
+warning; FrameVitals does not secretly perform OCR or execute embedded macros.
+Inspecting large files obeys file/page/text size limits and marks partial
+results. Tide compares extracted text and structural change, and Axiom can
+validate format and rough extracted-text bounds against a reference.
+
+In the TUI, press **L** to see exactly which formats are available and which
+optional dependency group needs to be installed.
 
 ## Structured Tide
 
