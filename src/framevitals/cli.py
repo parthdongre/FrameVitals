@@ -674,7 +674,17 @@ def _render_tide(report: dict) -> str:
         f"Severity      {str(summary.get('overall_verdict', gate.get('severity', 'unknown'))).upper()}",
     ]
 
-    if source_kind == "model":
+    if source_kind == "document":
+        document = report.get("document", {})
+        reference = document.get("reference", {})
+        current = document.get("current", {})
+        lines.extend([
+            f"Format        {reference.get('format', '?')} -> {current.get('format', '?')}",
+            f"Words         {reference.get('words', '?')} -> {current.get('words', '?')}",
+            f"Lines         {reference.get('lines', '?')} -> {current.get('lines', '?')}",
+            f"Text changed  {document.get('text_changed', False)}",
+        ])
+    elif source_kind == "model":
         model = report.get("model", {})
         lines.extend([
             f"Parameters    {model.get('parameters_compared', 0)} compared",
