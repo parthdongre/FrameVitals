@@ -224,7 +224,8 @@ def view_lines(state: TerminalState) -> list[str]:
             f"Reference  {state.reference or '(optional; press B)'}",
             f"Depth      {state.depth}",
             "",
-            "ENTER to analyze    F to change source    B to set baseline",
+            "ENTER to analyze    F to type path    P to browse files",
+            "B to set baseline    D to change depth",
             "D to change depth    TAB to switch result views",
             "",
             "Works with CSV / Parquet / GraphML / GEXF / GML / ONNX /",
@@ -369,6 +370,60 @@ def _screen(stdscr: Any) -> int:
                 pass
             stdscr.timeout(120)
 
+    def browse(initial: str = "") -> str | None:
+        """Browse local folders with arrows/j/k, Enter and Backspace."""
+        path = Path(initial).expanduser()
+        location = path.parent if path.is_file() else path
+        if not location.is_dir():
+            location = Path.cwd()
+        index = 0
+        while True:
+            try:
+                entries = [
+                    (entry.name, Path(entry.path), entry.is_dir())
+                    for entry in os.scandir(location)
+                    if not entry.name.startswith(".")
+                ]
+            except OSError:
+                entries = []
+            entries.sort(key=lambda item: (not item[2], item[0].lower()))
+            entries.insert(0, ("..", location.parent, True))
+            index = max(0, min(index, len(entries) - 1))
+            height, width = stdscr.getmaxyx()
+            stdscr.erase()
+            put(0, 2, "FRAMEVITALS  /  FILE EXPLORER", attr=curses.A_BOLD)
+            put(1, 2, str(location))
+            put(2, 2, "↑↓ / j k move   Enter open/select   Backspace parent   Q cancel")
+            put(3, 1, "─" * max(1, width - 3))
+            visible = max(1, height - 6)
+            offset = max(0, min(index - visible // 2, len(entries) - visible))
+            for line, idx in enumerate(range(offset, min(len(entries), offset + visible))):
+                name, _entry_path, is_dir = entries[idx]
+                marker = "▸ " if idx == index else "  "
+                suffix = "/" if is_dir else ""
+                style = curses.A_REVERSE if idx == index else 0
+                put(4 + line, 2, (marker + name + suffix)[: max(1, width - 5)], attr=style)
+            stdscr.refresh()
+            key_pressed = stdscr.getch()
+            if key_pressed == -1:
+                continue
+            if key_pressed in (ord("q"), ord("Q"), 27):
+                return None
+            if key_pressed in (curses.KEY_UP, ord("k")):
+                index = (index - 1) % len(entries)
+            elif key_pressed in (curses.KEY_DOWN, ord("j")):
+                index = (index + 1) % len(entries)
+            elif key_pressed in (curses.KEY_BACKSPACE, 127, 8):
+                location = location.parent
+                index = 0
+            elif key_pressed in (10, 13, curses.KEY_ENTER):
+                _name, target, is_dir = entries[index]
+                if is_dir:
+                    location = target
+                    index = 0
+                elif target.is_file():
+                    return str(target)
+
     def worker(action: str, source: str, reference: str, depth: str) -> None:
         try:
             outcome = run_diagnostic(
@@ -429,7 +484,7 @@ def _screen(stdscr: Any) -> int:
         if limit:
             put(height - 3, x, f"Lines {state.scroll + 1}-{min(len(body), state.scroll + visible_height)} / {len(body)}")
         put(height - 2, 1, "─" * (width - 3))
-        put(height - 1, 1, " ↑↓ menu  Enter run  F file  B baseline  D depth  Tab view  E export  Q quit")
+        put(height - 1, 1, " ↑↓ menu  Enter run  F path  P browse  B baseline  D depth  Tab  E export  Q")
         if state.notice:
             msg_color = curses.color_pair(4) if state.error and curses.has_colors() else yellow
             put(height - 3, 2, state.notice[:sidebar - 3], attr=msg_color)
@@ -470,6 +525,13 @@ def _screen(stdscr: Any) -> int:
             state.action_index = key - ord("1")
             state.report = None
             state.scroll = 0
+        elif key in (ord("p"), ord("P")):
+            value = browse(state.source)
+            if value is not None:
+                state.source = value
+                state.report = None
+                state.notice = f"Selected {Path(value).name}"
+                state.error = False
         elif key in (ord("f"), ord("F")):
             value = ask("Source file", state.source)
             if value is not None:
@@ -534,7 +596,7 @@ def _screen(stdscr: Any) -> int:
             state.reference = ""
             state.notice = "Reference cleared."
         else:
-            state.notice = "Enter run · F file · B reference · D depth · Tab views · Q exit"
+            state.notice = "Enter run · F path · P browse · B reference · Tab views"
     return 0
 
 
