@@ -167,6 +167,20 @@ class DriftResult(_QualityResult):
                 f"Severity        {self.severity.upper()}",
             ]
 
+        if source_kind == "document":
+            document = self.get("document", {})
+            if not isinstance(document, dict):
+                document = {}
+            reference = document.get("reference", {})
+            current = document.get("current", {})
+            lines.extend([
+                f"Format          {reference.get('format', '?')} -> {current.get('format', '?')}",
+                f"Words           {reference.get('words', '?')} -> {current.get('words', '?')}",
+                f"Lines           {reference.get('lines', '?')} -> {current.get('lines', '?')}",
+                f"Text changed    {document.get('text_changed', False)}",
+            ])
+            return "\n".join(lines)
+
         if source_kind == "model":
             model = self.get("model", {})
             if not isinstance(model, dict):
