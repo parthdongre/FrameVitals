@@ -135,6 +135,54 @@ Weighted graphs with a reliable non-negative `weight` attribute automatically
 use Dijkstra for the sampled path analysis. PyTorch remains optional; FrameVitals
 does not install a deep-learning runtime merely to inspect a model.
 
+## Terminal dashboard (Mole-inspired)
+
+FrameVitals includes a **keyboard-driven terminal workspace** for macOS and
+Linux. It requires no additional TUI dependencies, and opens automatically when
+the CLI is launched interactively without a subcommand:
+
+```bash
+pip install -e .
+fv                     # full-screen diagnostic workspace
+framevitals             # identical interactive launcher
+framevitals tui         # explicit terminal workspace
+framevitals ui --plain  # line-oriented fallback
+```
+
+The menu offers **Prism, Tide, Axiom, Pulse, Inspect, and read-only Forge
+preview**. Select CSV/Parquet/GraphML/GEXF/GML/ONNX/Safetensors/JSON/NumPy
+files, then read summaries, actionable Beacons, and detailed results in the
+terminal. The file explorer is available with **P**.
+
+| Key | Action |
+| --- | --- |
+| Up/Down, j/k, 1–6 | Choose protocol |
+| Enter / R | Run selected protocol |
+| P | Browse files in the terminal |
+| F | Type/paste a source path |
+| B | Set a reference/baseline file |
+| D | Cycle quick/standard/deep/research depth |
+| Tab / Left/Right | Switch Overview, Beacons, Details |
+| Page Up / Page Down | Scroll output |
+| E | Export JSON or a supported HTML report |
+| Q | Exit |
+
+The terminal is a **local frontend over the existing FrameVitals Python
+protocols**, not a separate analytics engine. Files are not uploaded. Reports
+are written only on explicit export, and Forge runs in preview mode.
+
+For scripts/CI, direct commands remain unchanged:
+
+```bash
+fv prism dataset.csv --depth quick --html-report report.html
+fv tide baseline.csv current.csv
+fv axiom baseline.csv --current current.csv
+```
+
+On Windows, where the standard-library curses module may be unavailable,
+the launcher falls back to a line-oriented menu. In non-interactive pipelines,
+running `fv` without a command prints help instead of prompting.
+
 ## Protocols
 
 The protocol surface is intentionally small:
