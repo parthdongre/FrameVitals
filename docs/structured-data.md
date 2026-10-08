@@ -153,7 +153,31 @@ Backward observation uses `torch.autograd.grad` rather than `loss.backward()`.
 FrameVitals therefore does not accumulate, zero, or replace the caller's
 existing parameter `.grad` buffers.
 
+**Runtime observation defaults to temporary evaluation mode.** FrameVitals
+preserves and restores the original `training` flag of each module, including
+mixed train/eval configurations, and forks/restores PyTorch CPU and relevant CUDA
+random-number-generator state. This avoids the usual BatchNorm running-statistic
+updates and dropout RNG consumption during inspection. The resulting gradients
+represent an **evaluation-mode forward/backward pass**, not the training-mode
+gradient distribution.
+
+Arbitrary user-defined `forward()` methods can still mutate buffers, Python or
+NumPy RNGs, files, or external state. Runtime inspection must not be treated as
+fully side-effect-free and should not run concurrently with live training on the
+same model. The returned runtime result records `observation_mode`, the restored
+PyTorch RNG/training flags, and the absence of a general buffer-purity guarantee.
+
 Runtime work is bounded by Prism depth and `max_runtime_modules=`.
+
+### Diagnostic score interpretation
+
+Structured source health scores are **heuristic indicators**, not calibrated
+probabilities or universally comparable measures of quality. Results expose
+`health.score_basis = "heuristic"` and `health.calibrated = False`.
+Likewise, numerical Beacon `confidence` is a rule-strength indicator, with
+`confidence_calibrated = False`; it is **not** the probability that an anomaly
+really indicates a defective model or dataset. Every finding should be
+interpreted alongside its evidence and the source's domain expectations.
 
 ## Common result contract
 
