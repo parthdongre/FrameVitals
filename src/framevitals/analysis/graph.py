@@ -129,11 +129,16 @@ def _safe_float(value: Any) -> float | None:
     return result if math.isfinite(result) else None
 
 
-def _detect_weight_attribute(graph: Any, *, sample_edges: int = 256) -> str | None:
-    """Use a conventional non-negative numeric weight attribute when it is reliable."""
+def _detect_weight_attribute(graph: Any) -> str | None:
+    """Select Dijkstra only after checking *all* weighted edges.
+
+    A sample can miss a late negative edge and make the shortest-path routine
+    invalid. The O(E) validation is inexpensive compared with multiple sampled
+    shortest-path traversals and requires only constant additional memory.
+    Missing weights are interpreted as unit costs by NetworkX.
+    """
     checked = 0
     valid = 0
-    negative = 0
     try:
         iterator = graph.edges(data=True)
     except Exception:
@@ -141,17 +146,14 @@ def _detect_weight_attribute(graph: Any, *, sample_edges: int = 256) -> str | No
 
     for _, _, data in iterator:
         checked += 1
-        value = data.get("weight") if isinstance(data, dict) else None
-        numeric = _safe_float(value)
-        if numeric is not None:
-            if numeric < 0:
-                negative += 1
-            else:
-                valid += 1
-        if checked >= sample_edges:
-            break
+        if not isinstance(data, dict) or "weight" not in data:
+            continue
+        numeric = _safe_float(data["weight"])
+        if numeric is None or numeric < 0:
+            return None
+        valid += 1
 
-    if checked == 0 or negative:
+    if checked == 0:
         return None
     return "weight" if valid / checked >= 0.80 else None
 
