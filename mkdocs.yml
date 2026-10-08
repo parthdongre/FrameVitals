@@ -18,6 +18,7 @@ nav:
   - Home: index.md
   - Protocol architecture: protocols.md
   - Structured data and model diagnostics: structured-data.md
+  - Terminal workspace: terminal-ui.md
   - Configuration: configuration.md
   - Planning: planning.md
   - Planner scheduling: planner-scheduling.md
