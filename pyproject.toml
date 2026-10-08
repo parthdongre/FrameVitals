@@ -70,11 +70,6 @@ graph = [
 ]
 onnx = [
     "onnx>=1.17",
-    "pypdf>=5.0",
-    "python-docx>=1.1",
-    "python-pptx>=1.0",
-    "PyYAML>=6.0",
-    "defusedxml>=0.7",
 ]
 documents = [
     "pypdf>=5.0",
@@ -114,6 +109,11 @@ all = [
     "shap>=0.45",
     "networkx>=3.4",
     "onnx>=1.17",
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "python-pptx>=1.0",
+    "PyYAML>=6.0",
+    "defusedxml>=0.7",
     "ollama>=0.3",
     "pydantic>=2.7",
     "flask>=3.0",
