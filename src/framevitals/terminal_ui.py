@@ -29,11 +29,15 @@ ACTIONS = (
     ("Forge preview", "Preview a cleaning plan (no changes)"),
 )
 DEPTHS = ("quick", "standard", "deep", "research")
-SUPPORTED_FILES = (
-    ".csv", ".tsv", ".parquet", ".arrow", ".feather", ".json",
-    ".jsonl", ".xlsx", ".xls", ".graphml", ".gexf", ".gml",
-    ".safetensors", ".onnx", ".npy",
+from framevitals.file_formats import (
+    format_for,
+    is_available,
+    prepare_file_source,
+    render_formats,
+    supported_extensions,
 )
+
+SUPPORTED_FILES = supported_extensions()
 
 
 @dataclass
@@ -68,23 +72,8 @@ class TerminalState:
 
 
 def _path_source(value: str | Path) -> Any:
-    """Read safe, self-describing in-memory sources; otherwise pass their path.
-
-    NumPy arrays are loaded with pickle disabled. No torch.load or arbitrary
-    model deserialization is ever performed by the terminal UI.
-    """
-    path = Path(value).expanduser()
-    if not path.is_file():
-        raise FileNotFoundError(f"Source file not found: {path}")
-    suffix = path.suffix.lower()
-    if suffix == ".npy":
-        import numpy as np
-
-        return np.load(path, allow_pickle=False, mmap_mode="r")
-    if suffix == ".json":
-        with path.open("r", encoding="utf-8") as stream:
-            return json.load(stream)
-    return path
+    """Route local files through the same safe format registry as the CLI."""
+    return prepare_file_source(value)
 
 
 def _serialize(value: Any) -> str:
@@ -133,6 +122,8 @@ def run_diagnostic(
 
     data = _path_source(source)
     baseline = _path_source(reference) if reference else None
+    if action == "Forge preview" and format_for(source).category != "Tabular":
+        raise ValueError("Forge preview currently supports tabular files only.")
 
     if action == "Prism":
         from framevitals.protocols import prism
@@ -216,6 +207,8 @@ def _finding_lines(report: TerminalReport) -> list[str]:
 
 
 def view_lines(state: TerminalState) -> list[str]:
+    if state.page == 3:
+        return render_formats().splitlines()
     if state.report is None:
         return [
             "WELCOME TO FRAMEVITALS",
@@ -229,10 +222,10 @@ def view_lines(state: TerminalState) -> list[str]:
             "",
             "ENTER to analyze    F to type path    P to browse files",
             "B to set baseline    D to change depth",
-            "D to change depth    TAB to switch result views",
+            "L lists every supported format and optional dependency",
             "",
-            "Works with CSV / Parquet / GraphML / GEXF / GML / ONNX /",
-            "Safetensors / NumPy .npy / JSON and supported dataset files.",
+            "Supports tables, JSON/YAML, graphs, tensors, model files,",
+            "and PDF/DOCX/PPTX/TXT/Markdown/HTML/XML documents.",
             "",
             "This UI performs diagnostics without modifying source files.",
         ]
@@ -272,6 +265,7 @@ def _run_plain() -> int:
         print("\n" + "─" * 56)
         for i, (name, description) in enumerate(ACTIONS, 1):
             print(f"  {i}. {name:<14} {description}")
+        print("  L. Supported file formats")
         print("  Q. Quit")
         try:
             choice = input("\nChoose a protocol: ").strip().lower()
@@ -279,6 +273,9 @@ def _run_plain() -> int:
             return 0
         if choice in {"q", "quit", "exit"}:
             return 0
+        if choice in {"l", "list", "formats"}:
+            print("\n" + render_formats())
+            continue
         if not choice.isdigit() or not 1 <= int(choice) <= len(ACTIONS):
             print("Choose 1–6 or Q.")
             continue
@@ -404,8 +401,16 @@ def _screen(stdscr: Any) -> int:
                 name, _entry_path, is_dir = entries[idx]
                 marker = "▸ " if idx == index else "  "
                 suffix = "/" if is_dir else ""
+                spec = None if is_dir else format_for(name)
+                badge = "" if is_dir else (
+                    " [unsupported]" if spec is None else
+                    (f" [+{spec.extra}]" if spec.extra and not is_available(spec) else "")
+                )
                 style = curses.A_REVERSE if idx == index else 0
-                put(4 + line, 2, (marker + name + suffix)[: max(1, width - 5)], attr=style)
+                put(
+                    4 + line, 2, (marker + name + suffix + badge)[: max(1, width - 5)],
+                    attr=style,
+                )
             stdscr.refresh()
             key_pressed = stdscr.getch()
             if key_pressed == -1:
@@ -425,6 +430,10 @@ def _screen(stdscr: Any) -> int:
                     location = target
                     index = 0
                 elif target.is_file():
+                    # Reject unrecognized extensions here instead of letting
+                    # the tabular loader fail with an unrelated parsing error.
+                    if format_for(target) is None:
+                        continue
                     return str(target)
 
     def worker(action: str, source: str, reference: str, depth: str) -> None:
@@ -471,12 +480,15 @@ def _screen(stdscr: Any) -> int:
             + (f"running {frames[int(time.monotonic()*8)%len(frames)]}" if state.busy
                else (state.report.status if state.report else "ready")),
             attr=yellow if state.busy else green)
-        put(7, x, "[ Overview ]   [ Beacons ]   [ Details ]",
+        put(7, x, "[ Overview ] [ Beacons ] [ Details ] [ Formats ]",
             attr=curses.A_BOLD)
         put(8, x, "─" * max(1, area_width))
-        if state.report:
-            put(7, x + state.page * 15 + 1, ["OVERVIEW", "BEACONS", "DETAILS"][state.page],
-                attr=cyan | curses.A_BOLD)
+        if state.report or state.page == 3:
+            put(
+                7, x + state.page * 11 + 1,
+                ["OVERVIEW", "BEACONS", "DETAILS", "FORMATS"][state.page],
+                attr=cyan | curses.A_BOLD,
+            )
         body = _text_lines(view_lines(state), area_width)
         visible_height = max(0, height - 12)
         limit = max(0, len(body) - visible_height)
@@ -490,7 +502,7 @@ def _screen(stdscr: Any) -> int:
         put(height - 2, 1, "─" * (width - 3))
         put(
             height - 1, 1,
-            " ↑↓ menu  Enter run  F path  P browse  B baseline  D depth  Tab  E export  Q",
+            " ↑↓ menu  Enter  F path  P browse  L formats  B base  Tab  E export  Q",
         )
         if state.notice:
             msg_color = curses.color_pair(4) if state.error and curses.has_colors() else yellow
@@ -552,14 +564,18 @@ def _screen(stdscr: Any) -> int:
             if value is not None:
                 state.reference = value
                 state.report = None
+        elif key in (ord("l"), ord("L")):
+            state.page = 3
+            state.scroll = 0
+            state.notice = "Formats: Ready = installed, +extra = install needed"
         elif key in (ord("d"), ord("D")):
             state.depth = DEPTHS[(DEPTHS.index(state.depth) + 1) % len(DEPTHS)]
             state.notice = f"Depth: {state.depth}"
         elif key in (9, curses.KEY_RIGHT):
-            state.page = (state.page + 1) % 3
+            state.page = (state.page + 1) % 4
             state.scroll = 0
         elif key == curses.KEY_LEFT:
-            state.page = (state.page - 1) % 3
+            state.page = (state.page - 1) % 4
             state.scroll = 0
         elif key in (curses.KEY_NPAGE,):
             state.scroll += max(1, stdscr.getmaxyx()[0] - 14)
