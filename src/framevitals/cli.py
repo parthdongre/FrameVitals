@@ -95,6 +95,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command")
 
+    formats_parser = subparsers.add_parser(
+        "formats",
+        help="List supported file formats and missing optional packages.",
+    )
+    formats_parser.add_argument(
+        "--json", action="store_true", help="Print the machine-readable format catalog."
+    )
+
     tui_parser = subparsers.add_parser(
         "tui",
         aliases=["ui"],
@@ -816,6 +824,15 @@ def _render_gate(report: dict) -> str:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.command == "formats":
+        from framevitals.file_formats import format_catalog, render_formats
+
+        if args.json:
+            print(json.dumps(format_catalog(), indent=2))
+        else:
+            print(render_formats())
+        return 0
 
     if args.command in {"tui", "ui"}:
         from framevitals.terminal_ui import launch_terminal
