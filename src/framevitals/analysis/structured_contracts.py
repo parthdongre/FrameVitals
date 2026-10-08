@@ -189,6 +189,21 @@ def infer_structured_contract(
             },
         }
 
+    if kind is SourceKind.DOCUMENT:
+        from framevitals.analysis.document import inspect_document
+
+        document = inspect_document(reference, depth="quick")
+        return {
+            "contract_schema_version": "1",
+            "source_kind": "document",
+            "expectations": {
+                "format": document["format"],
+                "min_words": max(0, int(document["words"] * (1.0 - tolerance))),
+                "max_words": int(document["words"] * (1.0 + tolerance)) + 1,
+                "require_extractable_text": not document["empty_text"],
+            },
+        }
+
     if kind is SourceKind.MODEL:
         structure = _model_structure(reference, descriptor)
         return {
@@ -389,6 +404,31 @@ def validate_structured(
             findings.append(_finding(
                 "axiom.relational.relationships",
                 f"{len(missing_relationships)} inferred relationships no longer match the contract.",
+            ))
+
+    elif kind == "document":
+        from framevitals.analysis.document import inspect_document
+
+        observed = inspect_document(current, depth="quick")
+        if observed["format"] != expectations.get("format"):
+            findings.append(_finding(
+                "axiom.document.format",
+                "Document format differs from the baseline.",
+            ))
+        if int(observed["words"]) < int(expectations.get("min_words", 0)):
+            findings.append(_finding(
+                "axiom.document.min_words",
+                "Extracted document is shorter than the minimum expected word count.",
+            ))
+        if int(observed["words"]) > int(expectations.get("max_words", 10**12)):
+            findings.append(_finding(
+                "axiom.document.max_words",
+                "Extracted document is longer than the expected word-count range.",
+            ))
+        if expectations.get("require_extractable_text") and observed["empty_text"]:
+            findings.append(_finding(
+                "axiom.document.text",
+                "No extractable text was found in the inspected document.",
             ))
 
     elif kind == "model":
