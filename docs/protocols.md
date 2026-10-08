@@ -18,10 +18,22 @@ import framevitals as fv
 result = fv.prism(current)
 ```
 
-When only `data` is provided, Prism delegates to the canonical source-aware
-analysis dispatcher.
+When only `data` is provided, Prism first recognizes the source kind.
+Tabular input delegates to the mature source-aware analysis dispatcher, while
+supported structured inputs dispatch to bounded graph, tensor, or model
+diagnostic engines.
 
-When a trusted reference is also supplied:
+```python
+fv.prism(dataframe)
+fv.prism(networkx_graph)
+fv.prism(numpy_tensor)
+fv.prism(pytorch_model)
+```
+
+All of these return the same protocol-level `PrismResult`, with modality-specific
+details available under `result.analysis`.
+
+When a trusted tabular reference is also supplied:
 
 ```python
 result = fv.prism(
@@ -119,3 +131,11 @@ This separation is deliberate:
 Product-facing CLI and web interfaces should use protocol terminology and
 outcomes. Implementation details belong in documentation, debug output, and
 source code rather than the default user experience.
+
+
+## Structured Axiom contracts
+
+Axiom uses the same source-recognition layer as Prism and Tide. For graph,
+tensor, nested, relational, and model sources it derives a modality-specific
+structural contract and can validate a later source against it. Tabular Axiom
+behavior remains unchanged.

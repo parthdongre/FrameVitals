@@ -220,6 +220,7 @@ class AnalysisResult(dict):
             "dataset_id": self.get("dataset_id"),
             "filename": self.get("filename"),
             "analysis_mode": self.get("analysis_mode"),
+            "source_kind": self.get("source_kind", "tabular"),
             "result_schema_version": self.get("result_schema_version"),
             "shape": dict(self.shape),
             "health": {

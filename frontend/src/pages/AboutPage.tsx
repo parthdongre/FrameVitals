@@ -5,8 +5,8 @@ export function AboutPage() {
     <>
       <Section className="pb-12 pt-6">
         <Eyebrow>About</Eyebrow>
-        <PageTitle subtitle="FrameVitals is an open-source Python toolkit for understanding, trusting, transforming, comparing, and monitoring tabular data through a small protocol-first interface.">
-          Data analysis without the assembly work.
+        <PageTitle subtitle="FrameVitals is an open-source Python diagnostics framework for understanding, trusting, comparing, and monitoring structured data and ML systems through a small protocol-first interface.">
+          Diagnostics without the assembly work.
         </PageTitle>
       </Section>
 
@@ -20,11 +20,11 @@ export function AboutPage() {
         />
 
         <div className="grid gap-x-12 gap-y-8 md:grid-cols-2">
-          <Stat label="Prism" value="Understand a dataset as one coherent report." />
+          <Stat label="Prism" value="Understand a structured source or model as one coherent report." />
           <Stat label="Axiom" value="Establish and test expectations." />
           <Stat label="Forge" value="Prepare and apply careful transformations." />
-          <Stat label="Tide" value="Read meaningful change between dataset states." />
-          <Stat label="Pulse" value="Capture compact health states over time." />
+          <Stat label="Tide" value="Read meaningful change between data, graph, tensor, or model states." />
+          <Stat label="Pulse" value="Capture compact data and model health states over time." />
           <Stat label="Principle" value="Evidence first, protocol surface second, internals documented." />
         </div>
       </Section>
@@ -32,9 +32,9 @@ export function AboutPage() {
       <Hr label="Boundaries" />
 
       <Section>
-        <SectionHeader eyebrow="What it is" title="A structured, reproducible analysis layer." />
+        <SectionHeader eyebrow="What it is" title="A structured, reproducible diagnostic layer." />
         <ul className="space-y-3 text-[14px] leading-7 text-[var(--ink-2)]">
-          <li>· Designed to turn raw tabular data into a coherent set of findings and next actions.</li>
+          <li>· Designed to turn tables, graphs, tensors, nested structures, relational projects, and ML artifacts into coherent findings and next actions.</li>
           <li>· Built so protocol results can be inspected, exported, and reproduced.</li>
           <li>· Intended to complement domain expertise rather than replace it.</li>
           <li>· Optional interpretation features remain secondary to computed evidence.</li>

@@ -76,6 +76,8 @@ export interface DashboardTelemetry {
   profile?: any;
   rolesSummary?: any;
   columnRoles?: Record<string, any>;
+  targetIntelligence?: any;
+  qualityDiagnostics?: any;
   deepStatistics?: any;
   targetAnalysis?: any;
   featureImportance?: any;

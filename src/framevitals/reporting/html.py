@@ -25,6 +25,119 @@ def _severity_class(value: Any) -> str:
     return "info"
 
 
+def _source_kind(result: Mapping[str, Any]) -> str:
+    return str(result.get("source_kind") or "tabular").lower()
+
+
+def _source_metrics(result: Mapping[str, Any]) -> list[tuple[str, Any]]:
+    kind = _source_kind(result)
+
+    if kind == "graph":
+        graph = result.get("graph", {}) or {}
+        components = graph.get("components", {}) or {}
+        spectral = graph.get("spectral", {}) or {}
+        return [
+            ("Nodes", graph.get("nodes", "n/a")),
+            ("Edges", graph.get("edges", "n/a")),
+            ("Density", graph.get("density", "n/a")),
+            ("Components", components.get("component_count", "n/a")),
+            ("Largest component", components.get("largest_component_ratio", "n/a")),
+            ("Max core", (graph.get("core", {}) or {}).get("max_core", "n/a")),
+            ("Algebraic connectivity", spectral.get("algebraic_connectivity", "n/a")),
+        ]
+
+    if kind == "tensor":
+        tensor = result.get("tensor", {}) or {}
+        matrix = tensor.get("matrix", {}) or {}
+        return [
+            ("Shape", tensor.get("shape", "n/a")),
+            ("Dtype", tensor.get("dtype", "n/a")),
+            ("Values", tensor.get("size", "n/a")),
+            ("Zero fraction", tensor.get("zero_fraction_sample", "n/a")),
+            ("Rank ratio", matrix.get("rank_ratio", "n/a")),
+            ("Effective rank", matrix.get("effective_rank", "n/a")),
+        ]
+
+    if kind == "document":
+        doc = result.get("document", {}) or {}
+        return [
+            ("Format", str(doc.get("format", "unknown")).upper()),
+            ("Pages / slides", doc.get("pages", doc.get("slides", "n/a"))),
+            ("Pages inspected", doc.get("pages_analyzed", "n/a")),
+            ("Words", doc.get("words", 0)),
+            ("Characters", doc.get("characters", 0)),
+            ("Lines", doc.get("lines", 0)),
+            ("Duplicate lines", doc.get("duplicate_lines", 0)),
+            ("Inspection truncated", doc.get("truncated", False)),
+        ]
+
+    if kind == "model":
+        model = result.get("model", {}) or {}
+        runtime = model.get("runtime", {}) or {}
+        runtime_summary = runtime.get("summary", {}) if isinstance(runtime, Mapping) else {}
+        return [
+            ("Framework", model.get("framework", "n/a")),
+            ("Architecture", model.get("architecture", "n/a")),
+            ("Parameters", model.get("parameters", "n/a")),
+            ("Trainable", model.get("trainable_parameters", "n/a")),
+            ("Modules", model.get("modules", model.get("nodes", "n/a"))),
+            ("Runtime issues", sum(
+                int(value)
+                for value in runtime_summary.values()
+                if isinstance(value, (int, float))
+            ) if runtime_summary else "n/a"),
+        ]
+
+    if kind == "nested":
+        nested = result.get("nested", {}) or {}
+        return [
+            ("Nodes observed", nested.get("nodes_observed", "n/a")),
+            ("Max depth", nested.get("max_depth", "n/a")),
+            ("Type conflicts", nested.get("path_type_conflict_count", "n/a")),
+            ("Null values", nested.get("null_values", "n/a")),
+            ("Cyclic references", nested.get("cyclic_references", "n/a")),
+        ]
+
+    if kind == "relational":
+        relational = result.get("relational", {}) or {}
+        return [
+            ("Tables", relational.get("table_count", "n/a")),
+            ("Relationships", relational.get("relationship_count", "n/a")),
+            ("Isolated tables", len(relational.get("isolated_tables", []) or [])),
+            ("Rows observed", relational.get("rows_observed", "n/a")),
+        ]
+
+    profile = result.get("profile", {}) or {}
+    shape = profile.get("shape", {}) or {}
+    health = result.get("health", {}) or {}
+    return [
+        ("Rows", shape.get("rows", "n/a")),
+        ("Columns", shape.get("columns", "n/a")),
+        ("Missing cells", f"{health.get('details', {}).get('missing_percent', 0)}%"),
+        ("Duplicate rows", f"{profile.get('duplicate_percent', 0)}%"),
+        ("Memory", f"{profile.get('memory_usage_mb', 'n/a')} MB"),
+    ]
+
+
+def _structure_table(result: Mapping[str, Any]) -> str:
+    kind = _source_kind(result)
+    if kind == "tabular":
+        return (
+            '<div style="overflow:auto"><table><thead><tr>'
+            '<th>Column</th><th>dtype</th><th>Missing</th><th>Unique</th><th>Roles</th>'
+            f'</tr></thead><tbody>{_column_rows(result)}</tbody></table></div>'
+        )
+
+    rows = "".join(
+        "<tr>"
+        f"<th>{_text(label)}</th>"
+        f"<td>{_text(value)}</td>"
+        "</tr>"
+        for label, value in _source_metrics(result)
+    )
+    return f'<div style="overflow:auto"><table><tbody>{rows}</tbody></table></div>'
+
+
 def _column_rows(result: Mapping[str, Any]) -> str:
     profile = result.get("profile", {}) or {}
     roles = result.get("column_roles", {}) or {}
@@ -77,21 +190,26 @@ def _finding_cards(result: Mapping[str, Any]) -> str:
 
 def render_notebook_summary(result: Mapping[str, Any]) -> str:
     """Return a compact notebook-safe HTML representation."""
-    profile = result.get("profile", {}) or {}
-    shape = profile.get("shape", {}) or {}
     health = result.get("health", {}) or {}
-    ml = result.get("ml_readiness", {}) or {}
     findings = result.get("findings", []) or []
+    kind = _source_kind(result)
+    metrics = _source_metrics(result)
+    metric_text = " · ".join(
+        f"{_text(label)}: {_text(value)}"
+        for label, value in metrics[:3]
+    )
+
     return f"""
 <div style="font-family:Inter,system-ui,-apple-system,sans-serif;border:1px solid #e5e7eb;border-radius:14px;padding:16px 18px;max-width:760px;background:#fff;color:#111827">
   <div style="display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:12px">
-    <div><strong style="font-size:18px">FrameVitals</strong><div style="color:#6b7280;font-size:13px">{_text(result.get('filename', '<dataframe>'))}</div></div>
-    <div style="font-size:13px;color:#6b7280">{_text(shape.get('rows','?'))} rows × {_text(shape.get('columns','?'))} columns</div>
+    <div><strong style="font-size:18px">FrameVitals</strong><div style="color:#6b7280;font-size:13px">{_text(result.get('filename', '<source>'))}</div></div>
+    <div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.08em">{_text(kind)}</div>
   </div>
+  <div style="color:#475467;font-size:13px;margin-bottom:12px">{metric_text}</div>
   <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
     <div style="background:#f9fafb;padding:12px;border-radius:10px"><div style="font-size:12px;color:#6b7280">Health</div><strong>{_text(health.get('overall_score','n/a'))}/100</strong><div style="font-size:12px">{_text(health.get('label',''))}</div></div>
-    <div style="background:#f9fafb;padding:12px;border-radius:10px"><div style="font-size:12px;color:#6b7280">ML readiness</div><strong>{_text(ml.get('score','n/a'))}/100</strong><div style="font-size:12px">{_text(ml.get('label',''))}</div></div>
-    <div style="background:#f9fafb;padding:12px;border-radius:10px"><div style="font-size:12px;color:#6b7280">Findings</div><strong>{len(findings)}</strong><div style="font-size:12px">actionable</div></div>
+    <div style="background:#f9fafb;padding:12px;border-radius:10px"><div style="font-size:12px;color:#6b7280">Source</div><strong>{_text(kind.upper())}</strong><div style="font-size:12px">{_text(result.get('analysis_mode','standard'))}</div></div>
+    <div style="background:#f9fafb;padding:12px;border-radius:10px"><div style="font-size:12px;color:#6b7280">Beacons</div><strong>{len(findings)}</strong><div style="font-size:12px">surfaced</div></div>
   </div>
 </div>
 """.strip()
@@ -104,6 +222,8 @@ def render_html_report(result: Mapping[str, Any]) -> str:
     health = result.get("health", {}) or {}
     ml = result.get("ml_readiness", {}) or {}
     findings = result.get("findings", []) or []
+    source_kind = _source_kind(result)
+    source_metrics = _source_metrics(result)
     recommendations = []
     seen: set[str] = set()
     for finding in findings:
@@ -114,15 +234,43 @@ def render_html_report(result: Mapping[str, Any]) -> str:
 
     health_score = _score(health.get("overall_score"))
     ml_score = _score(ml.get("score"))
-    missing_percent = health.get("details", {}).get("missing_percent", 0)
-    duplicate_percent = profile.get("duplicate_percent", 0)
-    memory = profile.get("memory_usage_mb", "n/a")
     total_ms = (result.get("timings_ms", {}) or {}).get("total")
     duration = f"{float(total_ms) / 1000:.2f}s" if isinstance(total_ms, (int, float)) else "n/a"
 
     recommendation_items = "".join(
         f"<li>{_text(item)}</li>" for item in recommendations
     ) or "<li>No additional remediation steps are required by the current finding layer.</li>"
+
+    if source_kind == "tabular":
+        hero_meta = "".join([
+            f"<span>{_text(shape.get('rows','?'))} rows</span>",
+            f"<span>{_text(shape.get('columns','?'))} columns</span>",
+        ])
+        source_card = (
+            f'<article class="panel score"><div class="label">ML readiness</div>'
+            f'<div class="big">{_text(ml.get("score","n/a"))}'
+            '<span style="font-size:17px;color:#98a2b3"> / 100</span></div>'
+            f'<div>{_text(ml.get("label",""))}</div>'
+            f'<div class="bar"><span style="width:{ml_score:.1f}%"></span></div></article>'
+        )
+    else:
+        hero_meta = "".join(
+            f"<span>{_text(label)}: {_text(value)}</span>"
+            for label, value in source_metrics[:3]
+        )
+        source_card = (
+            '<article class="panel score"><div class="label">Source kind</div>'
+            f'<div class="big" style="font-size:30px">{_text(source_kind.upper())}</div>'
+            '<div style="color:#667085">Structure-aware Prism diagnostics</div></article>'
+        )
+
+    metric_cards = "".join(
+        '<article class="panel metric">'
+        f'<div class="label">{_text(label)}</div>'
+        f'<div class="big" style="font-size:24px">{_text(value)}</div>'
+        '</article>'
+        for label, value in source_metrics[:4]
+    )
 
     raw_json = escape(json.dumps(dict(result), indent=2, default=str))
 
@@ -182,11 +330,10 @@ pre {{ overflow:auto;background:#111827;color:#d1d5db;padding:16px;border-radius
 <section class="hero">
   <div class="eyebrow">FrameVitals analysis report</div>
   <h1>{_text(result.get('filename', '<dataframe>'))}</h1>
-  <p>Data health, structure, ML readiness, and actionable diagnostics in one report.</p>
+  <p>Structure-aware health, diagnostics, change signals, and actionable Beacons in one report.</p>
   <div class="meta">
-    <span>{_text(shape.get('rows','?'))} rows</span>
-    <span>{_text(shape.get('columns','?'))} columns</span>
-    <span>{_text(result.get('analysis_mode','unknown'))} mode</span>
+    {hero_meta}
+    <span>{_text(result.get('analysis_mode','unknown'))} depth</span>
     <span>{len(findings)} findings</span>
     <span>{_text(duration)} runtime</span>
   </div>
@@ -194,19 +341,16 @@ pre {{ overflow:auto;background:#111827;color:#d1d5db;padding:16px;border-radius
 
 <section class="grid">
   <article class="panel score"><div class="label">Data health</div><div class="big">{_text(health.get('overall_score','n/a'))}<span style="font-size:17px;color:#98a2b3"> / 100</span></div><div>{_text(health.get('label',''))}</div><div class="bar"><span style="width:{health_score:.1f}%"></span></div></article>
-  <article class="panel score"><div class="label">ML readiness</div><div class="big">{_text(ml.get('score','n/a'))}<span style="font-size:17px;color:#98a2b3"> / 100</span></div><div>{_text(ml.get('label',''))}</div><div class="bar"><span style="width:{ml_score:.1f}%"></span></div></article>
+  {source_card}
   <article class="panel score"><div class="label">Actionable findings</div><div class="big">{len(findings)}</div><div style="color:#667085">Normalized from FrameVitals' deterministic signal layer.</div></article>
 
-  <article class="panel metric"><div class="label">Missing cells</div><div class="big" style="font-size:27px">{_text(missing_percent)}%</div></article>
-  <article class="panel metric"><div class="label">Duplicate rows</div><div class="big" style="font-size:27px">{_text(duplicate_percent)}%</div></article>
-  <article class="panel metric"><div class="label">Memory</div><div class="big" style="font-size:27px">{_text(memory)} MB</div></article>
-  <article class="panel metric"><div class="label">Runtime</div><div class="big" style="font-size:27px">{_text(duration)}</div></article>
+  {metric_cards}
 
   <section class="panel section"><div class="label">Findings</div><h2>What needs attention</h2><div class="findings">{_finding_cards(result)}</div></section>
 
   <section class="panel section"><div class="label">Recommendations</div><h2>Suggested next actions</h2><ul>{recommendation_items}</ul></section>
 
-  <section class="panel section"><div class="label">Columns</div><h2>Dataset structure</h2><div style="overflow:auto"><table><thead><tr><th>Column</th><th>dtype</th><th>Missing</th><th>Unique</th><th>Roles</th></tr></thead><tbody>{_column_rows(result)}</tbody></table></div></section>
+  <section class="panel section"><div class="label">Structure</div><h2>{_text(source_kind.title())} overview</h2>{_structure_table(result)}</section>
 
   <section class="panel section"><div class="label">Complete result</div><details><summary>Inspect raw JSON</summary><pre>{raw_json}</pre></details></section>
 </section>

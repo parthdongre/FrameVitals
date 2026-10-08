@@ -183,19 +183,62 @@ class PrismResult(_ProtocolResult):
         health = summary.get("health", {})
         ml = summary.get("ml_readiness", {})
 
+        source_kind = str(analysis.get("source_kind") or "tabular")
         lines = [
             "FrameVitals · Prism",
             "=" * 72,
-            f"Dataset       {summary.get('filename') or '<unknown>'}",
+            f"Source        {summary.get('filename') or '<unknown>'}",
+            f"Kind          {source_kind.upper()}",
             f"Status        {self.status.upper()}",
-            (
-                "Shape         "
-                f"{shape.get('rows', '?')} rows x {shape.get('columns', '?')} columns"
-            ),
-            f"Health        {health.get('overall_score', 'n/a')}  {health.get('label', '')}",
-            f"ML readiness  {ml.get('score', 'n/a')}  {ml.get('label', '')}",
-            f"Beacons       {len(self.beacons)}",
         ]
+
+        if source_kind == "graph":
+            graph = analysis.get("graph", {})
+            lines.extend([
+                f"Nodes         {graph.get('nodes', '?')}",
+                f"Edges         {graph.get('edges', '?')}",
+            ])
+        elif source_kind == "model":
+            model = analysis.get("model", {})
+            lines.extend([
+                f"Architecture  {model.get('architecture', 'unknown')}",
+                f"Parameters    {model.get('parameters', '?')}",
+                f"Trainable     {model.get('trainable_parameters', '?')}",
+            ])
+        elif source_kind == "tensor":
+            tensor = analysis.get("tensor", {})
+            lines.extend([
+                f"Shape         {tensor.get('shape', '?')}",
+                f"Dtype         {tensor.get('dtype', '?')}",
+                f"Values        {tensor.get('size', '?')}",
+            ])
+        elif source_kind == "nested":
+            nested = analysis.get("nested", {})
+            lines.extend([
+                f"Nodes         {nested.get('nodes_observed', '?')}",
+                f"Depth         {nested.get('max_depth', '?')}",
+                f"Type conflicts {nested.get('path_type_conflict_count', '?')}",
+            ])
+        elif source_kind == "relational":
+            relational = analysis.get("relational", {})
+            lines.extend([
+                f"Tables        {relational.get('table_count', '?')}",
+                f"Relationships {relational.get('relationship_count', '?')}",
+                f"Isolated      {len(relational.get('isolated_tables', []))}",
+            ])
+        else:
+            lines.extend([
+                (
+                    "Shape         "
+                    f"{shape.get('rows', '?')} rows x {shape.get('columns', '?')} columns"
+                ),
+                f"ML readiness  {ml.get('score', 'n/a')}  {ml.get('label', '')}",
+            ])
+
+        lines.extend([
+            f"Health        {health.get('overall_score', 'n/a')}  {health.get('label', '')}",
+            f"Beacons       {len(self.beacons)}",
+        ])
 
         validation = self.validation
         if validation is not None:
@@ -310,6 +353,12 @@ def prism(
     max_relationship_pairs: int | None = None,
     max_memory_heavy_parallelism: int | None = None,
     max_streaming_profile_columns: int | None = None,
+    sample_batch: Any = None,
+    targets: Any = None,
+    loss_fn: Any = None,
+    backward: bool = False,
+    max_runtime_modules: int | None = None,
+    optimizer: Any = None,
     derive_axiom: bool = True,
     custom_checks: Sequence[Any] | None = None,
     columns: list[str] | None = None,
@@ -337,6 +386,108 @@ def prism(
     resolved_focus = focus if focus is not None else target
     resolved_depth = depth if depth is not None else mode
     supplied_expectations = axiom if axiom is not None else contract
+
+    # Structured non-tabular sources are recognized before entering the mature
+    # tabular dispatcher. This keeps graph/tensor/model diagnostics isolated
+    # from pandas-specific execution while preserving one public Prism call.
+    from framevitals.structured_analysis import (
+        analyze_structured,
+        normalize_structured_input,
+    )
+
+    data = normalize_structured_input(data)
+    if reference is not None:
+        reference = normalize_structured_input(reference)
+
+    structured_analysis = analyze_structured(
+        data,
+        depth=resolved_depth,
+        sample_batch=sample_batch,
+        targets=targets,
+        loss_fn=loss_fn,
+        backward=backward,
+        max_runtime_modules=max_runtime_modules,
+        optimizer=optimizer,
+    )
+    if structured_analysis is not None:
+        if resolved_focus is not None:
+            raise ValueError("focus=/target= is currently supported only for tabular Prism input.")
+        if custom_checks:
+            raise NotImplementedError(
+                "custom_checks= is currently available only for tabular Prism input."
+            )
+
+        from framevitals.analysis.structured_contracts import (
+            infer_structured_contract,
+            validate_structured,
+        )
+        from framevitals.structured_analysis import compare_structured
+
+        resolved_contract = (
+            dict(supplied_expectations)
+            if isinstance(supplied_expectations, Mapping)
+            else None
+        )
+        if reference is not None and resolved_contract is None and derive_axiom:
+            resolved_contract = infer_structured_contract(reference)
+
+        validation_result: ValidationResult | None = None
+        if resolved_contract is not None:
+            validation_result = validate_structured(data, resolved_contract)
+
+        tide_result: DriftResult | None = None
+        if reference is not None:
+            compared = compare_structured(reference, data)
+            if isinstance(compared, DriftResult):
+                tide_result = compared
+            elif isinstance(compared, Mapping):
+                tide_result = DriftResult(dict(compared))
+
+        statuses = [
+            value
+            for value in (
+                validation_result.status if validation_result is not None else None,
+                tide_result.status if tide_result is not None else None,
+            )
+            if value
+        ]
+        if "fail" in statuses:
+            structured_status = "fail"
+        elif "warn" in statuses:
+            structured_status = "warn"
+        elif statuses:
+            structured_status = "pass"
+        else:
+            structured_status = "complete"
+
+        trust_payload = None
+        if resolved_contract is not None:
+            trust_payload = {
+                "expectations": resolved_contract,
+                "validation": validation_result,
+            }
+
+        return PrismResult({
+            "protocol": "prism",
+            "status": structured_status,
+            "analysis": structured_analysis,
+            "trust": trust_payload,
+            "change": tide_result,
+            "verdict": None,
+        })
+
+    if (
+        sample_batch is not None
+        or targets is not None
+        or loss_fn is not None
+        or backward
+        or max_runtime_modules is not None
+        or optimizer is not None
+    ):
+        raise ValueError(
+            "sample_batch=/targets=/loss_fn=/backward= are currently "
+            "supported only for model Prism input."
+        )
 
     analysis = analyze(
         data,
@@ -421,6 +572,52 @@ def axiom(
     allow_extra_columns: bool = False,
 ) -> AxiomResult:
     """Establish expectations from a reference and optionally test current data."""
+    from framevitals.core.source import SourceKind, recognize_source
+    from framevitals.structured_analysis import normalize_structured_input
+
+    reference = normalize_structured_input(reference)
+    if current is not None:
+        current = normalize_structured_input(current)
+    descriptor = recognize_source(reference)
+    structured_kinds = {
+        SourceKind.GRAPH,
+        SourceKind.TENSOR,
+        SourceKind.NESTED,
+        SourceKind.RELATIONAL,
+        SourceKind.DOCUMENT,
+        SourceKind.MODEL,
+    }
+
+    if descriptor.kind in structured_kinds:
+        from framevitals.analysis.structured_contracts import (
+            infer_structured_contract,
+            validate_structured,
+        )
+
+        resolved = (
+            dict(contract)
+            if isinstance(contract, Mapping)
+            else infer_structured_contract(
+                reference,
+                tolerance=max(float(numeric_tolerance), 0.0),
+            )
+        )
+        if resolved is None:
+            raise TypeError(
+                f"Axiom does not support source kind {descriptor.kind.value!r}."
+            )
+        validation = (
+            validate_structured(current, resolved)
+            if current is not None
+            else None
+        )
+        return AxiomResult({
+            "protocol": "axiom",
+            "status": validation.status if validation is not None else "established",
+            "contract": resolved,
+            "validation": validation,
+        })
+
     from framevitals.operations import infer_contract, validate
 
     resolved = (
@@ -453,7 +650,15 @@ def tide(
     columns: list[str] | None = None,
     max_columns: int = 30,
 ) -> DriftResult:
-    """Run the FrameVitals change protocol across two dataset states."""
+    """Run the FrameVitals change protocol across two source states."""
+    from framevitals.structured_analysis import compare_structured
+
+    structured = compare_structured(reference, current)
+    if structured is not None:
+        if columns is not None:
+            raise ValueError("columns= is only valid for tabular Tide comparisons.")
+        return structured
+
     from framevitals.operations import compare
 
     return compare(reference, current, columns=columns, max_columns=max_columns)
@@ -494,16 +699,25 @@ def pulse(
     depth: str | None = None,
     mode: str | None = None,
     workers: int | None = None,
+    sample_batch: Any = None,
+    targets: Any = None,
+    loss_fn: Any = None,
+    backward: bool = False,
+    max_runtime_modules: int | None = None,
+    optimizer: Any = None,
 ) -> AnalysisSnapshot:
-    """Capture a compact health state from raw data or an existing analysis."""
+    """Capture a compact health state from tabular or structured sources."""
     from framevitals.analysis_api import analyze
     from framevitals.snapshots import create_snapshot
+    from framevitals.structured_analysis import analyze_structured
 
     if depth is not None and mode is not None and depth != mode:
         raise ValueError("depth= and mode= cannot disagree.")
     resolved_depth = depth if depth is not None else mode or "quick"
 
-    if isinstance(data_or_result, AnalysisResult):
+    if isinstance(data_or_result, PrismResult):
+        analysis = data_or_result.analysis
+    elif isinstance(data_or_result, AnalysisResult):
         analysis = data_or_result
     elif (
         isinstance(data_or_result, Mapping)
@@ -511,12 +725,36 @@ def pulse(
     ):
         analysis = AnalysisResult(dict(data_or_result))
     else:
-        analysis = analyze(
+        structured = analyze_structured(
             data_or_result,
-            mode=resolved_depth,
-            artifacts=False,
-            workers=workers,
+            depth=resolved_depth,
+            sample_batch=sample_batch,
+            targets=targets,
+            loss_fn=loss_fn,
+            backward=backward,
+            max_runtime_modules=max_runtime_modules,
+            optimizer=optimizer,
         )
+        if structured is not None:
+            analysis = structured
+        else:
+            if (
+                sample_batch is not None
+                or targets is not None
+                or loss_fn is not None
+                or backward
+                or max_runtime_modules is not None
+                or optimizer is not None
+            ):
+                raise ValueError(
+                    "Runtime model options are only valid for model Pulse input."
+                )
+            analysis = analyze(
+                data_or_result,
+                mode=resolved_depth,
+                artifacts=False,
+                workers=workers,
+            )
 
     snapshot = create_snapshot(analysis)
     if destination is not None:

@@ -2,9 +2,9 @@
 
 # FrameVitals
 
-### Analyze, diagnose, clean, compare, model, and report on tabular data from one toolkit.
+### Diagnose structured data, graphs, tensors, and ML models through one protocol system.
 
-**FrameVitals is an open-source, source-aware Python data analysis toolkit for profiling, data quality, statistics, drift detection, anomaly analysis, data contracts, cleaning, ML readiness, model diagnostics, and shareable reports on tabular data.**
+**FrameVitals is an open-source diagnostic layer for structured data and ML systems: tabular data, graphs, tensors, and PyTorch models can enter the same Prism workflow while specialized engines handle their structure safely.**
 
 🌐 **Website:** https://framevitals.vercel.app/
 
@@ -52,7 +52,9 @@ Optional capabilities are available as extras:
 pip install "framevitals[arrow]"   # Arrow and Parquet interoperability
 pip install "framevitals[duckdb]"  # DuckDB relations
 pip install "framevitals[plot]"    # plotting and report charts
-pip install "framevitals[ml]"      # optional ML diagnostics
+pip install "framevitals[ml]"      # optional predictive diagnostics
+pip install "framevitals[graph]"   # NetworkX graph diagnostics
+pip install "framevitals[onnx]"    # ONNX model graph diagnostics
 pip install "framevitals[ai]"      # Ollama-backed AI capabilities
 pip install "framevitals[web]"     # Flask web runtime
 pip install "framevitals[all]"     # all optional runtime capabilities
@@ -84,6 +86,135 @@ result = fv.prism(
 Prism remains one call whether it is working from a single dataset or coordinating a richer reference-aware workflow.
 
 FrameVitals also supports Parquet, PyArrow data, and lazy DuckDB relations when the corresponding optional dependencies are installed.
+
+Prism can also recognize non-tabular structured objects:
+
+```python
+import numpy as np
+import framevitals as fv
+
+tensor_report = fv.prism(np.random.randn(256, 64))
+
+# With NetworkX installed:
+graph_report = fv.prism(graph)
+graph_file_report = fv.prism("network.graphml")
+
+# If PyTorch is already installed in your environment:
+model_report = fv.prism(model)
+
+# Observe one bounded forward/backward pass without taking over training:
+runtime_report = fv.prism(
+    model,
+    sample_batch=x,
+    targets=y,
+    loss_fn=criterion,
+    backward=True,
+)
+
+# Metadata-first checkpoint inspection without loading tensor bodies:
+checkpoint_report = fv.prism("model.safetensors")
+
+# ONNX graph + initializer diagnostics:
+onnx_report = fv.prism("model.onnx")
+
+# Nested structured data:
+nested_report = fv.prism({"users": [{"id": 1}, {"id": 2}]})
+
+# Multi-table projects:
+project_report = fv.prism({
+    "customers": customers,
+    "orders": orders,
+})
+```
+
+The graph engine uses bounded connectivity, PageRank, approximate betweenness,
+community, cut-structure, clustering, k-core, spectral-connectivity, and sampled
+shortest-path diagnostics. Transformer and recurrent PyTorch models receive
+architecture-aware checks in addition to generic parameter/runtime analysis.
+Weighted graphs with a reliable non-negative `weight` attribute automatically
+use Dijkstra for the sampled path analysis. PyTorch remains optional; FrameVitals
+does not install a deep-learning runtime merely to inspect a model.
+
+## Supported file formats
+
+The **Python CLI/terminal** supports multiple source families. Type
+`fv formats` to view the authoritative, dependency-aware list, or press
+**L** inside the terminal application.
+
+| Source family | Extensions | Dependencies |
+| --- | --- | --- |
+| Tabular | `.csv`, `.tsv` | Base installation |
+| Tabular | `.parquet`, `.xlsx`, `.xls` | `arrow` or `excel` extras |
+| Structured | `.json`, `.jsonl`, `.ndjson`, `.toml`, `.ipynb` | Base installation |
+| Structured | `.yaml`, `.yml` | `documents` extra |
+| Graphs | `.graphml`, `.gexf`, `.gml` | `graph` extra |
+| Tensors | `.npy` | Base installation; safe loading with pickle disabled |
+| Models | `.safetensors`, `.onnx` | Base metadata inspection / `onnx` extra |
+| Documents | `.pdf`, `.docx`, `.pptx`, `.xml` | `documents` extra |
+| Documents | `.txt`, `.md`, `.markdown`, `.rst`, `.log`, `.html`, `.htm` | Base installation |
+| Source files | `.py`, `.c`, `.cpp`, `.h`, `.hpp`, `.js`, `.ts`, `.tsx` | Base installation |
+
+Document analysis reports extracted-text statistics, structure, possible
+encoding issues, missing-text/scanned-page warnings, and source changes via
+Tide. It does not run OCR; it does not execute macros or embedded code.
+The website's upload demo remains tabular-focused.
+
+```bash
+python3 -m pip install -e ".[documents,graph,onnx,excel,arrow]"
+fv formats
+fv prism thesis.pdf --depth quick
+fv prism paper.docx --depth quick
+fv tide original.pdf revised.pdf
+```
+
+## Terminal dashboard (Mole-inspired)
+
+FrameVitals includes a **keyboard-driven terminal workspace** for macOS and
+Linux. It requires no additional TUI dependencies, and opens automatically when
+the CLI is launched interactively without a subcommand:
+
+```bash
+pip install -e .
+fv                     # full-screen diagnostic workspace
+framevitals             # identical interactive launcher
+framevitals tui         # explicit terminal workspace
+framevitals ui --plain  # line-oriented fallback
+framevitals formats      # supported files and missing dependencies
+```
+
+The menu offers **Prism, Tide, Axiom, Pulse, Inspect, and read-only Forge
+preview**. Select CSV/Parquet/GraphML/GEXF/GML/ONNX/Safetensors/JSON/NumPy
+files, then read summaries, actionable Beacons, and detailed results in the
+terminal. The file explorer is available with **P**.
+
+| Key | Action |
+| --- | --- |
+| Up/Down, j/k, 1–6 | Choose protocol |
+| Enter / R | Run selected protocol |
+| P | Browse files in the terminal |
+| F | Type/paste a source path |
+| B | Set a reference/baseline file |
+| D | Cycle quick/standard/deep/research depth |
+| Tab / Left/Right | Switch Overview, Beacons, Details |
+| Page Up / Page Down | Scroll output |
+| E | Export JSON or a supported HTML report |
+| Q | Exit |
+
+The terminal is a **local frontend over the existing FrameVitals Python
+protocols**, not a separate analytics engine. Files are not uploaded. Reports
+are written only on explicit export, and Forge runs in preview mode.
+
+For scripts/CI, direct commands remain unchanged:
+
+```bash
+fv prism dataset.csv --depth quick --html-report report.html
+fv tide baseline.csv current.csv
+fv axiom baseline.csv --current current.csv
+```
+
+On Windows, where the standard-library curses module may be unavailable,
+the launcher falls back to a line-oriented menu. In non-interactive pipelines,
+running `fv` without a command prints help instead of prompting.
 
 ## Protocols
 
@@ -217,7 +348,7 @@ Use `quick` for fast checks and the deeper modes when you want broader statistic
 
 ## Source-Aware Execution
 
-FrameVitals is designed to work with more than pandas alone. Supported sources can include DataFrames, files, Arrow-native data, and DuckDB relations.
+FrameVitals is designed to work with more than pandas alone. Mature tabular sources include DataFrames, files, Arrow-native data, and DuckDB relations; the structured adapter layer now also recognizes NetworkX graphs, NumPy/PyTorch tensors, and PyTorch models.
 
 Where semantics allow it, large or lazy sources can use bounded or streaming execution instead of being loaded fully into pandas. Operations that require exact results can still materialize the full dataset, and execution metadata reports those decisions.
 

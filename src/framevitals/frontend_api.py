@@ -6,33 +6,6 @@ import math
 import numpy as np
 import pandas as pd
 
-from framevitals.column_roles import (
-    get_meaningful_numeric_columns,
-)
-from framevitals.deep_statistics import (
-    run_deep_statistics,
-)
-from framevitals.target_analyzer import (
-    analyze_target,
-)
-from framevitals.feature_importance import (
-    run_feature_importance,
-)
-from framevitals.baseline_model import (
-    run_baseline_model,
-)
-from framevitals.target_leakage import (
-    run_target_leakage_analysis,
-)
-from framevitals.multicollinearity import (
-    run_multicollinearity_analysis,
-)
-from framevitals.model_diagnostics import (
-    run_model_diagnostics,
-)
-from framevitals.segment_analysis import (
-    run_segment_analysis,
-)
 
 
 def format_bytes(value: int) -> str:
@@ -156,8 +129,24 @@ def build_dashboard_payload(
         if "boolean" in info.get("roles", [])
     )
 
-    meaningful_numeric = get_meaningful_numeric_columns(df, column_roles)
-    distribution_column = meaningful_numeric[0] if meaningful_numeric else None
+    # Pick a presentation column from the canonical profile rather than
+    # requiring the complete internal role schema. The web adapter should be
+    # able to project any valid AnalysisResult without re-running/inferencing
+    # analysis metadata.
+    profile_numeric = [
+        str(column)
+        for column in profile.get("numeric_columns", [])
+        if str(column) in df.columns
+    ]
+    meaningful_numeric = []
+    for column in profile_numeric:
+        role_info = column_roles.get(column, {})
+        roles = set(role_info.get("roles", [])) if isinstance(role_info, dict) else set()
+        if not roles.intersection({"id_like", "constant"}):
+            meaningful_numeric.append(column)
+    distribution_column = meaningful_numeric[0] if meaningful_numeric else (
+        profile_numeric[0] if profile_numeric else None
+    )
 
     if distribution_column is not None:
         distribution = _build_numeric_distribution(df, distribution_column)
@@ -166,42 +155,47 @@ def build_dashboard_payload(
     else:
         distribution = _build_empty_distribution("telemetry")
 
-    deep_statistics = run_deep_statistics(df)
-    target_analysis = analyze_target(df, selected_target_column)
+    # Project the canonical Prism result into the web payload. The frontend
+    # adapter must never re-run statistics, fitting, leakage, VIF, or segment
+    # analysis merely because a UI is being rendered.
+    target_intelligence = result.get("target_intelligence") or {}
+    target_analysis = (
+        target_intelligence.get("target_profile", {})
+        if isinstance(target_intelligence, dict)
+        else {}
+    )
+    target_leakage = (
+        target_intelligence.get("leakage", {})
+        if isinstance(target_intelligence, dict)
+        else {}
+    )
 
-    if target_analysis.get("available"):
-        feature_importance = run_feature_importance(
-            df=df,
-            target_column=selected_target_column,
-            task_type=target_analysis["task_type"],
-        )
-        baseline_model = run_baseline_model(
-            df=df,
-            target_column=selected_target_column,
-            task_type=target_analysis["task_type"],
-        )
-        target_leakage = run_target_leakage_analysis(df=df, target_column=selected_target_column)
-        model_diagnostics = run_model_diagnostics(
-            df=df,
-            target_column=selected_target_column,
-            task_type=target_analysis["task_type"],
-        )
-    else:
-        feature_importance = {"available": False, "message": "No target column selected."}
-        baseline_model = {"available": False, "message": "No target column selected."}
-        target_leakage = {"available": False, "message": "No target column selected."}
-        model_diagnostics = {"available": False, "message": "No target column selected."}
-
-    multicollinearity = run_multicollinearity_analysis(df=df, target_column=selected_target_column)
-    segment_analysis = run_segment_analysis(df=df, target_column=selected_target_column)
-
-    # v3 outputs come pre-computed inside the pipeline result dict
     deep_statistics_v2 = result.get("deep_statistics_v2")
     anomalies_v2 = result.get("anomalies_v2")
     model_leaderboard = result.get("model_leaderboard")
     explainability = result.get("explainability")
     time_series_analysis = result.get("time_series")
     text_profile = result.get("text_profile")
+    quality_diagnostics = result.get("quality_diagnostics") or {}
+
+    # Legacy compatibility keys are projections only. They intentionally do
+    # not trigger a second analytical pipeline.
+    deep_statistics = None
+    feature_importance = (
+        explainability
+        if isinstance(explainability, dict) and explainability.get("available")
+        else {"available": False, "message": "Use canonical explainability output."}
+    )
+    baseline_model = {
+        "available": False,
+        "message": "Baseline/model comparisons are represented by modelLeaderboard.",
+    }
+    model_diagnostics = result.get("predictive_diagnostics") or {
+        "available": False,
+        "message": "No separate predictive-diagnostics pass was requested.",
+    }
+    multicollinearity = result.get("multicollinearity") or {}
+    segment_analysis = result.get("segment_analysis") or {}
 
     health_score = result.get("health", {}).get("overall_score", 0)
     health_label = result.get("health", {}).get("label", "Unknown")
@@ -256,6 +250,8 @@ def build_dashboard_payload(
         "mlReadiness": result.get("ml_readiness", {}),
         "advanced": result.get("advanced", {}),
         "datasetSignals": result.get("dataset_signals", {}),
+        "targetIntelligence": target_intelligence,
+        "qualityDiagnostics": quality_diagnostics,
         "deepStatistics": deep_statistics,
         "targetAnalysis": target_analysis,
         "featureImportance": feature_importance,

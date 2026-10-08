@@ -1,8 +1,9 @@
-"""FrameVitals Flask API and local report server.
+"""FrameVitals Flask API and generated-artifact server.
 
-The web layer intentionally stays thin: it reuses the same mode policy as the
-public Python API, bounds in-process cache state, and keeps filesystem/network
-side effects inside explicit request handlers.
+The React application is the single product UI. This backend stays thin: it
+reuses the same protocol/execution policy as the public Python API, bounds
+in-process cache state, and keeps filesystem/network side effects inside
+explicit API and artifact handlers.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from pathlib import Path
 from threading import Lock, Thread
 from time import perf_counter
 
-from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, jsonify, redirect, request, send_file, session
 from werkzeug.exceptions import ClientDisconnected
 
 from framevitals import __version__ as FRAMEVITALS_VERSION
@@ -82,22 +83,6 @@ ANALYSIS_CACHE: OrderedDict[str, dict] = OrderedDict()
 UPLOAD_PATHS: OrderedDict[str, str] = OrderedDict()
 REPORT_JOBS: OrderedDict[str, dict] = OrderedDict()
 REPORT_LOCK = Lock()
-
-
-class DotDict(dict):
-    """Allow ``dict.key`` access for legacy Jinja templates."""
-
-    __getattr__ = dict.get
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
-
-    @staticmethod
-    def from_dict(value):
-        if isinstance(value, dict):
-            return DotDict({key: DotDict.from_dict(item) for key, item in value.items()})
-        if isinstance(value, list):
-            return [DotDict.from_dict(item) for item in value]
-        return value
 
 
 def _normalize_analysis_mode(value: str | None) -> str:
@@ -332,56 +317,21 @@ def _unlink_quietly(path: Path | None) -> None:
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    """Redirect the backend root to the single React product surface."""
+    frontend_url = os.environ.get(
+        "FRAMEVITALS_FRONTEND_URL",
+        "https://framevitals.vercel.app/",
+    )
+    return redirect(frontend_url, code=302)
 
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    try:
-        try:
-            uploaded_file = request.files.get("dataset")
-            analysis_mode = _normalize_analysis_mode(request.form.get("analysis_mode"))
-            target_column = request.form.get("target_column") or None
-        except ClientDisconnected:
-            return render_template(
-                "error.html",
-                message=(
-                    "The upload was interrupted before Flask finished reading the file. "
-                    "Please try again."
-                ),
-            ), 400
-
-        if not uploaded_file or uploaded_file.filename == "":
-            return render_template(
-                "error.html",
-                message="Please upload a valid dataset file.",
-            ), 400
-
-        dataset_id, file_path, original_filename = save_uploaded_file(uploaded_file)
-        _cache_upload_path(dataset_id, file_path)
-        result = _run_web_analysis(
-            dataset_id=dataset_id,
-            file_path=file_path,
-            original_filename=original_filename,
-            analysis_mode=analysis_mode,
-            target_column=target_column,
-        )
-        _cache_analysis(dataset_id, result)
-        _queue_pdf_generation(dataset_id, result)
-        result["report_status"] = _report_status_payload(dataset_id)
-        _store_session(
-            dataset_id=dataset_id,
-            original_filename=original_filename,
-            analysis_mode=analysis_mode,
-            target_column=target_column,
-        )
-        return render_template("report.html", result=DotDict.from_dict(result))
-    except Exception:
-        app.logger.exception("Server-rendered analysis failed")
-        return render_template(
-            "error.html",
-            message="Dataset analysis failed. Check the server logs for details.",
-        ), 500
+    """Compatibility tombstone for the removed server-rendered dashboard."""
+    return jsonify({
+        "error": "The legacy HTML analysis endpoint has been removed.",
+        "use": "/api/analyze",
+    }), 410
 
 
 @app.route("/api/analyze", methods=["POST"])
@@ -443,68 +393,11 @@ def api_analyze():
 
 @app.route("/ask", methods=["POST"])
 def ask():
-    try:
-        dataset_id = session.get("dataset_id")
-        original_filename = session.get("original_filename", "dataset")
-        analysis_mode = _normalize_analysis_mode(session.get("analysis_mode"))
-        target_column = session.get("target_column")
-        question = request.form.get("question", "")
-
-        if not dataset_id:
-            return redirect(url_for("index"))
-        dataset_id = _validate_dataset_id(dataset_id)
-        file_path = _get_upload_path(dataset_id)
-        if file_path is None:
-            return redirect(url_for("index"))
-
-        # Reuse the analysis produced by the upload route. The old handler
-        # reran the entire pipeline for every question, which was needlessly
-        # expensive and could produce a different result under changed env state.
-        result = _get_cached_analysis(dataset_id)
-        if result is None:
-            result = _run_web_analysis(
-                dataset_id=dataset_id,
-                file_path=file_path,
-                original_filename=original_filename,
-                analysis_mode=analysis_mode,
-                target_column=target_column,
-                skip_ai=True,
-            )
-            _cache_analysis(dataset_id, result)
-
-        result["report_status"] = _report_status_payload(dataset_id)
-        try:
-            from framevitals.ai_agent import answer_with_agent
-
-            agent_response = answer_with_agent(
-                question=question,
-                df=load_dataset(file_path),
-                analysis_result=result,
-            )
-            answer = {
-                "source": agent_response.get("source", "agent"),
-                "answer": agent_response.get("answer", ""),
-                "trace": agent_response.get("trace", {}),
-            }
-        except Exception:
-            answer = answer_dataset_question(
-                question=question,
-                profile=result["profile"],
-                health=result["health"],
-                signals=result["signals"],
-                ml_readiness=result["ml_readiness"],
-                advanced=result.get("advanced"),
-            )
-
-        result["chat_answer"] = answer
-        result["chat_question"] = question
-        return render_template("report.html", result=DotDict.from_dict(result))
-    except Exception:
-        app.logger.exception("Server-rendered question answering failed")
-        return render_template(
-            "error.html",
-            message="Question answering failed. Check the server logs for details.",
-        ), 500
+    """Compatibility tombstone for the removed server-rendered Q&A route."""
+    return jsonify({
+        "error": "The legacy HTML Q&A endpoint has been removed.",
+        "use": "/api/ask",
+    }), 410
 
 
 @app.route("/api/ask", methods=["POST"])
@@ -736,7 +629,7 @@ def download_cleaned(dataset_id):
     try:
         dataset_id = _validate_dataset_id(dataset_id)
     except ValueError:
-        return render_template("error.html", message="Invalid dataset identifier."), 400
+        return jsonify({"error": "Invalid dataset identifier."}), 400
 
     result = _get_cached_analysis(dataset_id)
     cleaning = result.get("cleaning", {}) if isinstance(result, dict) else {}
@@ -744,7 +637,7 @@ def download_cleaned(dataset_id):
     path = _trusted_generated_path(output_value, CLEANED_DIR)
     if _is_nonempty_file(path):
         return send_file(path, as_attachment=True)
-    return render_template("error.html", message="Cleaned dataset not found."), 404
+    return jsonify({"error": "Cleaned dataset not found."}), 404
 
 
 @app.route("/api/report-status/<dataset_id>")
@@ -789,15 +682,14 @@ def download_report(dataset_id):
                 "No cached analysis was found for this dataset. "
                 "Please run analysis again first."
             )
-        return render_template("error.html", message=message), 202
+        return jsonify({"error": message, "status": report_status["status"]}), 202
     except ValueError:
-        return render_template("error.html", message="Invalid dataset identifier."), 400
+        return jsonify({"error": "Invalid dataset identifier."}), 400
     except Exception:
         app.logger.exception("PDF download failed")
-        return render_template(
-            "error.html",
-            message="PDF download failed. Check the server logs for details.",
-        ), 500
+        return jsonify({
+            "error": "PDF download failed. Check the server logs for details."
+        }), 500
 
 
 if __name__ == "__main__":

@@ -6,7 +6,30 @@ FrameVitals follows semantic versioning while the public API matures. The 0.x se
 
 ## Unreleased
 
-No user-facing changes are currently queued beyond 0.3.0.
+### Structured data and ML diagnostics
+
+- Expanded Prism beyond tabular sources to graphs, tensors/embeddings, nested structures, relational projects, PyTorch models, Safetensors checkpoints, and optional ONNX model graphs.
+- Added structured Axiom, Tide, and Pulse workflows, including reference-aware Prism orchestration for supported non-tabular sources.
+- Added graph diagnostics for connectivity, PageRank, approximate betweenness, communities, bridges/articulation points, k-core structure, assortativity, spectral connectivity, and bounded BFS/Dijkstra path analysis.
+- Added tensor diagnostics with exact, randomized, and deterministic sketch-based SVD paths for rank, effective-rank, stable-rank, conditioning, sparsity, and non-finite values.
+- Added deep-model diagnostics for CNN filters, Transformer attention/QKV/embedding/normalization structure, recurrent gate/spectral behavior, optimizer state, activations, gradients, and checkpoint evolution.
+- Added dependency-free Safetensors metadata inspection and optional ONNX graph/initializer analysis.
+- Added bounded nested-structure diagnostics and inferred multi-table relational integrity/cardinality analysis.
+
+### Product and architecture
+
+- Made terminal, notebook, and standalone HTML reports aware of structured source kinds.
+- Removed dashboard-only re-analysis: the React payload now projects the canonical Prism result rather than fitting/running a second analytical pipeline.
+- Retired the duplicate Jinja dashboard; Flask now serves API/artifact responsibilities while the React application is the single product UI.
+- Removed orphaned React components and the superseded architecture-proposal archive.
+- Renamed the old tabular RandomForest diagnostics implementation to `predictive_diagnostics` while retaining a compatibility shim for existing imports.
+- Updated website/SEO/product language to describe structured-data and ML-system diagnostics while clearly identifying the browser uploader as the tabular demo.
+
+### Compatibility and execution
+
+- Existing tabular `analyze()`, focused APIs, and low-level quality-gate workflows remain available.
+- PyTorch remains caller-provided rather than a base dependency; NetworkX and ONNX remain optional extras.
+- Expensive graph, tensor, and model work uses explicit resource bounds or deterministic sketches instead of unconditional full-scale algorithms.
 
 ## 0.3.0 - 2026-09-05
 

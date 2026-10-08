@@ -98,7 +98,7 @@ export function AnalyzePage({ onResult, onNavigate }: AnalyzePageProps) {
     <>
       <Section className="pb-10 pt-6">
         <Eyebrow>Prism protocol</Eyebrow>
-        <PageTitle subtitle="Give Prism a dataset, choose the depth, and optionally focus it on an outcome you care about.">
+        <PageTitle subtitle="The browser demo currently accepts tabular datasets. The Python API also supports graphs, tensors, nested and relational data, PyTorch models, Safetensors, and ONNX.">
           Run Prism.
         </PageTitle>
       </Section>
@@ -107,7 +107,7 @@ export function AnalyzePage({ onResult, onNavigate }: AnalyzePageProps) {
         <SectionHeader
           eyebrow="01 · Dataset"
           title="Upload"
-          description="CSV, TSV, JSON, or Excel. Files stay on your machine."
+          description="CSV, TSV, JSON, or Excel. The selected file is sent to the configured FrameVitals analysis backend."
         />
 
         <motion.button

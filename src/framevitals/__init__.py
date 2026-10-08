@@ -53,6 +53,12 @@ def __getattr__(name: str):
 
 def inspect_source(data: Any) -> dict[str, Any]:
     """Inspect source metadata and execution capabilities without analysis."""
+    from framevitals.core.source import SourceKind, recognize_source
+
+    descriptor = recognize_source(data)
+    if descriptor.kind not in {SourceKind.TABULAR, SourceKind.UNKNOWN}:
+        return descriptor.to_dict()
+
     from framevitals.sources import inspect_source as _inspect_source
 
     return _inspect_source(data)

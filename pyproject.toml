@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "framevitals"
 version = "0.3.0"
-description = "Open-source data analysis, data quality, drift, anomaly detection, and ML-readiness toolkit for tabular data."
+description = "Open-source diagnostics for structured data, graphs, tensors, data quality, drift, and ML models."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -26,6 +26,9 @@ keywords = [
     "data-drift",
     "eda",
     "tabular-data",
+    "graph-analysis",
+    "tensor-analysis",
+    "model-diagnostics",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -62,6 +65,19 @@ ml = [
     "pyod>=2.0",
     "shap>=0.45",
 ]
+graph = [
+    "networkx>=3.4",
+]
+onnx = [
+    "onnx>=1.17",
+]
+documents = [
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "python-pptx>=1.0",
+    "PyYAML>=6.0",
+    "defusedxml>=0.7",
+]
 ai = [
     "ollama>=0.3",
     "pydantic>=2.7",
@@ -91,6 +107,13 @@ all = [
     "lightgbm>=4.3",
     "pyod>=2.0",
     "shap>=0.45",
+    "networkx>=3.4",
+    "onnx>=1.17",
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "python-pptx>=1.0",
+    "PyYAML>=6.0",
+    "defusedxml>=0.7",
     "ollama>=0.3",
     "pydantic>=2.7",
     "flask>=3.0",
@@ -100,6 +123,11 @@ all = [
     "duckdb>=1.4",
 ]
 dev = [
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "python-pptx>=1.0",
+    "PyYAML>=6.0",
+    "defusedxml>=0.7",
     "pytest>=8.2",
     "pytest-cov>=5.0",
     "hypothesis>=6.100",
@@ -111,11 +139,13 @@ dev = [
     "xlrd>=2.0",
     "matplotlib>=3.8",
     "seaborn>=0.13",
+    "networkx>=3.4",
     "pydantic>=2.7",
 ]
 
 [project.scripts]
 framevitals = "framevitals.cli:main"
+fv = "framevitals.cli:main"
 
 [project.urls]
 Homepage = "https://framevitals.vercel.app/"
