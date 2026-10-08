@@ -135,6 +135,38 @@ Weighted graphs with a reliable non-negative `weight` attribute automatically
 use Dijkstra for the sampled path analysis. PyTorch remains optional; FrameVitals
 does not install a deep-learning runtime merely to inspect a model.
 
+## Supported file formats
+
+The **Python CLI/terminal** supports multiple source families. Type
+`fv formats` to view the authoritative, dependency-aware list, or press
+**L** inside the terminal application.
+
+| Source family | Extensions | Dependencies |
+| --- | --- | --- |
+| Tabular | `.csv`, `.tsv` | Base installation |
+| Tabular | `.parquet`, `.xlsx`, `.xls` | `arrow` or `excel` extras |
+| Structured | `.json`, `.jsonl`, `.ndjson`, `.toml`, `.ipynb` | Base installation |
+| Structured | `.yaml`, `.yml` | `documents` extra |
+| Graphs | `.graphml`, `.gexf`, `.gml` | `graph` extra |
+| Tensors | `.npy` | Base installation; safe loading with pickle disabled |
+| Models | `.safetensors`, `.onnx` | Base metadata inspection / `onnx` extra |
+| Documents | `.pdf`, `.docx`, `.pptx`, `.xml` | `documents` extra |
+| Documents | `.txt`, `.md`, `.markdown`, `.rst`, `.log`, `.html`, `.htm` | Base installation |
+| Source files | `.py`, `.c`, `.cpp`, `.h`, `.hpp`, `.js`, `.ts`, `.tsx` | Base installation |
+
+Document analysis reports extracted-text statistics, structure, possible
+encoding issues, missing-text/scanned-page warnings, and source changes via
+Tide. It does not run OCR; it does not execute macros or embedded code.
+The website's upload demo remains tabular-focused.
+
+```bash
+python3 -m pip install -e ".[documents,graph,onnx,excel,arrow]"
+fv formats
+fv prism thesis.pdf --depth quick
+fv prism paper.docx --depth quick
+fv tide original.pdf revised.pdf
+```
+
 ## Terminal dashboard (Mole-inspired)
 
 FrameVitals includes a **keyboard-driven terminal workspace** for macOS and
@@ -147,6 +179,7 @@ fv                     # full-screen diagnostic workspace
 framevitals             # identical interactive launcher
 framevitals tui         # explicit terminal workspace
 framevitals ui --plain  # line-oriented fallback
+framevitals formats      # supported files and missing dependencies
 ```
 
 The menu offers **Prism, Tide, Axiom, Pulse, Inspect, and read-only Forge
