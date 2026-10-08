@@ -15,6 +15,7 @@ class SourceKind(str, Enum):
     TENSOR = "tensor"
     MODEL = "model"
     RELATIONAL = "relational"
+    DOCUMENT = "document"
     STREAM = "stream"
     UNKNOWN = "unknown"
 
@@ -165,6 +166,30 @@ def recognize_source(value: Any) -> SourceDescriptor:
 
     if isinstance(value, (str, Path)):
         suffix = Path(value).suffix.lower()
+        from framevitals.file_formats import format_for
+
+        file_spec = format_for(value)
+        if file_spec is not None and file_spec.category == "Document":
+            return SourceDescriptor(
+                kind=SourceKind.DOCUMENT,
+                python_type=_type_name(value),
+                capabilities=("text_extraction", "document_structure", "quality", "change"),
+                metadata={"format": suffix.lstrip("."), "category": "document"},
+            )
+        if file_spec is not None and file_spec.category == "Tensor":
+            return SourceDescriptor(
+                kind=SourceKind.TENSOR,
+                python_type=_type_name(value),
+                capabilities=("shape", "distribution", "rank", "sparsity"),
+                metadata={"format": suffix.lstrip("."), "framework": "numpy"},
+            )
+        if file_spec is not None and file_spec.category == "Nested":
+            return SourceDescriptor(
+                kind=SourceKind.NESTED,
+                python_type=_type_name(value),
+                capabilities=("nested", "schema", "type_conflicts"),
+                metadata={"format": suffix.lstrip(".")},
+            )
         if suffix == ".safetensors":
             return SourceDescriptor(
                 kind=SourceKind.MODEL,
