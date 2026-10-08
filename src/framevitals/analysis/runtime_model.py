@@ -8,7 +8,7 @@ requires PyTorch at FrameVitals import time.
 from __future__ import annotations
 
 import math
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from time import perf_counter
 from typing import Any
 
@@ -130,6 +130,43 @@ def _invoke_model(model: Any, inputs: Any) -> Any:
     return model(inputs)
 
 
+def _cuda_observation_devices(model: Any, inputs: Any) -> list[int]:
+    """Only fork RNG on CUDA devices already holding input/model tensors."""
+    devices: set[int] = set()
+    for value in (
+        list(model.parameters())
+        + list(model.buffers())
+        + list(_iter_tensors(inputs))
+    ):
+        device = getattr(value, "device", None)
+        if getattr(device, "type", None) == "cuda":
+            devices.add(int(device.index) if device.index is not None else 0)
+    return sorted(devices)
+
+
+@contextmanager
+def _isolated_model_observation(model: Any, inputs: Any, torch: Any):
+    """Run an observational pass in evaluation mode and restore module flags.
+
+    Training-mode BatchNorm changes running statistics and dropout consumes
+    randomness. Eval mode plus torch.random.fork_rng avoids both common side
+    effects. Arbitrary custom forward implementations may still mutate other
+    Python state or user-defined buffers; do not advertise full purity.
+    """
+    states = [(module, bool(module.training)) for module in model.modules()]
+    cuda_devices = _cuda_observation_devices(model, inputs)
+
+    with torch.random.fork_rng(devices=cuda_devices):
+        try:
+            model.eval()
+            yield
+        finally:
+            # Directly restore every module flag. Calling model.train() would
+            # overwrite intentionally mixed per-module training/eval states.
+            for module, training in states:
+                module.training = training
+
+
 def _loss_value(output: Any, *, targets: Any, loss_fn: Any) -> Any:
     if loss_fn is not None:
         return loss_fn(output, targets) if targets is not None else loss_fn(output)
@@ -247,59 +284,60 @@ def observe_model_runtime(
     backward_ms: float | None = None
 
     try:
-        for name, module in selected:
-            module_type = type(module).__name__
-            handles.append(module.register_forward_hook(forward_hook(name, module_type)))
-
-        started = perf_counter()
-        context = nullcontext() if backward else torch.no_grad()
-        with context:
-            output = _invoke_model(model, inputs)
-        forward_ms = (perf_counter() - started) * 1000.0
-
-        if backward:
-            loss = _loss_value(output, targets=targets, loss_fn=loss_fn)
-            if not hasattr(loss, "numel") or int(loss.numel()) != 1:
-                raise ValueError("loss_fn must return a scalar tensor for backward diagnostics.")
-            loss_scalar = float(loss.detach().cpu().item())
-
-            named_trainable = [
-                (name, parameter)
-                for name, parameter in model.named_parameters()
-                if bool(getattr(parameter, "requires_grad", False))
-            ]
-            params = [parameter for _, parameter in named_trainable]
-
+        with _isolated_model_observation(model, inputs, torch):
+            for name, module in selected:
+                module_type = type(module).__name__
+                handles.append(module.register_forward_hook(forward_hook(name, module_type)))
+    
             started = perf_counter()
-            grads = torch.autograd.grad(
-                loss,
-                params,
-                allow_unused=True,
-                retain_graph=False,
-                create_graph=False,
-            )
-            backward_ms = (perf_counter() - started) * 1000.0
-
-            for (name, _parameter), grad in zip(named_trainable, grads, strict=True):
-                if grad is None:
+            context = nullcontext() if backward else torch.no_grad()
+            with context:
+                output = _invoke_model(model, inputs)
+            forward_ms = (perf_counter() - started) * 1000.0
+    
+            if backward:
+                loss = _loss_value(output, targets=targets, loss_fn=loss_fn)
+                if not hasattr(loss, "numel") or int(loss.numel()) != 1:
+                    raise ValueError("loss_fn must return a scalar tensor for backward diagnostics.")
+                loss_scalar = float(loss.detach().cpu().item())
+    
+                named_trainable = [
+                    (name, parameter)
+                    for name, parameter in model.named_parameters()
+                    if bool(getattr(parameter, "requires_grad", False))
+                ]
+                params = [parameter for _, parameter in named_trainable]
+    
+                started = perf_counter()
+                grads = torch.autograd.grad(
+                    loss,
+                    params,
+                    allow_unused=True,
+                    retain_graph=False,
+                    create_graph=False,
+                )
+                backward_ms = (perf_counter() - started) * 1000.0
+    
+                for (name, _parameter), grad in zip(named_trainable, grads, strict=True):
+                    if grad is None:
+                        parameter_gradients.append({
+                            "name": name,
+                            "available": False,
+                            "reason": "unused",
+                        })
+                        continue
+                    try:
+                        observation = _tensor_observation(
+                            grad,
+                            sample_limit=max(1_024, sample_values // 2),
+                        )
+                    except Exception:
+                        continue
                     parameter_gradients.append({
                         "name": name,
-                        "available": False,
-                        "reason": "unused",
+                        "available": True,
+                        **observation,
                     })
-                    continue
-                try:
-                    observation = _tensor_observation(
-                        grad,
-                        sample_limit=max(1_024, sample_values // 2),
-                    )
-                except Exception:
-                    continue
-                parameter_gradients.append({
-                    "name": name,
-                    "available": True,
-                    **observation,
-                })
     finally:
         for handle in handles:
             try:
@@ -485,6 +523,10 @@ def observe_model_runtime(
 
     return {
         "available": True,
+        "observation_mode": "temporary_eval",
+        "training_flags_restored": True,
+        "torch_rng_restored": True,
+        "model_buffer_purity_guaranteed": False,
         "observed_modules": len(selected),
         "total_leaf_modules": total_leaf_modules,
         "module_sampling": len(selected) < total_leaf_modules,
