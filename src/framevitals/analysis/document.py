@@ -86,12 +86,14 @@ def _extract(path: Path, suffix: str, depth: str) -> tuple[str, dict[str, Any]]:
         )
         chunks = []
         empty_pages = 0
-        for page in list(reader.pages)[:page_limit]:
-            extracted = (page.extract_text() or "")[:80_000]
+        characters = 0
+        for index in range(min(count, page_limit)):
+            extracted = (reader.pages[index].extract_text() or "")[:80_000]
             if not extracted.strip():
                 empty_pages += 1
             chunks.append(extracted)
-            if sum(map(len, chunks)) >= text_cap:
+            characters += len(extracted)
+            if characters >= text_cap:
                 meta["truncated"] = True
                 break
         text = "\n".join(chunks)[:text_cap]
@@ -112,15 +114,29 @@ def _extract(path: Path, suffix: str, depth: str) -> tuple[str, dict[str, Any]]:
             raise ImportError('DOCX support: pip install "framevitals[documents]"') from exc
         doc = Document(path)
         lines = []
+        characters = 0
         headings = 0
         for paragraph in doc.paragraphs[:15_000]:
             if paragraph.style and paragraph.style.name.lower().startswith("heading"):
                 headings += 1
             if paragraph.text.strip():
                 lines.append(paragraph.text)
-            if sum(map(len, lines)) >= text_cap:
+                characters += len(paragraph.text)
+            if characters >= text_cap:
                 meta["truncated"] = True
                 break
+        for table in doc.tables[:100]:
+            if characters >= text_cap:
+                meta["truncated"] = True
+                break
+            for row in table.rows[:500]:
+                for cell in row.cells[:50]:
+                    if cell.text.strip():
+                        lines.append(cell.text)
+                        characters += len(cell.text)
+                if characters >= text_cap:
+                    meta["truncated"] = True
+                    break
         meta.update({
             "paragraphs": len(doc.paragraphs),
             "headings": headings,
@@ -136,6 +152,7 @@ def _extract(path: Path, suffix: str, depth: str) -> tuple[str, dict[str, Any]]:
             raise ImportError('PPTX support: pip install "framevitals[documents]"') from exc
         presentation = Presentation(path)
         lines = []
+        characters = 0
         slides = len(presentation.slides)
         slide_limit = {"quick": 30, "standard": 100, "deep": 300, "research": 500}.get(
             depth, 100
@@ -146,7 +163,14 @@ def _extract(path: Path, suffix: str, depth: str) -> tuple[str, dict[str, Any]]:
             for shape in slide.shapes:
                 if getattr(shape, "has_text_frame", False) and shape.text.strip():
                     lines.append(shape.text)
-            if sum(map(len, lines)) >= text_cap:
+                    characters += len(shape.text)
+                if getattr(shape, "has_table", False):
+                    for row in shape.table.rows:
+                        for cell in row.cells:
+                            if cell.text.strip():
+                                lines.append(cell.text)
+                                characters += len(cell.text)
+            if characters >= text_cap:
                 meta["truncated"] = True
                 break
         meta.update({
