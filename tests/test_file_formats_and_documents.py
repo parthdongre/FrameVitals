@@ -48,6 +48,16 @@ def test_cli_formats_command_runs_without_tty(monkeypatch, capsys):
     assert any(".pdf" in item["extensions"] for item in payload)
 
 
+def test_cli_doctor_identifies_installation_and_terminal(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["framevitals", "doctor"])
+    assert main() == 0
+    text = capsys.readouterr().out
+    assert "FrameVitals" in text
+    assert "Package path" in text
+    assert "Python" in text
+    assert "TTY support" in text
+
+
 def test_tui_formats_page_uses_same_registry():
     state = TerminalState(page=3)
     content = "\n".join(view_lines(state))
