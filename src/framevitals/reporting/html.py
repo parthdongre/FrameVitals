@@ -58,6 +58,19 @@ def _source_metrics(result: Mapping[str, Any]) -> list[tuple[str, Any]]:
             ("Effective rank", matrix.get("effective_rank", "n/a")),
         ]
 
+    if kind == "document":
+        doc = result.get("document", {}) or {}
+        return [
+            ("Format", str(doc.get("format", "unknown")).upper()),
+            ("Pages / slides", doc.get("pages", doc.get("slides", "n/a"))),
+            ("Pages inspected", doc.get("pages_analyzed", "n/a")),
+            ("Words", doc.get("words", 0)),
+            ("Characters", doc.get("characters", 0)),
+            ("Lines", doc.get("lines", 0)),
+            ("Duplicate lines", doc.get("duplicate_lines", 0)),
+            ("Inspection truncated", doc.get("truncated", False)),
+        ]
+
     if kind == "model":
         model = result.get("model", {}) or {}
         runtime = model.get("runtime", {}) or {}
