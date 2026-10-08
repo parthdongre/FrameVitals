@@ -129,33 +129,50 @@ def _safe_float(value: Any) -> float | None:
     return result if math.isfinite(result) else None
 
 
-def _detect_weight_attribute(graph: Any) -> str | None:
-    """Select Dijkstra only after checking *all* weighted edges.
+def _inspect_edge_weights(graph: Any, *, attribute: str = "weight") -> dict[str, Any]:
+    """Validate all edge costs in O(E) time and constant additional memory.
 
-    A sample can miss a late negative edge and make the shortest-path routine
-    invalid. The O(E) validation is inexpensive compared with multiple sampled
-    shortest-path traversals and requires only constant additional memory.
-    Missing weights are interpreted as unit costs by NetworkX.
+    A sampled check can miss a later negative edge, making Dijkstra invalid.
+    Missing edge weights are interpreted as unit costs by NetworkX.
     """
-    checked = 0
-    valid = 0
+    checked = valid = invalid = negative = nonnumeric = missing = 0
     try:
         iterator = graph.edges(data=True)
     except Exception:
-        return None
+        return {"selected": None, "status": "unavailable"}
 
     for _, _, data in iterator:
         checked += 1
-        if not isinstance(data, dict) or "weight" not in data:
+        if not isinstance(data, dict) or attribute not in data:
+            missing += 1
             continue
-        numeric = _safe_float(data["weight"])
-        if numeric is None or numeric < 0:
-            return None
-        valid += 1
+        numeric = _safe_float(data[attribute])
+        if numeric is None:
+            invalid += 1
+            nonnumeric += 1
+        elif numeric < 0:
+            invalid += 1
+            negative += 1
+        else:
+            valid += 1
 
-    if checked == 0:
-        return None
-    return "weight" if valid / checked >= 0.80 else None
+    selected = attribute if checked and not invalid and valid / checked >= 0.80 else None
+    return {
+        "selected": selected,
+        "status": "invalid" if invalid else "selected" if selected else "unweighted",
+        "attribute": attribute,
+        "edges_checked": checked,
+        "edges_with_valid_weights": valid,
+        "edges_without_weights": missing,
+        "invalid_weights": invalid,
+        "negative_weights": negative,
+        "nonnumeric_or_nonfinite_weights": nonnumeric,
+    }
+
+
+def _detect_weight_attribute(graph: Any) -> str | None:
+    """Compatibility helper for the conventional NetworkX weight attribute."""
+    return _inspect_edge_weights(graph)["selected"]
 
 
 def _health_label(score: float) -> str:
@@ -611,7 +628,12 @@ def analyze_graph(
     self_loops = int(nx.number_of_selfloops(graph)) if n else 0
     density = float(nx.density(graph)) if n > 1 else 0.0
 
-    resolved_weight = weight or _detect_weight_attribute(graph)
+    weight_inspection = _inspect_edge_weights(graph, attribute=weight or "weight")
+    if weight is not None and weight_inspection.get("invalid_weights", 0):
+        raise ValueError(
+            "Dijkstra requires finite, non-negative weights for every weighted edge."
+        )
+    resolved_weight = weight or weight_inspection.get("selected")
     if n > budget["path_nodes"] or m > budget["path_edges"]:
         paths = {
             "available": False,
@@ -678,6 +700,25 @@ def analyze_graph(
                 summary=f"{len(isolates):,} nodes ({isolate_ratio:.1%}) have degree zero.",
                 recommendation="Check orphan entities, missing relationships, or filtering errors.",
                 evidence={"isolates": len(isolates), "ratio": round(isolate_ratio, 6)},
+            )
+        )
+
+    if weight_inspection.get("invalid_weights", 0):
+        findings.append(
+            beacon(
+                "graph.invalid_edge_weights",
+                "Invalid edge weights prevent weighted shortest-path analysis",
+                severity="high" if weight_inspection["negative_weights"] else "medium",
+                summary=(
+                    f"{weight_inspection['invalid_weights']:,} edges contain negative, "
+                    "non-finite, or nonnumeric weights. Shortest paths use "
+                    "unweighted BFS instead of Dijkstra."
+                ),
+                recommendation=(
+                    "Validate edge costs and choose a weighted path algorithm "
+                    "only after confirming its assumptions."
+                ),
+                evidence=dict(weight_inspection),
             )
         )
 
@@ -787,6 +828,7 @@ def analyze_graph(
         "isolates": len(isolates),
         "self_loops": self_loops,
         "weight_attribute": resolved_weight,
+        "weight_validation": weight_inspection,
         "degree": degrees,
         "components": components,
         "shortest_paths": paths,
