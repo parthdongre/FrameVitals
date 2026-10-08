@@ -93,8 +93,6 @@ def _source_lines(result: Mapping[str, Any]) -> list[str]:
 
 def render_terminal_summary(result: Mapping[str, Any]) -> str:
     """Render a compact report suitable for interactive terminal output."""
-    profile = result.get("profile", {}) or {}
-    shape = profile.get("shape", {}) or {}
     health = result.get("health", {}) or {}
     ml = result.get("ml_readiness", {}) or {}
     findings = result.get("findings", []) or []
