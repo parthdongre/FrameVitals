@@ -390,7 +390,14 @@ def prism(
     # Structured non-tabular sources are recognized before entering the mature
     # tabular dispatcher. This keeps graph/tensor/model diagnostics isolated
     # from pandas-specific execution while preserving one public Prism call.
-    from framevitals.structured_analysis import analyze_structured
+    from framevitals.structured_analysis import (
+        analyze_structured,
+        normalize_structured_input,
+    )
+
+    data = normalize_structured_input(data)
+    if reference is not None:
+        reference = normalize_structured_input(reference)
 
     structured_analysis = analyze_structured(
         data,
@@ -566,13 +573,18 @@ def axiom(
 ) -> AxiomResult:
     """Establish expectations from a reference and optionally test current data."""
     from framevitals.core.source import SourceKind, recognize_source
+    from framevitals.structured_analysis import normalize_structured_input
 
+    reference = normalize_structured_input(reference)
+    if current is not None:
+        current = normalize_structured_input(current)
     descriptor = recognize_source(reference)
     structured_kinds = {
         SourceKind.GRAPH,
         SourceKind.TENSOR,
         SourceKind.NESTED,
         SourceKind.RELATIONAL,
+        SourceKind.DOCUMENT,
         SourceKind.MODEL,
     }
 
