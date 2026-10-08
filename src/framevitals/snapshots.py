@@ -94,6 +94,20 @@ def _structured_state(result: Mapping[str, Any], source_kind: str) -> dict[str, 
             } if optimizer else {},
         }
 
+    if source_kind == "document":
+        document = _as_mapping(result.get("document"))
+        return {
+            "format": document.get("format"),
+            "pages": document.get("pages"),
+            "slides": document.get("slides"),
+            "words": document.get("words"),
+            "lines": document.get("lines"),
+            "characters": document.get("characters"),
+            "empty_text": document.get("empty_text"),
+            "truncated": document.get("truncated"),
+            "sampled_text_sha256": document.get("sampled_text_sha256"),
+        }
+
     if source_kind == "nested":
         nested = _as_mapping(result.get("nested"))
         arrays = _as_mapping(nested.get("arrays"))
