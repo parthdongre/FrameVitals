@@ -147,7 +147,10 @@ def run_diagnostic(
     elif action == "Axiom":
         from framevitals.protocols import axiom
 
-        result = axiom(baseline if baseline is not None else data, current=data if baseline is not None else None)
+        result = axiom(
+            baseline if baseline is not None else data,
+            current=data if baseline is not None else None,
+        )
     elif action == "Pulse":
         from framevitals.protocols import pulse
 
@@ -482,9 +485,13 @@ def _screen(stdscr: Any) -> int:
             attr = curses.A_BOLD if line.startswith(("WELCOME", "BEACONS")) else 0
             put(9 + i, x, line, attr=attr)
         if limit:
-            put(height - 3, x, f"Lines {state.scroll + 1}-{min(len(body), state.scroll + visible_height)} / {len(body)}")
+            current_end = min(len(body), state.scroll + visible_height)
+            put(height - 3, x, f"Lines {state.scroll + 1}-{current_end} / {len(body)}")
         put(height - 2, 1, "─" * (width - 3))
-        put(height - 1, 1, " ↑↓ menu  Enter run  F path  P browse  B baseline  D depth  Tab  E export  Q")
+        put(
+            height - 1, 1,
+            " ↑↓ menu  Enter run  F path  P browse  B baseline  D depth  Tab  E export  Q",
+        )
         if state.notice:
             msg_color = curses.color_pair(4) if state.error and curses.has_colors() else yellow
             put(height - 3, 2, state.notice[:sidebar - 3], attr=msg_color)
@@ -498,7 +505,10 @@ def _screen(stdscr: Any) -> int:
             state.page = 0
             state.scroll = 0
             state.error = error is not None
-            state.notice = error or f"{response.action} complete. Tab to explore." if response else error or ""
+            state.notice = (
+                error
+                or (f"{response.action} complete. Tab to explore." if response else "")
+            )
         except queue.Empty:
             pass
         draw()
