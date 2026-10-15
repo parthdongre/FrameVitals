@@ -16,6 +16,13 @@ theme:
 
 nav:
   - Home: index.md
+  - Platform guide: platform.md
+  - Engineering audit:
+      - Baseline: audits/SOL_PLATFORM_BASELINE.md
+      - Audit: audits/SOL_PLATFORM_AUDIT.md
+      - Module map: audits/SOL_MODULE_MAP.md
+      - Sol handoff: work-handoff/SOL_HANDOFF.md
+      - Astra backlog: work-handoff/ASTRA_SCIENCE_BACKLOG.md
   - Protocol architecture: protocols.md
   - Structured data and model diagnostics: structured-data.md
   - Terminal workspace: terminal-ui.md
