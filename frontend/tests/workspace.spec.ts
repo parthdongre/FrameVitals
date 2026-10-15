@@ -112,3 +112,28 @@ test("unsafe input produces an actionable error without navigating", async ({
     page.getByRole("button", { name: "Run analysis" }),
   ).toBeDisabled();
 });
+
+test('graph and tensor results expose source-specific measured views', async ({ page }) => {
+  await page.goto('/#/analyze');
+  const graph = '<?xml version="1.0"?><graphml xmlns="http://graphml.graphdrawing.org/xmlns"><graph edgedefault="undirected"><node id="alpha"/><node id="beta"/><edge source="alpha" target="beta"/></graph></graphml>';
+  await page.getByLabel('Source file', { exact: true }).setInputFiles({ name: 'network.graphml', mimeType: 'application/xml', buffer: Buffer.from(graph) });
+  await expect(page.getByText('graph detected')).toBeVisible();
+  await page.getByRole('radio', { name: 'Quick' }).check();
+  await page.getByRole('button', { name: 'Run analysis' }).click();
+  await expect(page.getByRole('heading', { name: 'Network excerpt' })).toBeVisible();
+  await expect(page.getByRole('img', { name: /Graph excerpt with 2 nodes and 1 edges/ })).toBeVisible();
+  expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual([]);
+  await page.getByRole('button', { name: 'New analysis' }).click();
+  // Small v1 NPY numeric fixture; never contains Python objects.
+  const rawHeader = "{'descr': '<f8', 'fortran_order': False, 'shape': (2, 2), }";
+  const header = rawHeader + ' '.repeat((64 - (10 + rawHeader.length + 1) % 64) % 64) + '\n';
+  const prefix = Buffer.alloc(10); prefix.set([0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59, 1, 0]); prefix.writeUInt16LE(header.length, 8);
+  const values = Buffer.alloc(32); [1, 0, 0, 1].forEach((v, i) => values.writeDoubleLE(v, i * 8));
+  await page.getByLabel('Source file', { exact: true }).setInputFiles({ name: 'matrix.npy', mimeType: 'application/octet-stream', buffer: Buffer.concat([prefix, Buffer.from(header), values]) });
+  await expect(page.getByText('tensor detected')).toBeVisible();
+  await page.getByRole('radio', { name: 'Quick' }).check();
+  await page.getByRole('button', { name: 'Run analysis' }).click();
+  await expect(page.getByRole('heading', { name: 'Singular values (up to 24)' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Value diagnostics' })).toBeVisible();
+  expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual([]);
+});
