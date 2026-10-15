@@ -107,8 +107,14 @@ def test_archive_and_xml_preflight(tmp_path):
         validate_input(path)
     xml = tmp_path / "graph.graphml"
     xml.write_text('<!DOCTYPE x [<!ENTITY a "boom">]><x>&a;</x>')
-    with pytest.raises(ValueError, match="unsafe XML"):
-        validate_input(xml)
+    from importlib.util import find_spec
+
+    if find_spec("defusedxml") is None:
+        with pytest.raises(ImportError, match="Safe XML parsing requires"):
+            validate_input(xml)
+    else:
+        with pytest.raises(ValueError, match="unsafe XML"):
+            validate_input(xml)
 
 
 @pytest.fixture
@@ -310,7 +316,31 @@ def test_capacity_limit_rejects_without_leaving_uploads(web):
 
 def test_html_missing_score_is_unavailable():
     from framevitals.reporting.html import render_html_report
-    result = AnalysisResult({'filename': 'missing.csv', 'health': {'overall_score': None}, 'ml_readiness': {'score': None}})
+
+    result = AnalysisResult(
+        {
+            "filename": "missing.csv",
+            "health": {"overall_score": None},
+            "ml_readiness": {"score": None},
+        }
+    )
     html = render_html_report(result)
-    assert 'Unavailable' in html
-    assert '0/100' not in html
+    assert "Unavailable" in html
+    assert "0/100" not in html
+
+
+def test_xml_fails_closed_without_optional_parser(tmp_path, monkeypatch):
+    import builtins
+
+    original = builtins.__import__
+
+    def missing(name, *args, **kwargs):
+        if name == "defusedxml.ElementTree":
+            raise ImportError("parser is absent")
+        return original(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", missing)
+    path = tmp_path / "source.xml"
+    path.write_text("<document />")
+    with pytest.raises(ImportError, match="Safe XML parsing requires"):
+        validate_input(path)
