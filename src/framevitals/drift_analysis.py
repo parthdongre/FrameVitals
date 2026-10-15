@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from scipy.spatial.distance import jensenshannon
+from framevitals.scientific import adjusted_pvalues
 
 
 _SEVERITY_ORDER = {
@@ -204,7 +205,7 @@ def _numeric_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict[str
             warnings.simplefilter("ignore")
             ks_stat, ks_p = stats.ks_2samp(ref_arr, cur_arr)
         ks_stat = _safe_float(ks_stat)
-        ks_p = _safe_float(ks_p)
+        ks_p = float(ks_p) if np.isfinite(ks_p) else None
     except Exception:
         ks_stat, ks_p = None, None
 
@@ -253,6 +254,10 @@ def _numeric_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict[str
         "ref_std": _safe_float(ref_std),
         "cur_std": _safe_float(cur_std),
         "z_shift": _safe_float(z_shift),
+        "z_shift_definition": "mean_difference_over_reference_std_with_current_std_fallback",
+        "energy_distance": float(stats.energy_distance(ref_arr, cur_arr)),
+        "energy_distance_units": "square_root_of_input_units",
+        "test_assumptions": "Independent samples; continuous distributions for KS p-values. Ties can make continuous-null p-values conservative.",
         "drift_severity": severity,
         **missingness,
         "histogram": {
@@ -353,10 +358,15 @@ def _categorical_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict
                 [int(cur_counts.get(c, 0)) for c in top_categories],
             ]
         )
+        if len(categories) > 30:
+            tail = np.array([[int(ref_counts.get(c,0)) for c in categories[30:]], [int(cur_counts.get(c,0)) for c in categories[30:]]]).sum(axis=1)
+            table = np.column_stack([table,tail])
         if table.shape[1] >= 2 and (table.sum(axis=0) > 0).all():
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                chi2_stat, chi2_p, dof, _ = stats.chi2_contingency(table)
+                chi2_stat, chi2_p, dof, expected = stats.chi2_contingency(table, correction=False)
+                if not (expected >= 5).all():
+                    chi2_p = None
     except Exception:
         pass
 
@@ -386,7 +396,9 @@ def _categorical_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict
         "jensen_shannon_distance": _safe_float(js_distance),
         "jensen_shannon_severity": js_severity,
         "chi2_statistic": _safe_float(chi2_stat),
-        "chi2_p_value": _safe_float(chi2_p),
+        "chi2_p_value": float(chi2_p) if chi2_p is not None else None,
+        "chi2_inference_available": chi2_p is not None,
+        "chi2_assumptions": "Independent observations; expected counts >=5; categories after largest 30 pooled into a tail cell",
         "chi2_dof": int(dof) if dof is not None else None,
         "chi2_significant": bool(chi2_p is not None and chi2_p < 0.01),
         "n_categories_ref": int(len(ref_unique)),
@@ -413,8 +425,8 @@ def _datetime_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict[st
             **missingness,
         }
 
-    ref_days = ref_dt.astype("int64").to_numpy(dtype="float64") / 86_400_000_000_000
-    cur_days = cur_dt.astype("int64").to_numpy(dtype="float64") / 86_400_000_000_000
+    ref_days = ref_dt.dt.as_unit("ns").astype("int64").to_numpy(dtype="float64") / 86_400_000_000_000
+    cur_days = cur_dt.dt.as_unit("ns").astype("int64").to_numpy(dtype="float64") / 86_400_000_000_000
     psi = _psi_numeric(ref_days, cur_days)
     wasserstein = _normalized_wasserstein(ref_days, cur_days)
     try:
@@ -443,7 +455,7 @@ def _datetime_column_drift(name: str, ref: pd.Series, cur: pd.Series) -> dict[st
         "wasserstein_normalized": _safe_float(wasserstein),
         "wasserstein_severity": wasserstein_severity,
         "ks_statistic": _safe_float(ks_stat),
-        "ks_p_value": _safe_float(ks_p),
+        "ks_p_value": float(ks_p) if ks_p is not None and np.isfinite(ks_p) else None,
         "ks_significant": bool(ks_p is not None and ks_p < 0.01),
         "ref_min": ref_dt.min().isoformat(),
         "ref_max": ref_dt.max().isoformat(),
@@ -547,6 +559,19 @@ def compare_datasets(
 
     column_results = [_column_drift(name, df_ref[name], df_cur[name]) for name in shared]
 
+    tests = [(entry, "chi2" if entry.get("type") == "categorical" else "ks") for entry in column_results if entry.get("available")]
+    qs = adjusted_pvalues([entry.get(f"{test}_p_value") for entry, test in tests])
+    for (entry, test), q in zip(tests, qs):
+        entry[f"{test}_significant_unadjusted"] = entry.get(f"{test}_significant")
+        entry[f"{test}_q_value"] = q
+        entry[f"{test}_significant"] = q is not None and q < .01
+        entry["multiple_testing"] = "benjamini_yekutieli_across_returned_columns"
+        entry["test_family_size"] = sum(value is not None for value in qs)
+        entry["drift_severity"] = _max_severity(entry.get("psi_severity", "unknown"),
+            entry.get("wasserstein_severity", "unknown"), entry.get("jensen_shannon_severity", "unknown"),
+            entry["missingness_severity"], "minor" if entry[f"{test}_significant"] else "stable")
+        entry["interpretation"] = "Severity includes heuristic effect thresholds; FDR adjustment does not calibrate the overall verdict."
+
     severity_counts = Counter(
         entry.get("drift_severity", "unknown") for entry in column_results
     )
@@ -596,9 +621,9 @@ def compare_datasets(
         entry["column"] for entry in column_results if entry.get("drift_severity") == "moderate"
     ]
     if severe_columns:
-        gate_reasons.append(f"Severe drift detected in: {', '.join(severe_columns[:10])}.")
+        gate_reasons.append(f"Severe drift detected in: {', '.join(map(str, severe_columns[:10]))}.")
     elif moderate_columns:
-        gate_reasons.append(f"Moderate drift detected in: {', '.join(moderate_columns[:10])}.")
+        gate_reasons.append(f"Moderate drift detected in: {', '.join(map(str, moderate_columns[:10]))}.")
 
     if overall_verdict == "severe":
         gate_status = "fail"

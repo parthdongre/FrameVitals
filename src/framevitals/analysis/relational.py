@@ -81,8 +81,8 @@ def _relationship(
     left_unique = column in left_summary["key_candidates"]
     right_unique = column in right_summary["key_candidates"]
 
-    left_values = set(left_series.astype(str).tolist())
-    right_values = set(right_series.astype(str).tolist())
+    left_values = set(left_series.tolist())
+    right_values = set(right_series.tolist())
     intersection = left_values & right_values
     left_coverage = len(intersection) / max(1, len(left_values))
     right_coverage = len(intersection) / max(1, len(right_values))
@@ -108,8 +108,8 @@ def _relationship(
         child = None
         child_coverage = min(left_coverage, right_coverage)
 
-    left_counts = left_series.astype(str).value_counts()
-    right_counts = right_series.astype(str).value_counts()
+    left_counts = left_series.value_counts()
+    right_counts = right_series.value_counts()
     common = set(left_counts.index) & set(right_counts.index)
     estimated_join_rows_sample = int(
         sum(int(left_counts[key]) * int(right_counts[key]) for key in common)
@@ -117,6 +117,11 @@ def _relationship(
     join_expansion = estimated_join_rows_sample / max(1, len(left), len(right))
 
     return {
+        "relationship_status": "inferred_candidate", "coverage_population": "distinct_nonmissing_keys",
+        "sampling_method": "prefix",
+        "interpretation": "Shared names and observed overlap do not confirm constraints. Prefix samples can bias uniqueness and coverage.",
+        "left_row_coverage": round(float(left_series.isin(right_values).mean()), 8) if len(left_series) else None,
+        "right_row_coverage": round(float(right_series.isin(left_values).mean()), 8) if len(right_series) else None,
         "left_table": left_name,
         "right_table": right_name,
         "column": column,

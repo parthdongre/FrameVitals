@@ -353,14 +353,28 @@ export function PlatformReport({
             <NetworkExcerpt value={domain.topology_preview} />
           )}
           {kind === "tensor" && (
-            <Bars
-              title="Singular values (up to 24)"
-              values={Object.fromEntries(
-                ((asObject(domain.matrix).singular_values ?? []) as number[])
-                  .slice(0, 24)
-                  .map((v, i) => [String(i + 1), v]),
-              )}
-            />
+            <div>
+              <Bars
+                title="Singular values (up to 24)"
+                values={Object.fromEntries(
+                  ((asObject(domain.matrix).singular_values ?? []) as number[])
+                    .slice(0, 24)
+                    .map((v, i) => [String(i + 1), v]),
+                )}
+              />
+              <p className="workspace-muted mt-2">
+                {!asObject(domain.matrix).method
+                  ? "No valid matrix spectrum is available. "
+                  : asObject(domain.matrix).population === "sampled_submatrix"
+                  ? "Spectrum of a sampled submatrix; it does not estimate full-matrix rank. "
+                  : "Spectrum of the full matrix. "}
+                {!asObject(domain.matrix).method
+                  ? ""
+                  : asObject(domain.matrix).approximate
+                  ? "Randomized approximation; displayed values may be truncated."
+                  : "Full SVD; displayed values may be truncated."}
+              </p>
+            </div>
           )}
           {kind === "graph" && (
             <Bars title="Degree summary" values={asObject(domain.degree)} />

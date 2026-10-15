@@ -1,0 +1,18 @@
+{
+  "methods_version": "2",
+  "seed": 42,
+  "oracles": [
+    {"kind": "diagonal", "values": [4, 2, 1], "rank": 3, "stable_rank": 1.3125, "condition": 4},
+    {"kind": "diagonal", "values": [3, 0], "rank": 1, "stable_rank": 1, "condition": null},
+    {"kind": "path", "nodes": 4, "mean_distance": 1.6666666666666667, "bridges": 3, "max_core": 1},
+    {"kind": "cycle", "nodes": 5, "mean_distance": 1.5, "bridges": 0, "max_core": 2},
+    {"kind": "complete", "nodes": 5, "mean_distance": 1, "bridges": 0, "max_core": 4}
+  ],
+  "tolerances": {"rounded_graph_distance_absolute": 0.000001, "float64_rank_ratio_absolute": 0.00000001},
+  "definitions": {
+    "path_mean": "For P_n, average over ordered distinct pairs is (n+1)/3",
+    "cycle_mean": "For odd n, average over distinct pairs is (n+1)/4",
+    "stable_rank": "sum(diagonal_squared)/max(diagonal_squared)",
+    "condition": "largest/smallest singular value; null under exposed numerical rank tolerance"
+  }
+}

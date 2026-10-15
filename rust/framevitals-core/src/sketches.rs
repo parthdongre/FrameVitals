@@ -128,8 +128,7 @@ impl LogQuantileSketch {
             relative_accuracy > 0.0 && relative_accuracy < 1.0,
             "relative accuracy must be between 0 and 1"
         );
-        let gamma = (1.0 + relative_accuracy) / (1.0 - relative_accuracy);
-        let log_gamma = gamma.ln();
+        let log_gamma = relative_accuracy.ln_1p() - (-relative_accuracy).ln_1p();
         Self {
             relative_accuracy,
             log_gamma,
@@ -149,7 +148,7 @@ impl LogQuantileSketch {
 
     #[inline]
     fn representative(&self, key: i32) -> f64 {
-        ((key as f64 + 0.5) * self.log_gamma).exp()
+        (key as f64 * self.log_gamma + self.relative_accuracy.ln_1p()).exp()
     }
 
     #[inline]
@@ -170,7 +169,7 @@ impl LogQuantileSketch {
     #[must_use]
     pub fn merge(mut self, other: Self) -> Self {
         assert!(
-            (self.relative_accuracy - other.relative_accuracy).abs() <= f64::EPSILON,
+            self.relative_accuracy == other.relative_accuracy,
             "quantile sketch accuracy mismatch"
         );
         self.count += other.count;
@@ -469,6 +468,26 @@ mod tests {
     use super::{
         HeavyHittersSketch, HyperLogLog, LogQuantileSketch, NumericSketchState, PriorityReservoir,
     };
+
+    #[test]
+    fn relative_error_holds_at_bin_boundaries() {
+        for alpha in [0.01_f64, 0.1, 0.5] {
+            let gamma = (1.0 + alpha) / (1.0 - alpha);
+            for k in [-20, 0, 20] {
+                for x in [
+                    gamma.powi(k) * (1.0 + 1e-12),
+                    gamma.powi(k + 1) * (1.0 - 1e-12),
+                ] {
+                    for sign in [-1.0, 1.0] {
+                        let mut sketch = LogQuantileSketch::new(alpha);
+                        sketch.observe(sign * x);
+                        let q = sketch.quantile(0.5).unwrap();
+                        assert!((q - sign * x).abs() / x <= alpha + 1e-12);
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn hll_estimates_cardinality_and_merges_partitions() {

@@ -323,8 +323,9 @@ def test_large_tensor_uses_bounded_matrix_sketch_for_rank_diagnostics():
     assert diagnostics["original_shape"] == [2400, 320]
     assert diagnostics["analyzed_shape"][0] <= 768
     assert diagnostics["analyzed_shape"][1] <= 768
-    assert diagnostics["stable_rank_ratio"] < 0.05
-    assert any(
+    assert diagnostics["stable_rank_ratio"] is None
+    assert diagnostics["submatrix_stable_rank_ratio"] < 0.05
+    assert not any(
         item["code"] == "tensor.low_effective_dimension"
         for item in result.beacons
     )

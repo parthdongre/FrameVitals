@@ -101,6 +101,7 @@ def _coerce_graph(graph: Any, nx: Any) -> tuple[Any, str | None]:
     """Load supported graph files or return an existing graph object."""
     if isinstance(graph, (str, Path)):
         from framevitals.input_safety import validate_input
+
         path = validate_input(graph)
         if not path.is_file():
             raise FileNotFoundError(path)
@@ -118,7 +119,9 @@ def _coerce_graph(graph: Any, nx: Any) -> tuple[Any, str | None]:
 def _even_sample(values: list[Any], count: int) -> list[Any]:
     if len(values) <= count:
         return list(values)
-    positions = np.linspace(0, len(values) - 1, num=max(1, count), dtype=int)
+    positions = np.sort(
+        np.random.default_rng(42).choice(len(values), size=max(1, count), replace=False)
+    )
     return [values[int(i)] for i in positions]
 
 
@@ -157,7 +160,7 @@ def _inspect_edge_weights(graph: Any, *, attribute: str = "weight") -> dict[str,
         else:
             valid += 1
 
-    selected = attribute if checked and not invalid and valid / checked >= 0.80 else None
+    selected = attribute if checked and not invalid and valid > 0 else None
     return {
         "selected": selected,
         "status": "invalid" if invalid else "selected" if selected else "unweighted",
@@ -210,7 +213,9 @@ def _component_summary(graph: Any, nx: Any) -> dict[str, Any]:
 
     if graph.is_directed():
         weak_sizes = sorted((len(c) for c in nx.weakly_connected_components(graph)), reverse=True)
-        strong_sizes = sorted((len(c) for c in nx.strongly_connected_components(graph)), reverse=True)
+        strong_sizes = sorted(
+            (len(c) for c in nx.strongly_connected_components(graph)), reverse=True
+        )
         return {
             "component_kind": "weak",
             "component_count": len(weak_sizes),
@@ -218,7 +223,9 @@ def _component_summary(graph: Any, nx: Any) -> dict[str, Any]:
             "largest_component_ratio": round((weak_sizes[0] if weak_sizes else 0) / n, 6),
             "strong_component_count": len(strong_sizes),
             "largest_strong_component_nodes": strong_sizes[0] if strong_sizes else 0,
-            "largest_strong_component_ratio": round((strong_sizes[0] if strong_sizes else 0) / n, 6),
+            "largest_strong_component_ratio": round(
+                (strong_sizes[0] if strong_sizes else 0) / n, 6
+            ),
         }
 
     sizes = sorted((len(c) for c in nx.connected_components(graph)), reverse=True)
@@ -270,14 +277,56 @@ def _sample_shortest_paths(
     if not nodes:
         return {"available": False, "reason": "empty_graph"}
 
+    if source_count < 1:
+        raise ValueError("source_count must be positive")
     sources = _even_sample(nodes, min(source_count, len(nodes)))
-    distances: list[float] = []
+    provenance = {
+        "coverage": "full" if len(sources) == len(nodes) else "sampled",
+        "sampled": len(sources) < len(nodes),
+        "approximate": len(sources) < len(nodes),
+        "population": "reachable_ordered_nonself_pairs",
+        "method": "dijkstra" if weight else "bfs",
+        "source_sampling": "uniform_without_replacement",
+        "random_seed": 42,
+        "interpretation": "Mean pools reached pairs; sampled result is a ratio estimator. Max is a lower bound on diameter.",
+    }
+    # Keep exact mean/max and a bounded priority sample for quantiles.
+    distances = np.empty(0, dtype=float)
+    priorities = np.empty(0, dtype=float)
+    rng = np.random.default_rng(1729)
+    quantile_limit = 50_000
+    distance_sum = 0.0
+    distance_max = None
     reached = 0
+    sparse = None
+    if (
+        weight
+        and len(nodes) >= 20_000
+        and graph.number_of_edges() >= 2 * len(nodes)
+        and not graph.is_multigraph()
+    ):
+        from scipy.sparse.csgraph import dijkstra
+
+        sparse = nx.to_scipy_sparse_array(
+            graph, nodelist=nodes, weight=weight, dtype=float, format="csr"
+        )
+        sparse.indices = sparse.indices.astype(np.int32)
+        sparse.indptr = sparse.indptr.astype(np.int32)
+        provenance["method"] = "scipy_csr_dijkstra" if weight else "scipy_csr_unweighted"
+        indices = {node: i for i, node in enumerate(nodes)}
     possible = 0
 
     for source in sources:
         try:
-            if weight:
+            if sparse is not None:
+                raw = dijkstra(
+                    sparse,
+                    directed=graph.is_directed(),
+                    indices=indices[source],
+                    unweighted=not bool(weight),
+                )
+                lengths = {nodes[i]: float(v) for i, v in enumerate(raw) if np.isfinite(v)}
+            elif weight:
                 lengths = nx.single_source_dijkstra_path_length(
                     graph,
                     source,
@@ -292,18 +341,40 @@ def _sample_shortest_paths(
                 "weighted": bool(weight),
                 "weight_attribute": weight,
             }
-        for node, distance in lengths.items():
-            if node == source:
-                continue
-            d = _safe_float(distance)
-            if d is not None:
-                distances.append(d)
-                reached += 1
+        block = np.asarray(
+            [
+                float(distance)
+                for node, distance in lengths.items()
+                if node != source and _safe_float(distance) is not None
+            ],
+            dtype=float,
+        )
+        if block.size:
+            reached += int(block.size)
+            distance_sum += float(np.sum(block))
+            distance_max = max(
+                distance_max if distance_max is not None else -math.inf, float(np.max(block))
+            )
+            distances = np.concatenate([distances, block])
+            priorities = np.concatenate([priorities, rng.random(block.size)])
+            if distances.size > quantile_limit:
+                keep = np.argpartition(priorities, quantile_limit - 1)[:quantile_limit]
+                distances, priorities = distances[keep], priorities[keep]
         possible += max(0, len(nodes) - 1)
 
-    if not distances:
+    provenance.update(
+        quantile_sample_size=int(distances.size),
+        quantile_sampled=reached > quantile_limit,
+        quantile_method="uniform_priority_sample"
+        if reached > quantile_limit
+        else "exact_empirical_quantile",
+        reached_pairs=reached,
+    )
+
+    if distances.size == 0:
         return {
             "available": True,
+            **provenance,
             "sources": len(sources),
             "reachable_ratio": 0.0,
             "mean_distance": None,
@@ -315,11 +386,12 @@ def _sample_shortest_paths(
     arr = np.asarray(distances, dtype=float)
     return {
         "available": True,
+        **provenance,
         "sources": len(sources),
         "reachable_ratio": round(reached / possible, 6) if possible else 1.0,
-        "mean_distance": round(float(np.mean(arr)), 6),
+        "mean_distance": round(distance_sum / reached, 6),
         "p95_distance": round(float(np.quantile(arr, 0.95)), 6),
-        "max_distance": round(float(np.max(arr)), 6),
+        "max_distance": round(distance_max, 6),
         "weighted": bool(weight),
         "weight_attribute": weight,
     }
@@ -420,10 +492,7 @@ def _community_summary(
 ) -> dict[str, Any]:
     n = graph.number_of_nodes()
     m = graph.number_of_edges()
-    over_budget = (
-        n > budget["community_nodes"]
-        or m > budget["community_edges"]
-    )
+    over_budget = n > budget["community_nodes"] or m > budget["community_edges"]
     if over_budget or n < 2:
         return {
             "available": False,
@@ -519,9 +588,7 @@ def _core_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, Any]
             "available": True,
             "max_core": int(max_core),
             "degeneracy": int(max_core),
-            "core_distribution": {
-                str(key): value for key, value in sorted(counts.items())
-            },
+            "core_distribution": {str(key): value for key, value in sorted(counts.items())},
             "degree_assortativity": assortativity,
         }
     except Exception as exc:
@@ -553,7 +620,7 @@ def _spectral_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, 
 
     try:
         adjacency = nx.to_scipy_sparse_array(simple, dtype=float, weight=None, format="csr")
-        laplacian = nx.normalized_laplacian_matrix(simple, weight=None)
+        laplacian = nx.laplacian_matrix(simple, weight=None).astype(float)
         if n <= 64:
             dense_a = np.asarray(adjacency.toarray(), dtype=float)
             dense_l = np.asarray(laplacian.toarray(), dtype=float)
@@ -571,12 +638,18 @@ def _spectral_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, 
                 k=1,
                 which="LM",
                 return_eigenvectors=False,
+                v0=np.random.default_rng(42).normal(size=n),
+                tol=1e-8,
+                maxiter=max(1000, 10 * n),
             )
             smallest = eigsh(
                 laplacian,
                 k=2,
                 which="SM",
                 return_eigenvectors=False,
+                v0=np.random.default_rng(42).normal(size=n),
+                tol=1e-8,
+                maxiter=max(1000, 10 * n),
             )
             spectral_radius = float(np.max(np.abs(largest)))
             ordered = np.sort(np.real(smallest))
@@ -586,8 +659,14 @@ def _spectral_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, 
         return {
             "available": True,
             "method": method,
+            "method_version": "2",
+            "projection": "simple_undirected_unweighted_without_loops",
+            "laplacian": "combinatorial_D_minus_A",
+            "eigensolver_tolerance": 1e-8 if n > 64 else None,
             "spectral_radius": round(spectral_radius, 8),
-            "algebraic_connectivity": round(max(0.0, algebraic), 10),
+            "algebraic_connectivity": round(max(0.0, algebraic), 10)
+            if nx.is_connected(simple)
+            else 0.0,
             "connected": bool(nx.is_connected(simple)),
         }
     except Exception as exc:
@@ -605,8 +684,7 @@ def analyze_graph(
         import networkx as nx
     except ImportError as exc:
         raise ImportError(
-            "Graph diagnostics require NetworkX. Install with "
-            "pip install framevitals[graph]."
+            "Graph diagnostics require NetworkX. Install with pip install framevitals[graph]."
         ) from exc
 
     graph, source_filename = _coerce_graph(graph, nx)
@@ -631,9 +709,7 @@ def analyze_graph(
 
     weight_inspection = _inspect_edge_weights(graph, attribute=weight or "weight")
     if weight is not None and weight_inspection.get("invalid_weights", 0):
-        raise ValueError(
-            "Dijkstra requires finite, non-negative weights for every weighted edge."
-        )
+        raise ValueError("Dijkstra requires finite, non-negative weights for every weighted edge.")
     resolved_weight = weight or weight_inspection.get("selected")
     if n > budget["path_nodes"] or m > budget["path_edges"]:
         paths = {
@@ -667,6 +743,20 @@ def analyze_graph(
     clustering = _clustering_summary(graph, nx, budget)
     core = _core_summary(graph, nx, budget)
     spectral = _spectral_summary(graph, nx, budget)
+    for section in (cuts, communities, clustering, core):
+        section["projection"] = "simple_undirected"
+    components.update(sampled=False, approximate=False, method="connected_components")
+    communities["interpretation"] = (
+        "Heuristic modularity optimization; not a globally optimal partition."
+    )
+    if resolved_weight and any(
+        float(data.get(resolved_weight, 1)) == 0 for _, _, data in graph.edges(data=True)
+    ):
+        centrality["betweenness"] = {
+            "available": False,
+            "reason": "zero_weight_edges",
+            "assumption": "strictly_positive_costs",
+        }
 
     findings: list[dict[str, Any]] = []
     largest_ratio = float(components.get("largest_component_ratio") or 0.0)
@@ -865,7 +955,9 @@ def analyze_graph(
             "artifacts_enabled": False,
             "execution": {
                 "method": "bounded_graph_diagnostics",
-                "sampled": True,
+                "sampled": bool(
+                    paths.get("sampled") or centrality.get("betweenness", {}).get("approximate")
+                ),
                 "resource_bounded": True,
             },
         }

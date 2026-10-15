@@ -1,0 +1,566 @@
+{
+  "environment": {
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "platform": "linux",
+    "blas_threads": 1
+  },
+  "repeats": 3,
+  "results": {
+    "before": {
+      "graph": {
+        "median_seconds": 0.05544539600009557,
+        "max_rss_kib": 134904,
+        "runs": [
+          {
+            "seconds": 0.05544539600009557,
+            "peak_rss_kib": 134904,
+            "python_peak_bytes": 6503100,
+            "seed": 11,
+            "accuracy": {
+              "mean_absolute_error": 0.0,
+              "method": "networkx_bfs",
+              "quantile_sample_size": 119988
+            }
+          },
+          {
+            "seconds": 0.051104103999932704,
+            "peak_rss_kib": 134696,
+            "python_peak_bytes": 6503100,
+            "seed": 29,
+            "accuracy": {
+              "mean_absolute_error": 0.0,
+              "method": "networkx_bfs",
+              "quantile_sample_size": 119988
+            }
+          },
+          {
+            "seconds": 0.06250435900005868,
+            "peak_rss_kib": 134688,
+            "python_peak_bytes": 6503056,
+            "seed": 47,
+            "accuracy": {
+              "mean_absolute_error": 0.0,
+              "method": "networkx_bfs",
+              "quantile_sample_size": 119988
+            }
+          }
+        ]
+      },
+      "graph_weighted": {
+        "median_seconds": 1.1150531770000498,
+        "max_rss_kib": 185360,
+        "runs": [
+          {
+            "seconds": 1.345307147000085,
+            "peak_rss_kib": 185360,
+            "python_peak_bytes": 12363684,
+            "seed": 11,
+            "accuracy": {
+              "mean_absolute_error": 9.58291401786937e-08,
+              "method": "networkx_bfs",
+              "quantile_sample_size": 239988
+            }
+          },
+          {
+            "seconds": 1.0460263139999597,
+            "peak_rss_kib": 184280,
+            "python_peak_bytes": 12353700,
+            "seed": 29,
+            "accuracy": {
+              "mean_absolute_error": 4.3852425868351474e-07,
+              "method": "networkx_bfs",
+              "quantile_sample_size": 239988
+            }
+          },
+          {
+            "seconds": 1.1150531770000498,
+            "peak_rss_kib": 184416,
+            "python_peak_bytes": 12347364,
+            "seed": 47,
+            "accuracy": {
+              "mean_absolute_error": 2.777390513131195e-07,
+              "method": "networkx_bfs",
+              "quantile_sample_size": 239988
+            }
+          }
+        ]
+      },
+      "tensor": {
+        "median_seconds": 0.6427350899999738,
+        "max_rss_kib": 192580,
+        "runs": [
+          {
+            "seconds": 0.6478068579999672,
+            "peak_rss_kib": 192580,
+            "python_peak_bytes": 10068748,
+            "seed": 11,
+            "accuracy": {
+              "stable_rank": 261.603003,
+              "population": "unspecified",
+              "analyzed_shape": [
+                1800,
+                640
+              ]
+            }
+          },
+          {
+            "seconds": 0.6427350899999738,
+            "peak_rss_kib": 192440,
+            "python_peak_bytes": 10068750,
+            "seed": 29,
+            "accuracy": {
+              "stable_rank": 261.900004,
+              "population": "unspecified",
+              "analyzed_shape": [
+                1800,
+                640
+              ]
+            }
+          },
+          {
+            "seconds": 0.6218377250000913,
+            "peak_rss_kib": 192224,
+            "python_peak_bytes": 10068700,
+            "seed": 47,
+            "accuracy": {
+              "stable_rank": 259.097173,
+              "population": "unspecified",
+              "analyzed_shape": [
+                1800,
+                640
+              ]
+            }
+          }
+        ]
+      },
+      "sketch": {
+        "median_seconds": 0.0074187339999980395,
+        "max_rss_kib": 104040,
+        "runs": [
+          {
+            "seconds": 0.008352809000029993,
+            "peak_rss_kib": 103776,
+            "python_peak_bytes": 5101736,
+            "seed": 11,
+            "accuracy": {
+              "max_relative_error": 0.009002317571267283,
+              "bins": 1354
+            }
+          },
+          {
+            "seconds": 0.0074187339999980395,
+            "peak_rss_kib": 104028,
+            "python_peak_bytes": 5101736,
+            "seed": 29,
+            "accuracy": {
+              "max_relative_error": 0.007301448339753242,
+              "bins": 1358
+            }
+          },
+          {
+            "seconds": 0.007019144999958371,
+            "peak_rss_kib": 104040,
+            "python_peak_bytes": 5101736,
+            "seed": 47,
+            "accuracy": {
+              "max_relative_error": 0.007766044877916513,
+              "bins": 1355
+            }
+          }
+        ]
+      },
+      "moments": {
+        "median_seconds": 0.0015107439999155758,
+        "max_rss_kib": 159068,
+        "runs": [
+          {
+            "seconds": 0.001668085999995128,
+            "peak_rss_kib": 158716,
+            "python_peak_bytes": 2400920,
+            "seed": 11,
+            "accuracy": {
+              "variance_error": 0.0,
+              "skew_error": 6.938893903907228e-18,
+              "kurtosis_error": 2.220446049250313e-15
+            }
+          },
+          {
+            "seconds": 0.0011764419999735765,
+            "peak_rss_kib": 158624,
+            "python_peak_bytes": 2400920,
+            "seed": 29,
+            "accuracy": {
+              "variance_error": 0.0,
+              "skew_error": 1.249000902703301e-16,
+              "kurtosis_error": 8.881784197001252e-16
+            }
+          },
+          {
+            "seconds": 0.0015107439999155758,
+            "peak_rss_kib": 159068,
+            "python_peak_bytes": 2400920,
+            "seed": 47,
+            "accuracy": {
+              "variance_error": 0.0,
+              "skew_error": 5.551115123125783e-17,
+              "kurtosis_error": 8.881784197001252e-16
+            }
+          }
+        ]
+      },
+      "drift": {
+        "median_seconds": 0.0669204760000639,
+        "max_rss_kib": 165316,
+        "runs": [
+          {
+            "seconds": 0.0669204760000639,
+            "peak_rss_kib": 164796,
+            "python_peak_bytes": 478613,
+            "seed": 11,
+            "accuracy": {
+              "shifted_severity": "severe",
+              "null_significant": 0,
+              "multiplicity": "none"
+            }
+          },
+          {
+            "seconds": 0.06969654500005618,
+            "peak_rss_kib": 165000,
+            "python_peak_bytes": 476087,
+            "seed": 29,
+            "accuracy": {
+              "shifted_severity": "severe",
+              "null_significant": 0,
+              "multiplicity": "none"
+            }
+          },
+          {
+            "seconds": 0.0638371280000456,
+            "peak_rss_kib": 165316,
+            "python_peak_bytes": 475889,
+            "seed": 47,
+            "accuracy": {
+              "shifted_severity": "severe",
+              "null_significant": 0,
+              "multiplicity": "none"
+            }
+          }
+        ]
+      },
+      "anomaly": {
+        "median_seconds": 0.018704781999986153,
+        "max_rss_kib": 105280,
+        "runs": [
+          {
+            "seconds": 0.018704781999986153,
+            "peak_rss_kib": 105280,
+            "python_peak_bytes": 1708157,
+            "seed": 11,
+            "accuracy": {
+              "precision_at_50": 1.0,
+              "flagged": 50
+            }
+          },
+          {
+            "seconds": 0.019628161000014188,
+            "peak_rss_kib": 105012,
+            "python_peak_bytes": 1708218,
+            "seed": 29,
+            "accuracy": {
+              "precision_at_50": 1.0,
+              "flagged": 50
+            }
+          },
+          {
+            "seconds": 0.01776971499998581,
+            "peak_rss_kib": 105276,
+            "python_peak_bytes": 1707585,
+            "seed": 47,
+            "accuracy": {
+              "precision_at_50": 1.0,
+              "flagged": 50
+            }
+          }
+        ]
+      }
+    },
+    "after": {
+      "graph": {
+        "median_seconds": 0.06466088100000889,
+        "max_rss_kib": 121116,
+        "runs": [
+          {
+            "seconds": 0.07590600300000006,
+            "peak_rss_kib": 121116,
+            "python_peak_bytes": 3133404,
+            "seed": 11,
+            "accuracy": {
+              "mean_absolute_error": 3.2106572689372115e-07,
+              "method": "bfs",
+              "quantile_sample_size": 50000
+            }
+          },
+          {
+            "seconds": 0.06466088100000889,
+            "peak_rss_kib": 120608,
+            "python_peak_bytes": 3133404,
+            "seed": 29,
+            "accuracy": {
+              "mean_absolute_error": 3.2106572689372115e-07,
+              "method": "bfs",
+              "quantile_sample_size": 50000
+            }
+          },
+          {
+            "seconds": 0.055809276999980284,
+            "peak_rss_kib": 120224,
+            "python_peak_bytes": 3133404,
+            "seed": 47,
+            "accuracy": {
+              "mean_absolute_error": 3.2106572689372115e-07,
+              "method": "bfs",
+              "quantile_sample_size": 50000
+            }
+          }
+        ]
+      },
+      "graph_weighted": {
+        "median_seconds": 0.5688636510000151,
+        "max_rss_kib": 202016,
+        "runs": [
+          {
+            "seconds": 0.5180369709999013,
+            "peak_rss_kib": 202016,
+            "python_peak_bytes": 18277980,
+            "seed": 11,
+            "accuracy": {
+              "mean_absolute_error": 4.874387418141168e-07,
+              "method": "scipy_csr_dijkstra",
+              "quantile_sample_size": 50000
+            }
+          },
+          {
+            "seconds": 0.5688636510000151,
+            "peak_rss_kib": 201832,
+            "python_peak_bytes": 18274668,
+            "seed": 29,
+            "accuracy": {
+              "mean_absolute_error": 1.9038538923155102e-07,
+              "method": "scipy_csr_dijkstra",
+              "quantile_sample_size": 50000
+            }
+          },
+          {
+            "seconds": 0.6200082100000373,
+            "peak_rss_kib": 201764,
+            "python_peak_bytes": 18125996,
+            "seed": 47,
+            "accuracy": {
+              "mean_absolute_error": 2.5710232431919167e-07,
+              "method": "scipy_csr_dijkstra",
+              "quantile_sample_size": 50000
+            }
+          }
+        ]
+      },
+      "tensor": {
+        "median_seconds": 0.8291727780000429,
+        "max_rss_kib": 211608,
+        "runs": [
+          {
+            "seconds": 0.7562228989999085,
+            "peak_rss_kib": 211432,
+            "python_peak_bytes": 29301546,
+            "seed": 11,
+            "accuracy": {
+              "stable_rank": 261.60300330595686,
+              "population": "full_matrix",
+              "analyzed_shape": [
+                1800,
+                640
+              ]
+            }
+          },
+          {
+            "seconds": 1.0065525879999768,
+            "peak_rss_kib": 211200,
+            "python_peak_bytes": 29301860,
+            "seed": 29,
+            "accuracy": {
+              "stable_rank": 261.9000043076071,
+              "population": "full_matrix",
+              "analyzed_shape": [
+                1800,
+                640
+              ]
+            }
+          },
+          {
+            "seconds": 0.8291727780000429,
+            "peak_rss_kib": 211608,
+            "python_peak_bytes": 29301860,
+            "seed": 47,
+            "accuracy": {
+              "stable_rank": 259.0971729526089,
+              "population": "full_matrix",
+              "analyzed_shape": [
+                1800,
+                640
+              ]
+            }
+          }
+        ]
+      },
+      "sketch": {
+        "median_seconds": 0.010026143000004595,
+        "max_rss_kib": 104228,
+        "runs": [
+          {
+            "seconds": 0.007428947999983393,
+            "peak_rss_kib": 103740,
+            "python_peak_bytes": 5101736,
+            "seed": 11,
+            "accuracy": {
+              "max_relative_error": 0.009051868694238695,
+              "bins": 1354
+            }
+          },
+          {
+            "seconds": 0.011484625999969467,
+            "peak_rss_kib": 104188,
+            "python_peak_bytes": 5101736,
+            "seed": 29,
+            "accuracy": {
+              "max_relative_error": 0.00725108200819092,
+              "bins": 1358
+            }
+          },
+          {
+            "seconds": 0.010026143000004595,
+            "peak_rss_kib": 104228,
+            "python_peak_bytes": 5101736,
+            "seed": 47,
+            "accuracy": {
+              "max_relative_error": 0.007715655315944769,
+              "bins": 1355
+            }
+          }
+        ]
+      },
+      "moments": {
+        "median_seconds": 0.0016993190000675895,
+        "max_rss_kib": 159900,
+        "runs": [
+          {
+            "seconds": 0.002197765999994772,
+            "peak_rss_kib": 159900,
+            "python_peak_bytes": 3201416,
+            "seed": 11,
+            "accuracy": {
+              "variance_error": 0.0,
+              "skew_error": 2.7755575615628914e-17,
+              "kurtosis_error": 1.3322676295501878e-15
+            }
+          },
+          {
+            "seconds": 0.0015710430000126507,
+            "peak_rss_kib": 159772,
+            "python_peak_bytes": 3201416,
+            "seed": 29,
+            "accuracy": {
+              "variance_error": 2.220446049250313e-16,
+              "skew_error": 1.734723475976807e-16,
+              "kurtosis_error": 4.440892098500626e-15
+            }
+          },
+          {
+            "seconds": 0.0016993190000675895,
+            "peak_rss_kib": 159744,
+            "python_peak_bytes": 3201416,
+            "seed": 47,
+            "accuracy": {
+              "variance_error": 4.440892098500626e-16,
+              "skew_error": 6.938893903907228e-18,
+              "kurtosis_error": 1.7763568394002505e-15
+            }
+          }
+        ]
+      },
+      "drift": {
+        "median_seconds": 0.08135518699998556,
+        "max_rss_kib": 164964,
+        "runs": [
+          {
+            "seconds": 0.08135518699998556,
+            "peak_rss_kib": 164776,
+            "python_peak_bytes": 480102,
+            "seed": 11,
+            "accuracy": {
+              "shifted_severity": "severe",
+              "null_significant": 0,
+              "multiplicity": "benjamini_yekutieli_across_returned_columns"
+            }
+          },
+          {
+            "seconds": 0.09452242300005764,
+            "peak_rss_kib": 164964,
+            "python_peak_bytes": 478328,
+            "seed": 29,
+            "accuracy": {
+              "shifted_severity": "severe",
+              "null_significant": 0,
+              "multiplicity": "benjamini_yekutieli_across_returned_columns"
+            }
+          },
+          {
+            "seconds": 0.08116945799997666,
+            "peak_rss_kib": 164956,
+            "python_peak_bytes": 478732,
+            "seed": 47,
+            "accuracy": {
+              "shifted_severity": "severe",
+              "null_significant": 0,
+              "multiplicity": "benjamini_yekutieli_across_returned_columns"
+            }
+          }
+        ]
+      },
+      "anomaly": {
+        "median_seconds": 0.016308874000060314,
+        "max_rss_kib": 105284,
+        "runs": [
+          {
+            "seconds": 0.02788280599997961,
+            "peak_rss_kib": 105152,
+            "python_peak_bytes": 1707206,
+            "seed": 11,
+            "accuracy": {
+              "precision_at_50": 1.0,
+              "flagged": 50
+            }
+          },
+          {
+            "seconds": 0.01625378300002467,
+            "peak_rss_kib": 105284,
+            "python_peak_bytes": 1707569,
+            "seed": 29,
+            "accuracy": {
+              "precision_at_50": 1.0,
+              "flagged": 50
+            }
+          },
+          {
+            "seconds": 0.016308874000060314,
+            "peak_rss_kib": 105280,
+            "python_peak_bytes": 1707998,
+            "seed": 47,
+            "accuracy": {
+              "precision_at_50": 1.0,
+              "flagged": 50
+            }
+          }
+        ]
+      }
+    }
+  }
+}

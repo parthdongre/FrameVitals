@@ -18,6 +18,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from scipy import stats
+from framevitals.scientific import annotate_test_family
 
 from framevitals.deep_statistics_v2 import (
     _classify_kurtosis,
@@ -46,6 +47,8 @@ def fast_mean_ci(
     confidence: float = 0.95,
 ) -> dict[str, Any]:
     """Student-t confidence interval for the arithmetic mean in O(n)."""
+    if not 0 < confidence < 1:
+        raise ValueError("confidence must be between 0 and 1")
     values = _finite_numeric(series)
     n = int(values.size)
     if n < 20:
@@ -55,12 +58,14 @@ def fast_mean_ci(
     std = float(values.std(ddof=1))
     if not math.isfinite(std):
         return {"available": False, "reason": "non-finite sample variance"}
-    if std <= 1.0e-15:
+    if std == 0:
         return {
             "available": True,
             "low": _safe_float(mean),
             "high": _safe_float(mean),
             "method": "student_t",
+            "confidence_level": confidence,
+            "assumptions": "IID Gaussian for exact coverage; otherwise asymptotic finite-variance approximation",
             "n_resamples": 0,
         }
 
@@ -72,6 +77,8 @@ def fast_mean_ci(
         "low": _safe_float(mean - half_width),
         "high": _safe_float(mean + half_width),
         "method": "student_t",
+        "confidence_level": confidence,
+        "assumptions": "IID Gaussian for exact coverage; otherwise asymptotic finite-variance approximation",
         "n_resamples": 0,
     }
 
@@ -85,6 +92,8 @@ def fast_median_ci(
     ``np.partition`` selects only the two required ranks, so no full sort or
     resampling matrix is allocated.
     """
+    if not 0 < confidence < 1:
+        raise ValueError("confidence must be between 0 and 1")
     values = _finite_numeric(series)
     n = int(values.size)
     if n < 20:
@@ -92,7 +101,9 @@ def fast_median_ci(
 
     alpha = 1.0 - float(confidence)
     rank = int(stats.binom.ppf(alpha / 2.0, n, 0.5))
-    rank = max(1, min(rank, n // 2))
+    if rank < 1:
+        return {"available": False, "reason": "requested_confidence_requires_unbounded_interval"}
+    rank = min(rank, n // 2)
 
     low_index = rank - 1
     high_index = n - rank
@@ -110,7 +121,7 @@ def fast_median_ci(
 
 
 def _numeric_column_stats_fast(series: pd.Series) -> dict[str, Any]:
-    s = series.dropna()
+    s = series.replace([np.inf, -np.inf], np.nan).dropna()
     if s.empty:
         return {"status": "empty"}
 
@@ -156,9 +167,7 @@ def _numeric_bivariate(
                 break
             payload = _numeric_pair_stats(df[left], df[right])
             if payload.get("available"):
-                numeric_pairs.append(
-                    {"column_a": left, "column_b": right, **payload}
-                )
+                numeric_pairs.append({"column_a": left, "column_b": right, **payload})
                 budget -= 1
         if budget <= 0:
             break
@@ -237,16 +246,13 @@ def run_fast_deep_statistics_v2(
     categorical_cols = _categorical_columns(df)
 
     categorical_view = (
-        df.loc[:, categorical_cols]
-        if categorical_cols
-        else pd.DataFrame(index=df.index)
+        df.loc[:, categorical_cols] if categorical_cols else pd.DataFrame(index=df.index)
     )
     result = run_deep_statistics_v2(categorical_view, max_pairs=max_pairs)
 
     result["numeric_columns"] = numeric_cols
     result["numeric_statistics"] = {
-        column: _numeric_column_stats_fast(df[column])
-        for column in numeric_cols
+        column: _numeric_column_stats_fast(df[column]) for column in numeric_cols
     }
 
     (
@@ -272,6 +278,7 @@ def run_fast_deep_statistics_v2(
             "group_difference_tests_run": len(group_difference_tests),
         }
     )
+    annotate_test_family(result["bivariate"])
     result["inference"] = {
         "method": "fast_closed_form_and_order_statistics",
         "mean_ci": "student_t",

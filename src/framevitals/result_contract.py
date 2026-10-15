@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from framevitals.serialization import json_safe
+from framevitals.scientific import score_interpretation
 
 STATUSES = ("completed", "skipped", "unavailable", "not_applicable", "failed", "partial")
 
@@ -38,7 +39,7 @@ def _diagnostic(name: str, value: Any) -> dict[str, Any]:
         "status": status,
         "reason": reason,
         "method": info.get("method"),
-        "coverage": "sampled" if sampled is True else "full" if sampled is False else "unknown",
+        "coverage": info.get("coverage") or ("sampled" if sampled is True else "full" if sampled is False else "unknown"),
         "accuracy": "approximate"
         if approximate is True
         else "exact"
@@ -114,6 +115,8 @@ def build_envelope(
                 if execution.get("sampled") is False
                 else "unknown",
             },
+            "scientific_score": score_interpretation(analysis),
+            "scientific_methods_version": "2",
             "score_interpretation": "Heuristic diagnostic score; not calibrated risk or scientific certification.",
             "diagnostics": diagnostics,
             "findings": analysis.get("findings", []),

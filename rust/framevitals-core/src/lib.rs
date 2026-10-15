@@ -63,6 +63,14 @@ impl NumericState {
             return;
         }
 
+        // Direct initialization avoids inf * 0 for a huge finite first value.
+        if self.count == 0 {
+            self.count = 1;
+            self.mean = value;
+            self.minimum = Some(value);
+            self.maximum = Some(value);
+            return;
+        }
         let previous_count = self.count;
         self.count += 1;
 
@@ -175,7 +183,8 @@ impl NumericState {
         if self.count < 2 {
             None
         } else {
-            Some(self.m2 / (self.count - 1) as f64)
+            let value = self.m2 / (self.count - 1) as f64;
+            value.is_finite().then_some(value)
         }
     }
 
@@ -193,7 +202,8 @@ impl NumericState {
         }
         let n = self.count as f64;
         let population_skew = n.sqrt() * self.m3 / self.m2.powf(1.5);
-        Some((n * (n - 1.0)).sqrt() / (n - 2.0) * population_skew)
+        let value = (n * (n - 1.0)).sqrt() / (n - 2.0) * population_skew;
+        value.is_finite().then_some(value)
     }
 
     /// Bias-corrected Fisher excess kurtosis, matching pandas/SciPy
@@ -205,13 +215,22 @@ impl NumericState {
         }
         let n = self.count as f64;
         let population_excess = n * self.m4 / (self.m2 * self.m2) - 3.0;
-        Some((n - 1.0) / ((n - 2.0) * (n - 3.0)) * ((n + 1.0) * population_excess + 6.0))
+        let value = (n - 1.0) / ((n - 2.0) * (n - 3.0)) * ((n + 1.0) * population_excess + 6.0);
+        value.is_finite().then_some(value)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::NumericState;
+
+    #[test]
+    fn huge_constant_has_zero_variance() {
+        let state = NumericState::from_values(&[Some(1e200); 8]);
+        assert_eq!(state.mean, 1e200);
+        assert_eq!(state.variance(), Some(0.0));
+        assert_eq!(state.skewness(), None);
+    }
 
     fn assert_close(left: f64, right: f64) {
         let scale = left.abs().max(right.abs()).max(1.0);
