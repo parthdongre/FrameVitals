@@ -1,3 +1,5 @@
+import { getPlatformResult } from "@/lib/platform";
+import { PlatformReport } from "./PlatformReport";
 import { useMemo, useState } from "react";
 import { Eyebrow, Hr, PageTitle, Section } from "@/components/site/SiteShell";
 import { StaticChartImage } from "@/components/ui/StaticChartImage";
@@ -9,7 +11,7 @@ import { safeArr, safeStr } from "@/lib/safe";
 import { formatLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ChartItem } from "@/data/payload";
-import type { DashboardTelemetry } from "@/data/mockTelemetry";
+import type { DashboardTelemetry } from "@/data/telemetry";
 import type { Route } from "@/components/site/SiteShell";
 
 interface ChartsPageProps {
@@ -41,7 +43,8 @@ export function ChartsPage({ telemetry, onNavigate }: ChartsPageProps) {
             {
               title: "Explainability Summary",
               type: "shap_summary",
-              description: "Global contribution summary for the focused outcome.",
+              description:
+                "Global contribution summary for the focused outcome.",
               path: shapPath,
             } as ChartItem,
           ]
@@ -55,9 +58,13 @@ export function ChartsPage({ telemetry, onNavigate }: ChartsPageProps) {
     return Array.from(set).sort();
   }, [items]);
 
-  const filtered = filter === "all" ? items : items.filter((c) => c.type === filter);
+  const filtered =
+    filter === "all" ? items : items.filter((c) => c.type === filter);
 
   if (!telemetry) {
+    const platform = getPlatformResult();
+    if (platform)
+      return <PlatformReport result={platform} onNavigate={onNavigate} />;
     return (
       <Section className="pt-6">
         <Eyebrow>Charts</Eyebrow>
@@ -134,7 +141,9 @@ export function ChartsPage({ telemetry, onNavigate }: ChartsPageProps) {
                   <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-ink-3">
                     {safeStr(c.type, "chart")}
                   </p>
-                  <p className="mt-1 text-[14px] text-ink-1">{safeStr(c.title, "Untitled")}</p>
+                  <p className="mt-1 text-[14px] text-ink-1">
+                    {safeStr(c.title, "Untitled")}
+                  </p>
                 </header>
                 <StaticChartImage
                   src={toChartUrl(c.path)}
@@ -178,7 +187,9 @@ function FilterChip({
       )}
     >
       <span>{children}</span>
-      <span className="font-mono text-[10px] tabular-nums opacity-70">{count}</span>
+      <span className="font-mono text-[10px] tabular-nums opacity-70">
+        {count}
+      </span>
     </button>
   );
 }

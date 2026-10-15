@@ -24,6 +24,7 @@ def test_core_public_surface_is_exported():
         "forge",
         "tide",
         "pulse",
+        "capabilities",
         "inspect_source",
         "profile",
         "roles",

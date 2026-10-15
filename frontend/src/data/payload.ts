@@ -1,7 +1,7 @@
 /**
  * Tightened payload types for the v3 rebuild.
  *
- * The pre-existing `DashboardTelemetry` in `mockTelemetry.ts` describes most
+ * The pre-existing `DashboardTelemetry` in `telemetry.ts` describes most
  * top-level keys with `any` to keep the legacy code compiling. We don't
  * touch that file — instead we add narrow interfaces here for the niche
  * sections the new tabs render. Tabs cast through these via `safeObj` /
@@ -20,7 +20,7 @@ export type {
   MissionSignal,
   DistributionPoint,
   DistributionTelemetry,
-} from "./mockTelemetry";
+} from "./telemetry";
 
 /* --------------------------------------------------------------------------
  * Charts

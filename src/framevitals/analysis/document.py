@@ -229,7 +229,8 @@ def _extract(path: Path, suffix: str, depth: str) -> tuple[str, dict[str, Any]]:
 
 
 def inspect_document(path: str | Path, *, depth: str | None = None) -> dict[str, Any]:
-    source = Path(path).expanduser()
+    from framevitals.input_safety import validate_input
+    source = validate_input(path)
     suffix = source.suffix.lower()
     if not source.is_file():
         raise FileNotFoundError(source)

@@ -10,13 +10,9 @@ from framevitals.security import (
 
 
 UPLOAD_DIR = Path("uploads")
-_SAFE_UPLOAD_SUFFIXES = {
-    ".csv": ".csv",
-    ".tsv": ".tsv",
-    ".xlsx": ".xlsx",
-    ".xls": ".xls",
-    ".json": ".json",
-}
+from framevitals.file_formats import supported_extensions
+
+_SAFE_UPLOAD_SUFFIXES = {suffix: suffix for suffix in supported_extensions()}
 
 
 def save_uploaded_file(uploaded_file):
@@ -57,7 +53,13 @@ def save_uploaded_file(uploaded_file):
         / f"{dataset_id}{suffix}"
     )
 
-    uploaded_file.save(saved_path)
+    try:
+        uploaded_file.save(saved_path)
+        from framevitals.file_formats import check_file_format
+        check_file_format(saved_path)
+    except Exception:
+        saved_path.unlink(missing_ok=True)
+        raise
 
     return (
         dataset_id,
@@ -125,6 +127,11 @@ def load_dataset(
     path = Path(file_path)
 
     suffix = path.suffix.lower()
+
+    from framevitals.input_safety import validate_input
+    validate_input(path)
+    if suffix == ".parquet":
+        return pd.read_parquet(path)
 
     if suffix == ".csv":
         return _read_csv_tolerant(path)

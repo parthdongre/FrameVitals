@@ -8,7 +8,6 @@ reimplements diagnostics or mutates a source file.
 
 from __future__ import annotations
 
-import json
 import os
 import queue
 import sys
@@ -19,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from framevitals.serialization import dumps as strict_dumps
 
 ACTIONS = (
     ("Prism", "Diagnose a dataset, graph, tensor, or model"),
@@ -83,7 +83,7 @@ def _serialize(value: Any) -> str:
             return result
     if hasattr(value, "to_dict"):
         value = value.to_dict()
-    return json.dumps(value, indent=2, default=str, ensure_ascii=False)
+    return strict_dumps(value, indent=2, default=str, ensure_ascii=False)
 
 
 def _findings(value: Any) -> list[dict[str, Any]]:
@@ -103,7 +103,7 @@ def _summary(value: Any) -> str:
     if callable(render):
         return str(render())
     if isinstance(value, dict):
-        return json.dumps(value, indent=2, default=str, ensure_ascii=False)
+        return strict_dumps(value, indent=2, default=str, ensure_ascii=False)
     return str(value)
 
 
@@ -219,6 +219,10 @@ def view_lines(state: TerminalState) -> list[str]:
             "or run 'framevitals doctor' for installation help.",
         ]
     if state.report is None:
+        from framevitals.capabilities import CAPABILITIES
+        from framevitals.file_formats import format_for
+        spec = format_for(state.source) if state.source else None
+        analyses = CAPABILITIES.get(spec.category.lower(), ()) if spec else ()
         return [
             "WELCOME TO FRAMEVITALS",
             "",
@@ -228,6 +232,7 @@ def view_lines(state: TerminalState) -> list[str]:
             f"Source     {state.source or '(press F to select)'}",
             f"Reference  {state.reference or '(optional; press B)'}",
             f"Depth      {state.depth}",
+            "Analyses   " + (", ".join(analyses) or "Select a source to discover analyses"),
             "",
             "ENTER to analyze    F to type path    P to browse files",
             "B to set baseline    D to change depth",

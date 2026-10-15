@@ -66,6 +66,7 @@ ml = [
     "shap>=0.45",
 ]
 graph = [
+    "defusedxml>=0.7",
     "networkx>=3.4",
 ]
 onnx = [

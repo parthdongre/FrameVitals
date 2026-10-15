@@ -36,6 +36,9 @@ result = fv.prism(
 
 The goal is simple: **choose the intent, not the implementation.** FrameVitals coordinates the underlying analysis while keeping the full technical composition inspectable in the documentation and source code.
 
+
+**Source-aware browser workspace:** see the [platform guide](docs/platform.md) for the local web UI, format matrix, result-status contract and privacy limits. The [Phase 1 engineering audit](docs/audits/SOL_PLATFORM_AUDIT.md) and [Astra handoff](docs/work-handoff/SOL_HANDOFF.md) document the tested implementation and remaining science work.
+
 ## Installation
 
 Install the package from PyPI:

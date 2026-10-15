@@ -10,13 +10,13 @@ surfaces should prefer protocol names and outcomes over implementation details.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from framevitals.quality_results import DriftResult, GateResult, ValidationResult
 from framevitals.result import AnalysisResult
+from framevitals.serialization import dumps as strict_dumps
 from framevitals.snapshots import AnalysisSnapshot
 
 
@@ -37,7 +37,7 @@ class _ProtocolResult(dict):
         *,
         indent: int = 2,
     ) -> str | Path:
-        rendered = json.dumps(dict(self), indent=indent, default=str)
+        rendered = strict_dumps(dict(self), indent=indent, default=str)
         if destination is None:
             return rendered
         path = Path(destination)
@@ -50,6 +50,10 @@ class PrismResult(_ProtocolResult):
     """Unified result returned by framevitals.prism."""
 
     protocol = "prism"
+
+    def to_envelope(self) -> dict[str, Any]:
+        from framevitals.result_contract import build_envelope
+        return build_envelope(self)
 
     @property
     def analysis(self) -> AnalysisResult:
@@ -168,7 +172,7 @@ class PrismResult(_ProtocolResult):
         *,
         indent: int = 2,
     ) -> str | Path:
-        rendered = json.dumps(self.to_public_dict(), indent=indent, default=str)
+        rendered = strict_dumps(self.to_public_dict(), indent=indent, default=str)
         if destination is None:
             return rendered
         path = Path(destination)
@@ -373,8 +377,6 @@ def prism(
     or explicit contract is supplied, Prism also coordinates the corresponding
     trust checks and returns one coherent protocol result.
     """
-    from framevitals.analysis_api import analyze
-    from framevitals.operations import gate, infer_contract
 
     if axiom is not None and contract is not None:
         raise ValueError("Pass either axiom= or contract=, not both.")
@@ -385,6 +387,9 @@ def prism(
 
     resolved_focus = focus if focus is not None else target
     resolved_depth = depth if depth is not None else mode
+    from framevitals.capabilities import MODES
+    if resolved_depth is not None and resolved_depth not in MODES:
+        raise ValueError(f"Unknown analysis depth: {resolved_depth}")
     supplied_expectations = axiom if axiom is not None else contract
 
     # Structured non-tabular sources are recognized before entering the mature
@@ -488,6 +493,9 @@ def prism(
             "sample_batch=/targets=/loss_fn=/backward= are currently "
             "supported only for model Prism input."
         )
+
+    from framevitals.analysis_api import analyze
+    from framevitals.operations import gate, infer_contract
 
     analysis = analyze(
         data,

@@ -12,10 +12,12 @@ from framevitals.sources import FileSource, PandasSource, resolve_source
 def test_advanced_anomaly_scores_match_expected_iqr_density():
     # Keep IQR non-zero so the existing rule is applicable; the final row is an
     # obvious outlier in both columns and should therefore have density 1.0.
-    frame = pd.DataFrame({
-        "a": [0, 1, 2, 3, 100],
-        "b": [1, 2, 3, 4, 50],
-    })
+    frame = pd.DataFrame(
+        {
+            "a": [0, 1, 2, 3, 100],
+            "b": [1, 2, 3, 4, 50],
+        }
+    )
 
     result = calculate_anomalies(frame)
 
@@ -26,11 +28,13 @@ def test_advanced_anomaly_scores_match_expected_iqr_density():
 
 
 def test_sensitive_name_matching_uses_tokens_not_substrings():
-    frame = pd.DataFrame({
-        "average_score": [1, 2],
-        "paid_amount": [5, 6],
-        "customer_age": [20, 30],
-    })
+    frame = pd.DataFrame(
+        {
+            "average_score": [1, 2],
+            "paid_amount": [5, 6],
+            "customer_age": [20, 30],
+        }
+    )
 
     result = detect_fairness_review(frame)
 
@@ -39,10 +43,12 @@ def test_sensitive_name_matching_uses_tokens_not_substrings():
 
 
 def test_freshness_screens_candidates_before_full_parse():
-    frame = pd.DataFrame({
-        "identifier": [f"item-{i}" for i in range(500)],
-        "event_date": pd.date_range("2025-01-01", periods=500, freq="D").astype(str),
-    })
+    frame = pd.DataFrame(
+        {
+            "identifier": [f"item-{i}" for i in range(500)],
+            "event_date": pd.date_range("2025-01-01", periods=500, freq="D").astype(str),
+        }
+    )
 
     result = calculate_freshness(frame)
 
@@ -74,7 +80,10 @@ def test_file_source_reports_cheap_metadata_without_loading(tmp_path):
     metadata = source.inspect()
     assert metadata.name == "data.csv"
     assert metadata.format == "csv"
-    assert metadata.rows is None
+    from importlib.util import find_spec
+
+    assert metadata.rows == (2 if find_spec("pyarrow") is not None else None)
+    assert metadata.materialized is False
     assert metadata.size_bytes == path.stat().st_size
 
     loaded = source.load()

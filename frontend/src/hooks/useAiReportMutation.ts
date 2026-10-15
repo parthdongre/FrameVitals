@@ -13,7 +13,11 @@ export interface AiReportResponse {
  * gets an explicit "Generate" button that calls this hook.
  */
 export function useAiReportMutation() {
-  return useMutation<AiReportResponse, Error, { dataset_id: string }>({
+  return useMutation<
+    AiReportResponse,
+    Error,
+    { dataset_id: string; allow_ai: boolean }
+  >({
     mutationFn: (input) => postJSON<AiReportResponse>("/api/ai-report", input),
   });
 }

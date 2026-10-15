@@ -4,6 +4,7 @@ from pathlib import Path
 
 from framevitals import __version__
 from framevitals.config import available_modules, available_presets
+from framevitals.serialization import dumps as strict_dumps
 
 
 def _add_output_argument(parser: argparse.ArgumentParser) -> None:
@@ -108,6 +109,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true", help="Print the machine-readable format catalog."
     )
 
+    caps = subparsers.add_parser("capabilities", help="Discover analyses for an optional source.")
+    caps.add_argument("file", type=Path, nargs="?")
+    serve = subparsers.add_parser("serve", help="Run the local analysis API (requires web extra).")
+    serve.add_argument("--port", type=int, default=5055)
+
     tui_parser = subparsers.add_parser(
         "tui",
         aliases=["ui"],
@@ -152,7 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prism_parser.add_argument(
         "--format",
-        choices=["terminal", "json"],
+        choices=["terminal", "json", "envelope"],
         default="terminal",
         help="Stdout format.",
     )
@@ -568,13 +574,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _write_json(payload: dict, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
+    output.write_text(strict_dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
 
 
 def _emit(payload: dict, output: Path | None) -> None:
     if output is not None:
         _write_json(payload, output)
-    print(json.dumps(payload, indent=2, default=str))
+    print(strict_dumps(payload, indent=2, default=str))
 
 
 def _render_source(source: dict) -> str:
@@ -836,9 +842,21 @@ def _render_gate(report: dict) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
+def _main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.command == "serve":
+        try:
+            from framevitals.webapp import serve
+        except ImportError as exc:
+            raise ImportError('Web API requires: python -m pip install "framevitals[web]"') from exc
+        serve(port=args.port)
+        return 0
+    if args.command == "capabilities":
+        from framevitals.capabilities import capabilities
+        print(strict_dumps(capabilities(args.file), indent=2))
+        return 0
 
     if args.command == "doctor":
         import importlib.util
@@ -870,7 +888,7 @@ def main() -> int:
         from framevitals.file_formats import format_catalog, render_formats
 
         if args.json:
-            print(json.dumps(format_catalog(), indent=2))
+            print(strict_dumps(format_catalog(), indent=2))
         else:
             print(render_formats())
         return 0
@@ -909,7 +927,10 @@ def main() -> int:
         if args.html_report is not None:
             result.to_html(args.html_report)
 
-        if args.format == "json":
+        if args.format == "envelope":
+            from framevitals.serialization import dumps
+            print(dumps(result.to_envelope()))
+        elif args.format == "json":
             print(result.to_json())
         else:
             print(result.summary_text())
@@ -976,7 +997,7 @@ def main() -> int:
         if args.output is not None:
             _write_json(result, args.output)
         if args.format == "json":
-            print(json.dumps(result, indent=2, default=str))
+            print(strict_dumps(result, indent=2, default=str))
         else:
             print(_render_tide(result))
 
@@ -1048,7 +1069,7 @@ def main() -> int:
         if args.output is not None:
             _write_json(result, args.output)
         if args.format == "json":
-            print(json.dumps(result, indent=2, default=str))
+            print(strict_dumps(result, indent=2, default=str))
         else:
             print(_render_source(result))
             if args.output is not None:
@@ -1086,7 +1107,7 @@ def main() -> int:
         if args.output is not None:
             _write_json(result, args.output)
         if args.format == "json":
-            print(json.dumps(result, indent=2, default=str))
+            print(strict_dumps(result, indent=2, default=str))
         else:
             print(_render_snapshot_diff(result))
         if args.fail_on_change and result.get("changed"):
@@ -1100,7 +1121,7 @@ def main() -> int:
         if args.output is not None:
             _write_json(result, args.output)
         if args.format == "json":
-            print(json.dumps(result, indent=2, default=str))
+            print(strict_dumps(result, indent=2, default=str))
         else:
             print(_render_system_info(result))
             if args.output is not None:
@@ -1122,7 +1143,7 @@ def main() -> int:
         if args.output is not None:
             _write_json(dict(result), args.output)
         if args.format == "json":
-            print(json.dumps(dict(result), indent=2, default=str))
+            print(strict_dumps(dict(result), indent=2, default=str))
         else:
             print(result.explain_text())
             disabled = result.get("config", {}).get("disabled_modules") or ()
@@ -1153,7 +1174,7 @@ def main() -> int:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             cleaned.map(sanitize_csv_value).to_csv(args.output, index=False)
 
-        print(json.dumps(payload, indent=2, default=str))
+        print(strict_dumps(payload, indent=2, default=str))
         return 0
 
     if args.command == "compare":
@@ -1171,7 +1192,7 @@ def main() -> int:
         if args.format == "terminal":
             print(_render_compare(report))
         else:
-            print(json.dumps(report, indent=2, default=str))
+            print(strict_dumps(report, indent=2, default=str))
 
         if args.fail_on and severity_at_least(
             report.get("gate", {}).get("severity", "unknown"),
@@ -1207,7 +1228,7 @@ def main() -> int:
         if args.format == "terminal":
             print(_render_validation(report))
         else:
-            print(json.dumps(report, indent=2, default=str))
+            print(strict_dumps(report, indent=2, default=str))
 
         if report.get("status") == "fail":
             return 2
@@ -1232,7 +1253,7 @@ def main() -> int:
         if args.output is not None:
             _write_json(report, args.output)
         if args.format == "json":
-            print(json.dumps(report, indent=2, default=str))
+            print(strict_dumps(report, indent=2, default=str))
         else:
             print(_render_gate(report))
         return 0 if report.get("passed") else 1
@@ -1241,11 +1262,20 @@ def main() -> int:
         from framevitals.config import resolve_config
 
         resolved = resolve_config(args.file, preset=args.preset)
-        print(json.dumps(resolved.to_dict(), indent=2))
+        print(strict_dumps(resolved.to_dict(), indent=2))
         return 0
 
     parser.print_help()
     return 0
+
+
+def main() -> int:
+    import sys
+    try:
+        return _main()
+    except (ValueError, TypeError, OSError, ImportError, RecursionError) as exc:
+        print(f"FrameVitals: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

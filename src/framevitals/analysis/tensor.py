@@ -216,6 +216,8 @@ def tensor_metrics(
                         "condition_number": (
                             round(condition, 6) if math.isfinite(condition) else None
                         ),
+                        "singular_values": [float(v) for v in singular[:64]],
+                        "singular_values_truncated": len(singular) > 64,
                         "largest_singular_value": round(float(singular[0]), 8),
                         "smallest_nonzero_singular_value": (
                             round(float(nonzero[-1]), 8) if nonzero.size else None
@@ -260,6 +262,8 @@ def tensor_metrics(
                             round(captured_energy / frobenius_sq, 8)
                             if frobenius_sq > 0 else 0.0
                         ),
+                        "singular_values": [float(v) for v in singular[:64]],
+                        "singular_values_truncated": len(singular) > 64,
                         "largest_singular_value": round(float(singular[0]), 8),
                     }
         except (np.linalg.LinAlgError, ValueError):
