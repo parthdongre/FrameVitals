@@ -14,16 +14,9 @@ from framevitals.result import AnalysisResult
 
 
 def _sample_tensor(tensor: Any, limit: int) -> np.ndarray:
-    detached = tensor.detach().reshape(-1)
-    count = int(detached.numel())
-    if count > limit:
-        step = max(1, count // limit)
-        detached = detached[::step][:limit]
-    try:
-        detached = detached.float()
-    except Exception:
-        pass
-    return np.asarray(detached.cpu().numpy(), dtype=float)
+    from framevitals.analysis.tensor import _numpy_sample
+
+    return np.asarray(_numpy_sample(tensor, max(1, limit)), dtype=float)
 
 
 def _architecture(module_counts: Counter[str]) -> str:
@@ -66,6 +59,10 @@ def _parameter_summary(name: str, parameter: Any, sample_limit: int) -> dict[str
         "dtype": str(parameter.dtype),
         "requires_grad": bool(getattr(parameter, "requires_grad", False)),
         "sampled_values": int(values.size),
+        "coverage": "full" if values.size == size else "sampled",
+        "population": "sampled_entries",
+        "sampling_method": "uniform_without_replacement",
+        "random_seed": 42,
         "nan_fraction_sample": round(float(np.isnan(values).mean()), 8) if values.size else 0.0,
         "inf_fraction_sample": round(float(np.isinf(values).mean()), 8) if values.size else 0.0,
         "zero_fraction_sample": round(float((values == 0).mean()), 8) if values.size else 0.0,
@@ -185,8 +182,7 @@ def _rank_diagnostics(
     candidates = [
         (name, parameter)
         for name, parameter in named_parameters
-        if len(parameter.shape) == 2
-        and min(int(v) for v in parameter.shape) >= 2
+        if len(parameter.shape) == 2 and min(int(v) for v in parameter.shape) >= 2
     ]
     candidates.sort(key=lambda item: int(item[1].numel()), reverse=True)
     output: list[dict[str, Any]] = []
@@ -231,8 +227,7 @@ def analyze_model(
     architecture = _architecture(module_counts)
 
     parameter_summaries = [
-        _parameter_summary(name, parameter, sample_limit)
-        for name, parameter in named_parameters
+        _parameter_summary(name, parameter, sample_limit) for name, parameter in named_parameters
     ]
 
     total_parameters = sum(int(parameter.numel()) for _, parameter in named_parameters)
@@ -279,16 +274,19 @@ def analyze_model(
     low_rank = [
         item
         for item in rank
-        if isinstance(item.get("rank_ratio"), (float, int))
-        and float(item["rank_ratio"]) < 0.50
+        if isinstance(item.get("rank_ratio"), (float, int)) and float(item["rank_ratio"]) < 0.50
     ]
     gradients = _gradient_summary(named_parameters, max(1024, sample_limit // 2))
-    cnn = _cnn_filter_summary(named_parameters, modules) if architecture == "cnn" else {
-        "available": False,
-        "layers": [],
-        "dead_filters": 0,
-        "affected_layers": 0,
-    }
+    cnn = (
+        _cnn_filter_summary(named_parameters, modules)
+        if architecture == "cnn"
+        else {
+            "available": False,
+            "layers": [],
+            "dead_filters": 0,
+            "affected_layers": 0,
+        }
+    )
 
     from framevitals.analysis.architectures import analyze_architecture
 
@@ -368,9 +366,7 @@ def analyze_model(
                 recommendation="Inspect initialization, pruning, regularization, and activation flow.",
                 evidence={
                     "dead_filters": cnn["dead_filters"],
-                    "layers": [
-                        item for item in cnn["layers"] if item["dead_filters"] > 0
-                    ][:20],
+                    "layers": [item for item in cnn["layers"] if item["dead_filters"] > 0][:20],
                 },
             )
         )
@@ -396,10 +392,7 @@ def analyze_model(
         optimizer_report = inspect_optimizer(model, optimizer)
         raw_optimizer_findings = optimizer_report.get("findings", [])
         if isinstance(raw_optimizer_findings, list):
-            optimizer_findings = [
-                item for item in raw_optimizer_findings
-                if isinstance(item, dict)
-            ]
+            optimizer_findings = [item for item in raw_optimizer_findings if isinstance(item, dict)]
             findings.extend(optimizer_findings)
 
     runtime: dict[str, Any] | None = None

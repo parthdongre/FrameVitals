@@ -470,6 +470,26 @@ mod tests {
     };
 
     #[test]
+    fn relative_error_holds_at_bin_boundaries() {
+        for alpha in [0.01_f64, 0.1, 0.5] {
+            let gamma = (1.0 + alpha) / (1.0 - alpha);
+            for k in [-20, 0, 20] {
+                for x in [
+                    gamma.powi(k) * (1.0 + 1e-12),
+                    gamma.powi(k + 1) * (1.0 - 1e-12),
+                ] {
+                    for sign in [-1.0, 1.0] {
+                        let mut sketch = LogQuantileSketch::new(alpha);
+                        sketch.observe(sign * x);
+                        let q = sketch.quantile(0.5).unwrap();
+                        assert!((q - sign * x).abs() / x <= alpha + 1e-12);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn hll_estimates_cardinality_and_merges_partitions() {
         let mut left = HyperLogLog::new(12);
         let mut right = HyperLogLog::new(12);

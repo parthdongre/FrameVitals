@@ -62,13 +62,17 @@ def _prepare_numeric(
             dropped_constant.append(str(column))
 
     if numeric.empty:
-        return None, [], {
-            "numeric_columns_found": len(original_columns),
-            "used_columns": [],
-            "dropped_all_missing_columns": dropped_all_missing,
-            "dropped_constant_columns": dropped_constant,
-            "truncated_columns": False,
-        }
+        return (
+            None,
+            [],
+            {
+                "numeric_columns_found": len(original_columns),
+                "used_columns": [],
+                "dropped_all_missing_columns": dropped_all_missing,
+                "dropped_constant_columns": dropped_constant,
+                "truncated_columns": False,
+            },
+        )
 
     # Prefer columns with usable coverage and variation. This keeps ID-like or
     # mostly-empty columns from crowding out informative dimensions.
@@ -89,14 +93,19 @@ def _prepare_numeric(
     scale = np.where(scale > 1e-12, scale, np.where(std > 1e-12, std, 1.0))
     standardized = (matrix - center) / scale
 
-    return standardized, [str(column) for column in selected], {
-        "numeric_columns_found": len(original_columns),
-        "used_columns": [str(column) for column in selected],
-        "dropped_all_missing_columns": dropped_all_missing,
-        "dropped_constant_columns": dropped_constant,
-        "truncated_columns": len(selected) < len(original_columns) - len(dropped_all_missing) - len(dropped_constant),
-        "scaling": "median_mad_with_std_fallback",
-    }
+    return (
+        standardized,
+        [str(column) for column in selected],
+        {
+            "numeric_columns_found": len(original_columns),
+            "used_columns": [str(column) for column in selected],
+            "dropped_all_missing_columns": dropped_all_missing,
+            "dropped_constant_columns": dropped_constant,
+            "truncated_columns": len(selected)
+            < len(original_columns) - len(dropped_all_missing) - len(dropped_constant),
+            "scaling": "median_mad_with_std_fallback",
+        },
+    )
 
 
 def _projection_density_scores(projected: np.ndarray, bins: int = 32) -> np.ndarray:
@@ -182,7 +191,7 @@ def fast_anomaly_scan(
         projection_z,
         max(0, projections - min(3, projections)),
         axis=1,
-    )[:, -min(3, projections):]
+    )[:, -min(3, projections) :]
     projection_tail_score = _to_unit(projection_top.mean(axis=1))
     density_score = _projection_density_scores(projected)
 
@@ -191,11 +200,7 @@ def fast_anomaly_scan(
         "random_projection_tail": projection_tail_score,
         "random_projection_density": density_score,
     }
-    ensemble = (
-        0.50 * robust_score
-        + 0.35 * projection_tail_score
-        + 0.15 * density_score
-    )
+    ensemble = 0.50 * robust_score + 0.35 * projection_tail_score + 0.15 * density_score
     ensemble = _to_unit(ensemble)
 
     detector_names = list(detector_scores)
@@ -203,10 +208,12 @@ def fast_anomaly_scan(
         name: float(np.quantile(scores, 1.0 - contamination))
         for name, scores in detector_scores.items()
     }
-    votes = np.column_stack([
-        detector_scores[name] >= vote_thresholds[name]
-        for name in detector_names
-    ])
+    votes = np.column_stack(
+        [
+            (detector_scores[name] >= vote_thresholds[name]) & (detector_scores[name] > 0)
+            for name in detector_names
+        ]
+    )
     agreement_count = votes.sum(axis=1)
     majority_required = max(1, math.ceil(len(detector_names) / 2))
     consensus_mask = agreement_count >= majority_required
@@ -216,28 +223,34 @@ def fast_anomaly_scan(
     top_rows: list[dict[str, Any]] = []
     for position in top_indices:
         feature_order = np.argsort(robust_abs[position])[::-1][: min(3, n_features)]
-        top_rows.append({
-            "row_index": (
-                int(dataframe.index[position])
-                if isinstance(dataframe.index[position], (int, np.integer))
-                else str(dataframe.index[position])
-            ),
-            "robust_feature_deviation": round(float(robust_score[position]), 4),
-            "random_projection_tail": round(float(projection_tail_score[position]), 4),
-            "random_projection_density": round(float(density_score[position]), 4),
-            "ensemble": round(float(ensemble[position]), 4),
-            "flagged": bool(flagged_mask[position]),
-            "agreement_count": int(agreement_count[position]),
-            "agreement_fraction": round(float(agreement_count[position] / len(detector_names)), 4),
-            "top_feature_deviations": [
-                {
-                    "feature": used_columns[int(feature_index)],
-                    "standardized_deviation": round(float(robust_abs[position, feature_index]), 4),
-                    "direction": "high" if matrix[position, feature_index] >= 0 else "low",
-                }
-                for feature_index in feature_order
-            ],
-        })
+        top_rows.append(
+            {
+                "row_index": (
+                    int(dataframe.index[position])
+                    if isinstance(dataframe.index[position], (int, np.integer))
+                    else str(dataframe.index[position])
+                ),
+                "robust_feature_deviation": round(float(robust_score[position]), 4),
+                "random_projection_tail": round(float(projection_tail_score[position]), 4),
+                "random_projection_density": round(float(density_score[position]), 4),
+                "ensemble": round(float(ensemble[position]), 4),
+                "flagged": bool(flagged_mask[position]),
+                "agreement_count": int(agreement_count[position]),
+                "agreement_fraction": round(
+                    float(agreement_count[position] / len(detector_names)), 4
+                ),
+                "top_feature_deviations": [
+                    {
+                        "feature": used_columns[int(feature_index)],
+                        "standardized_deviation": round(
+                            float(robust_abs[position, feature_index]), 4
+                        ),
+                        "direction": "high" if matrix[position, feature_index] >= 0 else "low",
+                    }
+                    for feature_index in feature_order
+                ],
+            }
+        )
 
     flagged_count = int(flagged_mask.sum())
     consensus_count = int(consensus_mask.sum())
@@ -250,13 +263,13 @@ def fast_anomaly_scan(
         "detectors_run": detector_names,
         "detectors_failed": {},
         "detectors_skipped": {},
-        "detector_summaries": {
-            name: _summary(scores) for name, scores in detector_scores.items()
-        },
+        "detector_summaries": {name: _summary(scores) for name, scores in detector_scores.items()},
         "detector_vote_thresholds": {
             name: round(value, 4) for name, value in vote_thresholds.items()
         },
         "threshold": float(threshold),
+        "score_calibration": "relative_in_sample_scores_not_probabilities",
+        "vote_ties": "positive_scores_at_or_above_quantile; tied positive scores can exceed contamination",
         "contamination": contamination,
         "expected_anomaly_count": int(math.ceil(n_rows * contamination)),
         "flagged_count": flagged_count,

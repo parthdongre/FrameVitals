@@ -36,7 +36,7 @@ def inspect_nested(
     max_nodes: int = 100_000,
     max_depth: int = 32,
 ) -> dict[str, Any]:
-    stack: list[tuple[str, Any, int]] = [("$", data, 0)]
+    stack = [("$", data, 0, frozenset())]
     visited_ids: set[int] = set()
     nodes = 0
     max_observed_depth = 0
@@ -52,9 +52,10 @@ def inspect_nested(
     null_values = 0
     scalar_values = 0
     cyclic_references = 0
+    shared_references = 0
 
     while stack:
-        path, value, depth = stack.pop()
+        path, value, depth, ancestors = stack.pop()
         if nodes >= max_nodes:
             truncated = True
             break
@@ -71,10 +72,14 @@ def inspect_nested(
 
         if isinstance(value, dict):
             identity = id(value)
-            if identity in visited_ids:
+            if identity in ancestors:
                 cyclic_references += 1
                 continue
+            if identity in visited_ids:
+                shared_references += 1
+                continue
             visited_ids.add(identity)
+            ancestors = ancestors | {identity}
 
             keys = tuple(sorted(str(key) for key in value.keys()))
             object_shapes[keys] += 1
@@ -85,17 +90,21 @@ def inspect_nested(
                 key_text = str(key)
                 object_key_counts[key_text] += 1
                 if depth < max_depth:
-                    stack.append((f"{path}.{key_text}", child, depth + 1))
+                    stack.append((f"{path}.{key_text}", child, depth + 1, ancestors))
                 else:
                     truncated = True
             continue
 
         if isinstance(value, (list, tuple)):
             identity = id(value)
-            if identity in visited_ids:
+            if identity in ancestors:
                 cyclic_references += 1
                 continue
+            if identity in visited_ids:
+                shared_references += 1
+                continue
             visited_ids.add(identity)
+            ancestors = ancestors | {identity}
 
             length = len(value)
             array_lengths.append(length)
@@ -106,7 +115,7 @@ def inspect_nested(
                     # Arrays describe repeated values/records. Use one wildcard
                     # path regardless of array length so schema/type conflicts
                     # are compared across elements instead of hidden by index.
-                    stack.append((f"{path}[*]", child, depth + 1))
+                    stack.append((f"{path}[*]", child, depth + 1, ancestors))
             else:
                 truncated = True
             continue
@@ -118,10 +127,12 @@ def inspect_nested(
         observed = {name: count for name, count in counts.items() if count > 0}
         non_null_types = [name for name in observed if name != "null"]
         if len(non_null_types) > 1:
-            path_conflicts.append({
-                "path": path,
-                "types": observed,
-            })
+            path_conflicts.append(
+                {
+                    "path": path,
+                    "types": observed,
+                }
+            )
 
     array_summary = {
         "count": len(array_lengths),
@@ -133,8 +144,7 @@ def inspect_nested(
     }
 
     common_shapes = [
-        {"keys": list(keys), "count": count}
-        for keys, count in object_shapes.most_common(20)
+        {"keys": list(keys), "count": count} for keys, count in object_shapes.most_common(20)
     ]
 
     return {
@@ -146,6 +156,7 @@ def inspect_nested(
         "scalar_values": scalar_values,
         "null_fraction": round(null_values / max(1, nodes), 8),
         "cyclic_references": cyclic_references,
+        "shared_references": shared_references,
         "arrays": array_summary,
         "objects": {
             "count": int(type_counts.get("object", 0)),
@@ -153,8 +164,7 @@ def inspect_nested(
             "unique_shapes": len(object_shapes),
             "common_shapes": common_shapes,
             "top_keys": [
-                {"key": key, "count": count}
-                for key, count in object_key_counts.most_common(30)
+                {"key": key, "count": count} for key, count in object_key_counts.most_common(30)
             ],
         },
         "path_type_conflicts": path_conflicts[:100],
@@ -186,45 +196,53 @@ def analyze_nested(data: Any, *, depth: str | None = None) -> AnalysisResult:
     findings: list[dict[str, Any]] = []
 
     if summary["path_type_conflict_count"]:
-        findings.append(beacon(
-            "nested.type_conflicts",
-            "Nested paths contain conflicting value types",
-            severity="high",
-            confidence=1.0,
-            summary=f"{summary['path_type_conflict_count']} paths contain multiple non-null types.",
-            recommendation="Normalize inconsistent field types before downstream parsing or modeling.",
-            evidence={"paths": summary["path_type_conflicts"][:30]},
-        ))
+        findings.append(
+            beacon(
+                "nested.type_conflicts",
+                "Nested paths contain conflicting value types",
+                severity="high",
+                confidence=1.0,
+                summary=f"{summary['path_type_conflict_count']} paths contain multiple non-null types.",
+                recommendation="Normalize inconsistent field types before downstream parsing or modeling.",
+                evidence={"paths": summary["path_type_conflicts"][:30]},
+            )
+        )
 
     if summary["cyclic_references"]:
-        findings.append(beacon(
-            "nested.cycles",
-            "Cyclic Python references were detected",
-            severity="medium",
-            confidence=1.0,
-            summary=f"{summary['cyclic_references']} cyclic references were encountered.",
-            recommendation="Remove cycles before serializing this structure as JSON-like data.",
-        ))
+        findings.append(
+            beacon(
+                "nested.cycles",
+                "Cyclic Python references were detected",
+                severity="medium",
+                confidence=1.0,
+                summary=f"{summary['cyclic_references']} cyclic references were encountered.",
+                recommendation="Remove cycles before serializing this structure as JSON-like data.",
+            )
+        )
 
     if summary["max_depth"] >= max_depth:
-        findings.append(beacon(
-            "nested.deep_structure",
-            "The nested structure reaches the configured depth bound",
-            severity="medium",
-            confidence=0.95,
-            summary=f"Observed nesting reached depth {summary['max_depth']}.",
-            recommendation="Review extreme nesting and consider flattening repeated structural layers.",
-        ))
+        findings.append(
+            beacon(
+                "nested.deep_structure",
+                "The nested structure reaches the configured depth bound",
+                severity="medium",
+                confidence=0.95,
+                summary=f"Observed nesting reached depth {summary['max_depth']}.",
+                recommendation="Review extreme nesting and consider flattening repeated structural layers.",
+            )
+        )
 
     if summary["arrays"]["max_length"] >= 10_000:
-        findings.append(beacon(
-            "nested.large_array",
-            "Very large nested arrays were detected",
-            severity="medium",
-            confidence=1.0,
-            summary=f"Largest observed array contains {summary['arrays']['max_length']:,} entries.",
-            recommendation="Consider streaming or columnar representation for large repeated arrays.",
-        ))
+        findings.append(
+            beacon(
+                "nested.large_array",
+                "Very large nested arrays were detected",
+                severity="medium",
+                confidence=1.0,
+                summary=f"Largest observed array contains {summary['arrays']['max_length']:,} entries.",
+                recommendation="Consider streaming or columnar representation for large repeated arrays.",
+            )
+        )
 
     score = 100.0
     score -= min(35.0, summary["path_type_conflict_count"] * 5.0)
@@ -238,29 +256,31 @@ def analyze_nested(data: Any, *, depth: str | None = None) -> AnalysisResult:
         "algorithm_budget": {"max_nodes": max_nodes, "max_depth": max_depth},
     }
 
-    return AnalysisResult({
-        "dataset_id": None,
-        "filename": type(data).__name__,
-        "analysis_mode": mode,
-        "source_kind": "nested",
-        "profile": {
-            "shape": {
-                "rows": int(summary["nodes_observed"]),
-                "columns": int(summary["objects"]["unique_shapes"]),
+    return AnalysisResult(
+        {
+            "dataset_id": None,
+            "filename": type(data).__name__,
+            "analysis_mode": mode,
+            "source_kind": "nested",
+            "profile": {
+                "shape": {
+                    "rows": int(summary["nodes_observed"]),
+                    "columns": int(summary["objects"]["unique_shapes"]),
+                },
+                "structure": nested_summary,
             },
-            "structure": nested_summary,
-        },
-        "nested": nested_summary,
-        "health": {"overall_score": score, "label": _health_label(score)},
-        "ml_readiness": {"score": None, "label": "not_applicable"},
-        "findings": findings,
-        "artifacts_enabled": False,
-        "execution": {
-            "method": "bounded_nested_diagnostics",
-            "sampled": bool(summary["truncated"]),
-            "resource_bounded": True,
-        },
-    })
+            "nested": nested_summary,
+            "health": {"overall_score": score, "label": _health_label(score)},
+            "ml_readiness": {"score": None, "label": "not_applicable"},
+            "findings": findings,
+            "artifacts_enabled": False,
+            "execution": {
+                "method": "bounded_nested_diagnostics",
+                "sampled": bool(summary["truncated"]),
+                "resource_bounded": True,
+            },
+        }
+    )
 
 
 def compare_nested(reference: Any, current: Any) -> DriftResult:
@@ -283,12 +303,10 @@ def compare_nested(reference: Any, current: Any) -> DriftResult:
 
     node_change = abs(cur["nodes_observed"] - ref["nodes_observed"]) / max(1, ref["nodes_observed"])
     depth_change = abs(cur["max_depth"] - ref["max_depth"]) / max(1, ref["max_depth"])
-    conflict_change = abs(
-        cur["path_type_conflict_count"] - ref["path_type_conflict_count"]
-    ) / max(1, ref["path_type_conflict_count"] or 1)
-    key_churn = (
-        len(ref_key_set ^ cur_key_set) / max(1, len(ref_key_set | cur_key_set))
+    conflict_change = abs(cur["path_type_conflict_count"] - ref["path_type_conflict_count"]) / max(
+        1, ref["path_type_conflict_count"] or 1
     )
+    key_churn = len(ref_key_set ^ cur_key_set) / max(1, len(ref_key_set | cur_key_set))
 
     score = max(
         min(1.0, node_change),
@@ -296,27 +314,37 @@ def compare_nested(reference: Any, current: Any) -> DriftResult:
         min(1.0, conflict_change),
         min(1.0, key_churn * 2.0),
     )
-    severity = "severe" if score >= 0.75 else "moderate" if score >= 0.40 else "minor" if score >= 0.15 else "stable"
+    severity = (
+        "severe"
+        if score >= 0.75
+        else "moderate"
+        if score >= 0.40
+        else "minor"
+        if score >= 0.15
+        else "stable"
+    )
     status = "fail" if severity == "severe" else "warn" if severity != "stable" else "pass"
 
-    return DriftResult({
-        "available": True,
-        "source_kind": "nested",
-        "gate": {"status": status, "severity": severity},
-        "summary": {
-            "overall_verdict": severity,
-            "change_score": round(score, 6),
-        },
-        "nested": {
-            "reference_nodes": ref["nodes_observed"],
-            "current_nodes": cur["nodes_observed"],
-            "reference_depth": ref["max_depth"],
-            "current_depth": cur["max_depth"],
-            "reference_type_conflicts": ref["path_type_conflict_count"],
-            "current_type_conflicts": cur["path_type_conflict_count"],
-            "added_keys": sorted(cur_key_set - ref_key_set),
-            "removed_keys": sorted(ref_key_set - cur_key_set),
-            "type_count_changes": type_deltas,
-        },
-        "columns": [],
-    })
+    return DriftResult(
+        {
+            "available": True,
+            "source_kind": "nested",
+            "gate": {"status": status, "severity": severity},
+            "summary": {
+                "overall_verdict": severity,
+                "change_score": round(score, 6),
+            },
+            "nested": {
+                "reference_nodes": ref["nodes_observed"],
+                "current_nodes": cur["nodes_observed"],
+                "reference_depth": ref["max_depth"],
+                "current_depth": cur["max_depth"],
+                "reference_type_conflicts": ref["path_type_conflict_count"],
+                "current_type_conflicts": cur["path_type_conflict_count"],
+                "added_keys": sorted(cur_key_set - ref_key_set),
+                "removed_keys": sorted(ref_key_set - cur_key_set),
+                "type_count_changes": type_deltas,
+            },
+            "columns": [],
+        }
+    )

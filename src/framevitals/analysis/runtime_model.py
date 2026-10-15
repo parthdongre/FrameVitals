@@ -31,16 +31,9 @@ def _iter_tensors(value: Any):
 
 
 def _sample_numpy(tensor: Any, limit: int) -> np.ndarray:
-    detached = tensor.detach().reshape(-1)
-    count = int(detached.numel())
-    if count > limit:
-        step = max(1, count // limit)
-        detached = detached[::step][:limit]
-    try:
-        detached = detached.float()
-    except Exception:
-        pass
-    return np.asarray(detached.cpu().numpy(), dtype=float)
+    from framevitals.analysis.tensor import _numpy_sample
+
+    return np.asarray(_numpy_sample(tensor, max(1, limit)), dtype=float)
 
 
 def _tensor_observation(tensor: Any, *, sample_limit: int) -> dict[str, Any]:
@@ -50,6 +43,10 @@ def _tensor_observation(tensor: Any, *, sample_limit: int) -> dict[str, Any]:
         "shape": [int(v) for v in getattr(tensor, "shape", ())],
         "size": size,
         "sampled_values": int(values.size),
+        "coverage": "full" if values.size == size else "sampled",
+        "population": "sampled_entries",
+        "sampling_method": "uniform_without_replacement",
+        "random_seed": 42,
         "dtype": str(getattr(tensor, "dtype", "unknown")),
     }
     if not values.size:
@@ -57,25 +54,29 @@ def _tensor_observation(tensor: Any, *, sample_limit: int) -> dict[str, Any]:
 
     finite = np.isfinite(values)
     finite_values = values[finite]
-    result.update({
-        "nan_fraction": round(float(np.isnan(values).mean()), 8),
-        "inf_fraction": round(float(np.isinf(values).mean()), 8),
-        "zero_fraction": round(float((values == 0).mean()), 8),
-        "near_zero_fraction": round(float((np.abs(values) <= 1.0e-8).mean()), 8),
-    })
+    result.update(
+        {
+            "nan_fraction": round(float(np.isnan(values).mean()), 8),
+            "inf_fraction": round(float(np.isinf(values).mean()), 8),
+            "zero_fraction": round(float((values == 0).mean()), 8),
+            "near_zero_fraction": round(float((np.abs(values) <= 1.0e-8).mean()), 8),
+        }
+    )
     if finite_values.size:
-        result.update({
-            "mean": round(float(np.mean(finite_values)), 8),
-            "std": round(float(np.std(finite_values)), 8),
-            "min": round(float(np.min(finite_values)), 8),
-            "max": round(float(np.max(finite_values)), 8),
-            "abs_p99": round(float(np.quantile(np.abs(finite_values), 0.99)), 8),
-            "l2_norm_sample": round(float(np.linalg.norm(finite_values)), 8),
-            "rms_sample": round(
-                float(np.linalg.norm(finite_values) / math.sqrt(finite_values.size)),
-                8,
-            ),
-        })
+        result.update(
+            {
+                "mean": round(float(np.mean(finite_values)), 8),
+                "std": round(float(np.std(finite_values)), 8),
+                "min": round(float(np.min(finite_values)), 8),
+                "max": round(float(np.max(finite_values)), 8),
+                "abs_p99": round(float(np.quantile(np.abs(finite_values), 0.99)), 8),
+                "l2_norm_sample": round(float(np.linalg.norm(finite_values)), 8),
+                "rms_sample": round(
+                    float(np.linalg.norm(finite_values) / math.sqrt(finite_values.size)),
+                    8,
+                ),
+            }
+        )
     return result
 
 
@@ -133,11 +134,7 @@ def _invoke_model(model: Any, inputs: Any) -> Any:
 def _cuda_observation_devices(model: Any, inputs: Any) -> list[int]:
     """Only fork RNG on CUDA devices already holding input/model tensors."""
     devices: set[int] = set()
-    for value in (
-        list(model.parameters())
-        + list(model.buffers())
-        + list(_iter_tensors(inputs))
-    ):
+    for value in list(model.parameters()) + list(model.buffers()) + list(_iter_tensors(inputs)):
         device = getattr(value, "device", None)
         if getattr(device, "type", None) == "cuda":
             devices.add(int(device.index) if device.index is not None else 0)
@@ -174,9 +171,7 @@ def _loss_value(output: Any, *, targets: Any, loss_fn: Any) -> Any:
     tensors = list(_iter_tensors(output))
     if len(tensors) == 1 and int(tensors[0].numel()) == 1:
         return tensors[0]
-    raise ValueError(
-        "backward=True requires loss_fn= unless the model output is a scalar tensor."
-    )
+    raise ValueError("backward=True requires loss_fn= unless the model output is a scalar tensor.")
 
 
 def _robust_norm_outliers(
@@ -199,16 +194,8 @@ def _robust_norm_outliers(
     high = median + 6.0 * spread
     low = median - 6.0 * spread
 
-    exploding = [
-        record
-        for (record, _), value in zip(usable, logs, strict=True)
-        if value > high
-    ]
-    vanishing = [
-        record
-        for (record, _), value in zip(usable, logs, strict=True)
-        if value < low
-    ]
+    exploding = [record for (record, _), value in zip(usable, logs, strict=True) if value > high]
+    vanishing = [record for (record, _), value in zip(usable, logs, strict=True) if value < low]
     return exploding, vanishing
 
 
@@ -264,6 +251,7 @@ def observe_model_runtime(
             if backward and bool(getattr(tensor, "requires_grad", False)):
                 register_hook = getattr(tensor, "register_hook", None)
                 if callable(register_hook):
+
                     def capture_gradient(gradient):
                         try:
                             grad_observation = _tensor_observation(
@@ -277,6 +265,7 @@ def observe_model_runtime(
                         return gradient
 
                     handles.append(register_hook(capture_gradient))
+
         return hook
 
     parameter_gradients: list[dict[str, Any]] = []
@@ -288,26 +277,28 @@ def observe_model_runtime(
             for name, module in selected:
                 module_type = type(module).__name__
                 handles.append(module.register_forward_hook(forward_hook(name, module_type)))
-    
+
             started = perf_counter()
             context = nullcontext() if backward else torch.no_grad()
             with context:
                 output = _invoke_model(model, inputs)
             forward_ms = (perf_counter() - started) * 1000.0
-    
+
             if backward:
                 loss = _loss_value(output, targets=targets, loss_fn=loss_fn)
                 if not hasattr(loss, "numel") or int(loss.numel()) != 1:
-                    raise ValueError("loss_fn must return a scalar tensor for backward diagnostics.")
+                    raise ValueError(
+                        "loss_fn must return a scalar tensor for backward diagnostics."
+                    )
                 loss_scalar = float(loss.detach().cpu().item())
-    
+
                 named_trainable = [
                     (name, parameter)
                     for name, parameter in model.named_parameters()
                     if bool(getattr(parameter, "requires_grad", False))
                 ]
                 params = [parameter for _, parameter in named_trainable]
-    
+
                 started = perf_counter()
                 grads = torch.autograd.grad(
                     loss,
@@ -317,14 +308,16 @@ def observe_model_runtime(
                     create_graph=False,
                 )
                 backward_ms = (perf_counter() - started) * 1000.0
-    
+
                 for (name, _parameter), grad in zip(named_trainable, grads, strict=True):
                     if grad is None:
-                        parameter_gradients.append({
-                            "name": name,
-                            "available": False,
-                            "reason": "unused",
-                        })
+                        parameter_gradients.append(
+                            {
+                                "name": name,
+                                "available": False,
+                                "reason": "unused",
+                            }
+                        )
                         continue
                     try:
                         observation = _tensor_observation(
@@ -333,11 +326,13 @@ def observe_model_runtime(
                         )
                     except Exception:
                         continue
-                    parameter_gradients.append({
-                        "name": name,
-                        "available": True,
-                        **observation,
-                    })
+                    parameter_gradients.append(
+                        {
+                            "name": name,
+                            "available": True,
+                            **observation,
+                        }
+                    )
     finally:
         for handle in handles:
             try:
@@ -345,13 +340,9 @@ def observe_model_runtime(
             except Exception:
                 pass
 
-    activation_records = [
-        {"name": name, **payload}
-        for name, payload in activations.items()
-    ]
+    activation_records = [{"name": name, **payload} for name, payload in activations.items()]
     module_gradient_records = [
-        {"name": name, **payload}
-        for name, payload in module_gradients.items()
+        {"name": name, **payload} for name, payload in module_gradients.items()
     ]
 
     activation_exploding, activation_vanishing = _robust_norm_outliers(
@@ -396,92 +387,108 @@ def observe_model_runtime(
     findings: list[dict[str, Any]] = []
 
     if nonfinite_activations:
-        findings.append(beacon(
-            "model.runtime.non_finite_activations",
-            "Non-finite activations appeared during the observed forward pass",
-            severity="critical",
-            confidence=1.0,
-            summary=f"{len(nonfinite_activations)} observed modules emitted NaN/Inf values.",
-            recommendation="Trace the first affected layer and inspect inputs, normalization, and numerics.",
-            evidence={"modules": [r["name"] for r in nonfinite_activations[:30]]},
-        ))
+        findings.append(
+            beacon(
+                "model.runtime.non_finite_activations",
+                "Non-finite activations appeared during the observed forward pass",
+                severity="critical",
+                confidence=1.0,
+                summary=f"{len(nonfinite_activations)} observed modules emitted NaN/Inf values.",
+                recommendation="Trace the first affected layer and inspect inputs, normalization, and numerics.",
+                evidence={"modules": [r["name"] for r in nonfinite_activations[:30]]},
+            )
+        )
 
     if dead_activations:
-        findings.append(beacon(
-            "model.runtime.dead_activations",
-            "Dead or collapsed activations were detected",
-            severity="high",
-            confidence=0.95,
-            summary=f"{len(dead_activations)} observed modules produced almost no activation variation.",
-            recommendation="Inspect initialization, ReLU death, normalization, and upstream signal flow.",
-            evidence={"modules": [r["name"] for r in dead_activations[:30]]},
-        ))
+        findings.append(
+            beacon(
+                "model.runtime.dead_activations",
+                "Mostly zero activations were observed in this batch",
+                severity="high",
+                confidence=0.95,
+                summary=f"{len(dead_activations)} observed modules produced almost no activation variation.",
+                recommendation="Inspect initialization, ReLU death, normalization, and upstream signal flow.",
+                evidence={"modules": [r["name"] for r in dead_activations[:30]]},
+            )
+        )
 
     if saturated_activations:
-        findings.append(beacon(
-            "model.runtime.saturation",
-            "Activation saturation was detected",
-            severity="high",
-            confidence=0.95,
-            summary=f"{len(saturated_activations)} sigmoid/tanh modules were at least 80% saturated.",
-            recommendation="Review input scaling, initialization, and recurrent/activation dynamics.",
-            evidence={"modules": [r["name"] for r in saturated_activations[:30]]},
-        ))
+        findings.append(
+            beacon(
+                "model.runtime.saturation",
+                "Activation saturation was detected",
+                severity="high",
+                confidence=0.95,
+                summary=f"{len(saturated_activations)} sigmoid/tanh modules were at least 80% saturated.",
+                recommendation="Review input scaling, initialization, and recurrent/activation dynamics.",
+                evidence={"modules": [r["name"] for r in saturated_activations[:30]]},
+            )
+        )
 
     if activation_exploding:
-        findings.append(beacon(
-            "model.runtime.activation_explosion",
-            "Activation magnitude outliers were detected",
-            severity="high",
-            confidence=0.9,
-            summary=f"{len(activation_exploding)} modules have robustly extreme activation norms.",
-            recommendation="Inspect residual scaling, normalization, initialization, and unstable upstream layers.",
-            evidence={"modules": [r["name"] for r in activation_exploding[:30]]},
-        ))
+        findings.append(
+            beacon(
+                "model.runtime.activation_explosion",
+                "Activation magnitude outliers were detected",
+                severity="high",
+                confidence=0.9,
+                summary=f"{len(activation_exploding)} modules have robustly extreme activation norms.",
+                recommendation="Inspect residual scaling, normalization, initialization, and unstable upstream layers.",
+                evidence={"modules": [r["name"] for r in activation_exploding[:30]]},
+            )
+        )
 
     if activation_vanishing:
-        findings.append(beacon(
-            "model.runtime.activation_vanishing",
-            "Very weak activation flow was detected",
-            severity="medium",
-            confidence=0.85,
-            summary=f"{len(activation_vanishing)} modules have robustly tiny activation norms.",
-            recommendation="Inspect depth, normalization, initialization, and activation choice.",
-            evidence={"modules": [r["name"] for r in activation_vanishing[:30]]},
-        ))
+        findings.append(
+            beacon(
+                "model.runtime.activation_vanishing",
+                "Very weak activation flow was detected",
+                severity="medium",
+                confidence=0.85,
+                summary=f"{len(activation_vanishing)} modules have robustly tiny activation norms.",
+                recommendation="Inspect depth, normalization, initialization, and activation choice.",
+                evidence={"modules": [r["name"] for r in activation_vanishing[:30]]},
+            )
+        )
 
     if nonfinite_gradients:
-        findings.append(beacon(
-            "model.runtime.non_finite_gradients",
-            "Non-finite gradients appeared during the observed backward pass",
-            severity="critical",
-            confidence=1.0,
-            summary=f"{len(nonfinite_gradients)} observed modules received NaN/Inf gradients.",
-            recommendation="Inspect loss scaling, learning rate, clipping, and the earliest unstable layer.",
-            evidence={"modules": [r["name"] for r in nonfinite_gradients[:30]]},
-        ))
+        findings.append(
+            beacon(
+                "model.runtime.non_finite_gradients",
+                "Non-finite gradients appeared during the observed backward pass",
+                severity="critical",
+                confidence=1.0,
+                summary=f"{len(nonfinite_gradients)} observed modules received NaN/Inf gradients.",
+                recommendation="Inspect loss scaling, learning rate, clipping, and the earliest unstable layer.",
+                evidence={"modules": [r["name"] for r in nonfinite_gradients[:30]]},
+            )
+        )
 
     if gradient_exploding:
-        findings.append(beacon(
-            "model.runtime.gradient_explosion",
-            "Exploding gradient flow was detected",
-            severity="critical",
-            confidence=0.95,
-            summary=f"{len(gradient_exploding)} modules have robustly extreme gradient norms.",
-            recommendation="Inspect learning rate, normalization, residual scaling, and gradient clipping.",
-            evidence={"modules": [r["name"] for r in gradient_exploding[:30]]},
-        ))
+        findings.append(
+            beacon(
+                "model.runtime.gradient_explosion",
+                "Gradient magnitude outliers were observed in this batch",
+                severity="critical",
+                confidence=0.95,
+                summary=f"{len(gradient_exploding)} modules have robustly extreme gradient norms.",
+                recommendation="Inspect learning rate, normalization, residual scaling, and gradient clipping.",
+                evidence={"modules": [r["name"] for r in gradient_exploding[:30]]},
+            )
+        )
 
     if gradient_vanishing:
-        findings.append(beacon(
-            "model.runtime.gradient_vanishing",
-            "Vanishing gradient flow was detected",
-            severity="high",
-            confidence=0.9,
-            summary=f"{len(gradient_vanishing)} modules have robustly tiny gradient norms.",
-            recommendation="Inspect depth, activations, normalization, skip connections, and initialization.",
-            evidence={"modules": [r["name"] for r in gradient_vanishing[:30]]},
-        ))
+        findings.append(
+            beacon(
+                "model.runtime.gradient_vanishing",
+                "Small gradient magnitudes were observed in this batch",
+                severity="high",
+                confidence=0.9,
+                summary=f"{len(gradient_vanishing)} modules have robustly tiny gradient norms.",
+                recommendation="Inspect depth, activations, normalization, skip connections, and initialization.",
+                evidence={"modules": [r["name"] for r in gradient_vanishing[:30]]},
+            )
+        )
 
     parameter_nonfinite = [
         record
@@ -495,34 +502,38 @@ def observe_model_runtime(
     parameter_zero = [
         record
         for record in parameter_gradients
-        if record.get("available")
-        and float(record.get("near_zero_fraction") or 0.0) >= 0.999
+        if record.get("available") and float(record.get("near_zero_fraction") or 0.0) >= 0.999
     ]
 
     if parameter_nonfinite:
-        findings.append(beacon(
-            "model.runtime.parameter_gradient_non_finite",
-            "Parameter gradients contain non-finite values",
-            severity="critical",
-            confidence=1.0,
-            summary=f"{len(parameter_nonfinite)} trainable parameter tensors contain NaN/Inf gradients.",
-            recommendation="Stop the update and inspect loss scaling, numerics, and the first affected parameter group.",
-            evidence={"parameters": [r["name"] for r in parameter_nonfinite[:30]]},
-        ))
+        findings.append(
+            beacon(
+                "model.runtime.parameter_gradient_non_finite",
+                "Parameter gradients contain non-finite values",
+                severity="critical",
+                confidence=1.0,
+                summary=f"{len(parameter_nonfinite)} trainable parameter tensors contain NaN/Inf gradients.",
+                recommendation="Stop the update and inspect loss scaling, numerics, and the first affected parameter group.",
+                evidence={"parameters": [r["name"] for r in parameter_nonfinite[:30]]},
+            )
+        )
 
     if parameter_zero:
-        findings.append(beacon(
-            "model.runtime.zero_parameter_gradients",
-            "Some trainable parameters received effectively zero gradients",
-            severity="medium",
-            confidence=0.9,
-            summary=f"{len(parameter_zero)} parameter tensors were effectively zero-gradient in the observed pass.",
-            recommendation="Confirm the computation path, frozen logic, detached tensors, and loss connectivity.",
-            evidence={"parameters": [r["name"] for r in parameter_zero[:30]]},
-        ))
+        findings.append(
+            beacon(
+                "model.runtime.zero_parameter_gradients",
+                "Some trainable parameters received effectively zero gradients",
+                severity="medium",
+                confidence=0.9,
+                summary=f"{len(parameter_zero)} parameter tensors were effectively zero-gradient in the observed pass.",
+                recommendation="Confirm the computation path, frozen logic, detached tensors, and loss connectivity.",
+                evidence={"parameters": [r["name"] for r in parameter_zero[:30]]},
+            )
+        )
 
     return {
         "available": True,
+        "interpretation": "Single-batch eval-mode observation; thresholds are heuristic and cannot establish training failure, accuracy or generalization.",
         "observation_mode": "temporary_eval",
         "training_flags_restored": True,
         "torch_rng_restored": True,

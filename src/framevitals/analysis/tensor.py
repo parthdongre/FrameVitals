@@ -46,6 +46,7 @@ def _numpy_sample(tensor: Any, limit: int) -> np.ndarray:
     value = tensor.detach()
     if positions is not None:
         import torch
+
         coordinates = np.unravel_index(positions, _shape(tensor))
         value = value[tuple(torch.as_tensor(c, device=value.device) for c in coordinates)]
     if str(value.dtype) == "torch.bfloat16":
@@ -58,24 +59,31 @@ def _nonfinite_summary(tensor: Any, sample: np.ndarray, total: int) -> dict[str,
     nan = inf = checked = 0
     if total <= cap and isinstance(tensor, np.ndarray):
         for start in range(0, total, 65536):
-            chunk = np.asarray(tensor.flat[start:start+65536], dtype=float)
+            chunk = np.asarray(tensor.flat[start : start + 65536], dtype=float)
             nan += int(np.isnan(chunk).sum())
             inf += int(np.isinf(chunk).sum())
             checked += chunk.size
     elif total <= cap:
         import torch
+
         value = tensor.detach()
         nan = int(torch.isnan(value).sum().item())
         inf = int(torch.isinf(value).sum().item())
         checked = total
     else:
         nan, inf, checked = int(np.isnan(sample).sum()), int(np.isinf(sample).sum()), sample.size
-    return {"coverage": "full" if checked == total else "sampled",
-            "sampled": checked != total, "approximate": False,
-            "population": "checked_values", "checked_values": int(checked),
-            "nan_count": nan, "inf_count": inf, "scan_cap": cap,
-            "all_finite": (nan + inf == 0) if checked == total else None,
-            "interpretation": "Counts are exact for checked values; sample absence does not certify population finiteness."}
+    return {
+        "coverage": "full" if checked == total else "sampled",
+        "sampled": checked != total,
+        "approximate": False,
+        "population": "checked_values",
+        "checked_values": int(checked),
+        "nan_count": nan,
+        "inf_count": inf,
+        "scan_cap": cap,
+        "all_finite": (nan + inf == 0) if checked == total else None,
+        "interpretation": "Counts are exact for checked values; sample absence does not certify population finiteness.",
+    }
 
 
 def _matrix_sketch(tensor: Any, *, max_rows: int = 768, max_columns: int = 768):
@@ -85,13 +93,18 @@ def _matrix_sketch(tensor: Any, *, max_rows: int = 768, max_columns: int = 768):
     exact = max(shape) <= 2048 and math.prod(shape) <= 2_000_000
     try:
         if exact:
-            return _numpy_sample(tensor, math.prod(shape)).reshape(shape).astype(float), False, shape
+            return (
+                _numpy_sample(tensor, math.prod(shape)).reshape(shape).astype(float),
+                False,
+                shape,
+            )
         rng = np.random.default_rng(42)
         rows = np.sort(rng.choice(shape[0], min(max_rows, shape[0]), replace=False))
         cols = np.sort(rng.choice(shape[1], min(max_columns, shape[1]), replace=False))
         if isinstance(tensor, np.ndarray):
             return np.asarray(tensor[np.ix_(rows, cols)], dtype=float), True, shape
         import torch
+
         value = tensor.detach()
         rr = torch.as_tensor(rows, device=value.device)
         cc = torch.as_tensor(cols, device=value.device)
@@ -108,51 +121,76 @@ def _spectral_metrics(matrix: np.ndarray, sampled: bool, original_shape) -> dict
     min_dim = min(matrix.shape)
     scale = float(np.max(np.abs(matrix)))
     a = matrix / scale if scale else matrix
-    frobenius_sq = float(np.sum(a*a))
+    frobenius_sq = float(np.sum(a * a))
     full = not sampled and (a.size <= 250_000 or min_dim <= 64)
     if full:
         singular = np.linalg.svd(a, compute_uv=False)
         components = min_dim
     else:
         from sklearn.utils.extmath import randomized_svd
+
         components = min(64, min_dim)
         _, singular, _ = randomized_svd(a, n_components=components, n_iter=3, random_state=42)
     energy = singular**2
     captured = float(energy.sum())
-    probs = energy[energy > 0]/captured if captured else np.array([])
-    effective = float(np.exp(-np.sum(probs*np.log(probs)))) if captured else 0.
-    stable = frobenius_sq / float(singular[0]**2) if singular[0] > 0 else 0.
+    probs = energy[energy > 0] / captured if captured else np.array([])
+    effective = float(np.exp(-np.sum(probs * np.log(probs)))) if captured else 0.0
+    stable = frobenius_sq / float(singular[0] ** 2) if singular[0] > 0 else 0.0
     result = {
-        "method": "exact_svd" if full else "sampled_submatrix_randomized_svd" if sampled else "randomized_svd",
-        "method_version": "2", "available": True, "approximate": not full,
-        "sampled": sampled, "population": "sampled_submatrix" if sampled else "full_matrix",
-        "original_shape": list(original_shape), "analyzed_shape": list(matrix.shape),
-        "singular_values": [float(v*scale) for v in singular[:64]],
+        "method": "exact_svd"
+        if full
+        else "sampled_submatrix_randomized_svd"
+        if sampled
+        else "randomized_svd",
+        "method_version": "2",
+        "available": True,
+        "approximate": not full,
+        "sampled": sampled,
+        "population": "sampled_submatrix" if sampled else "full_matrix",
+        "original_shape": list(original_shape),
+        "analyzed_shape": list(matrix.shape),
+        "singular_values": [float(v * scale) for v in singular[:64]],
         "singular_values_truncated": len(singular) > 64 or components < min_dim,
-        "largest_singular_value": float(singular[0]*scale),
+        "largest_singular_value": float(singular[0] * scale),
         "stable_rank": None if sampled else stable,
-        "stable_rank_ratio": None if sampled else stable/min(original_shape),
+        "stable_rank_ratio": None if sampled else stable / min(original_shape),
         "effective_rank_definition": "exp(entropy(squared_singular_value_proportions))",
-        "numerical_scaling": "max_absolute_entry", "scale": scale,
+        "numerical_scaling": "max_absolute_entry",
+        "scale": scale,
     }
     if full:
-        tol = max(a.shape)*np.finfo(float).eps*float(singular[0])
+        tol = max(a.shape) * np.finfo(float).eps * float(singular[0])
         rank = int(np.sum(singular > tol))
-        condition = float(singular[0]/singular[-1]) if rank == min_dim else None
-        result.update(rank=rank, rank_ratio=rank/min_dim, effective_rank=effective,
-                      rank_tolerance=float(tol*scale), condition_number=condition,
-                      condition_status="finite" if condition is not None else "singular_under_tolerance",
-                      smallest_nonzero_singular_value=float(singular[rank-1]*scale) if rank else None)
+        condition = float(singular[0] / singular[-1]) if rank == min_dim else None
+        result.update(
+            rank=rank,
+            rank_ratio=rank / min_dim,
+            effective_rank=effective,
+            rank_tolerance=float(tol * scale),
+            condition_number=condition,
+            condition_status="finite" if condition is not None else "singular_under_tolerance",
+            smallest_nonzero_singular_value=float(singular[rank - 1] * scale) if rank else None,
+        )
     else:
-        result.update(components=components, effective_rank_topk=effective,
-                      captured_energy_ratio=min(1., captured/frobenius_sq) if frobenius_sq else 0.,
-                      relative_frobenius_residual=math.sqrt(max(0.,1-captured/frobenius_sq)) if frobenius_sq else 0.,
-                      residual_population=result["population"], random_seed=42, power_iterations=3,
-                      stable_rank_interpretation="Upper estimate: randomized spectral norm can be underestimated; no rank estimate or probabilistic confidence bound.")
+        result.update(
+            components=components,
+            effective_rank_topk=effective,
+            captured_energy_ratio=min(1.0, captured / frobenius_sq) if frobenius_sq else 0.0,
+            relative_frobenius_residual=math.sqrt(max(0.0, 1 - captured / frobenius_sq))
+            if frobenius_sq
+            else 0.0,
+            residual_population=result["population"],
+            random_seed=42,
+            power_iterations=3,
+            stable_rank_interpretation="Upper estimate: randomized spectral norm can be underestimated; no rank estimate or probabilistic confidence bound.",
+        )
         if sampled:
-            result.update(submatrix_stable_rank=stable, submatrix_stable_rank_ratio=stable/min_dim,
-                          sampling_method="uniform_without_replacement",
-                          interpretation="No unbiased full-matrix rank or spectrum claim; residual describes the sampled submatrix only.")
+            result.update(
+                submatrix_stable_rank=stable,
+                submatrix_stable_rank_ratio=stable / min_dim,
+                sampling_method="uniform_without_replacement",
+                interpretation="No unbiased full-matrix rank or spectrum claim; residual describes the sampled submatrix only.",
+            )
     return result
 
 
@@ -177,7 +215,13 @@ def tensor_metrics(
     total_values = _numel(tensor)
 
     if np.iscomplexobj(values):
-        return {"shape": list(shape), "size": total_values, "numeric": False, "reason": "complex_distribution_unsupported", "sampled_values": int(values.size)}
+        return {
+            "shape": list(shape),
+            "size": total_values,
+            "numeric": False,
+            "reason": "complex_distribution_unsupported",
+            "sampled_values": int(values.size),
+        }
     numeric = values
     try:
         numeric = values.astype(float, copy=False)
@@ -217,20 +261,27 @@ def tensor_metrics(
     }
 
     result["nonfinite"] = _nonfinite_summary(tensor, numeric, total_values)
-    result["sampling"] = {"method": "uniform_without_replacement", "seed": 42, "population": "tensor_entries", "sampled": numeric.size < total_values}
+    result["sampling"] = {
+        "method": "uniform_without_replacement",
+        "seed": 42,
+        "population": "tensor_entries",
+        "sampled": numeric.size < total_values,
+    }
 
     if finite_values.size:
         abs_values = np.abs(finite_values)
         scale = float(abs_values.max())
-        normalized = finite_values/scale if scale else finite_values
+        normalized = finite_values / scale if scale else finite_values
         result["distribution"] = {
-            "mean": float(np.mean(normalized)*scale), "std": float(np.std(normalized)*scale),
-            "min": float(np.min(finite_values)), "max": float(np.max(finite_values)),
-            "median": float(np.median(normalized)*scale),
-            "p01": float(np.quantile(normalized, .01)*scale),
-            "p99": float(np.quantile(normalized, .99)*scale),
-            "l1_sample": float(np.sum(np.abs(normalized))*scale),
-            "l2_sample": float(np.linalg.norm(normalized)*scale),
+            "mean": float(np.mean(normalized) * scale),
+            "std": float(np.std(normalized) * scale),
+            "min": float(np.min(finite_values)),
+            "max": float(np.max(finite_values)),
+            "median": float(np.median(normalized) * scale),
+            "p01": float(np.quantile(normalized, 0.01) * scale),
+            "p99": float(np.quantile(normalized, 0.99) * scale),
+            "l1_sample": float(np.sum(np.abs(normalized)) * scale),
+            "l2_sample": float(np.linalg.norm(normalized) * scale),
         }
     matrix, sampled, original_shape = _matrix_sketch(tensor)
     if matrix is not None:
@@ -325,7 +376,8 @@ def analyze_tensor(
             )
         )
     elif (
-        bool(matrix.get("approximate")) and matrix.get("population") == "full_matrix"
+        bool(matrix.get("approximate"))
+        and matrix.get("population") == "full_matrix"
         and isinstance(stable_rank_ratio, (float, int))
         and float(stable_rank_ratio) < 0.10
     ):
@@ -365,7 +417,8 @@ def analyze_tensor(
         score -= min(25.0, max(0.0, 0.75 - float(rank_ratio)) * 50.0)
     elif (
         isinstance(stable_rank_ratio, (float, int))
-        and bool(matrix.get("approximate")) and matrix.get("population") == "full_matrix"
+        and bool(matrix.get("approximate"))
+        and matrix.get("population") == "full_matrix"
     ):
         score -= min(
             15.0,

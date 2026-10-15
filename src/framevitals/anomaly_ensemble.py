@@ -78,19 +78,11 @@ def _prepare_numeric_matrix(
 
     truncated = numeric.shape[1] > max_columns
     if truncated:
-        keep = (
-            numeric.notna()
-            .sum()
-            .sort_values(ascending=False)
-            .head(max_columns)
-            .index.tolist()
-        )
+        keep = numeric.notna().sum().sort_values(ascending=False).head(max_columns).index.tolist()
         numeric = numeric[keep]
 
     missing_counts = {
-        column: int(count)
-        for column, count in numeric.isna().sum().items()
-        if int(count) > 0
+        column: int(count) for column, count in numeric.isna().sum().items() if int(count) > 0
     }
 
     imputer = SimpleImputer(strategy="median")
@@ -164,7 +156,7 @@ def _detect_mahalanobis(X: np.ndarray) -> np.ndarray:
         inv = np.linalg.pinv(cov_matrix)
         diff = X - mean
         raw = np.einsum("ij,jk,ik->i", diff, inv, diff)
-        return _to_unit(np.sqrt(np.maximum(raw, 0)))
+        return _to_unit(np.maximum(raw, 0))
 
 
 def _detect_pyod(X: np.ndarray, model_name: str) -> np.ndarray:
@@ -258,9 +250,7 @@ def detect_anomalies_ensemble(
         try:
             scores = np.asarray(fn(), dtype=float)
             if scores.shape != (n_rows,):
-                raise ValueError(
-                    f"Detector returned shape {scores.shape}; expected {(n_rows,)}."
-                )
+                raise ValueError(f"Detector returned shape {scores.shape}; expected {(n_rows,)}.")
             if not np.isfinite(scores).all():
                 raise ValueError("Detector produced non-finite scores.")
             detector_scores[name] = scores
@@ -315,11 +305,11 @@ def detect_anomalies_ensemble(
     vote_thresholds: dict[str, float] = {}
     vote_matrix: list[np.ndarray] = []
     for name in detector_names:
-        detector_threshold = float(
-            np.quantile(detector_scores[name], 1.0 - contamination)
-        )
+        detector_threshold = float(np.quantile(detector_scores[name], 1.0 - contamination))
         vote_thresholds[name] = detector_threshold
-        vote_matrix.append(detector_scores[name] >= detector_threshold)
+        vote_matrix.append(
+            (detector_scores[name] >= detector_threshold) & (detector_scores[name] > 0)
+        )
 
     agreement_count = np.column_stack(vote_matrix).sum(axis=1)
     agreement_fraction = agreement_count / len(detector_names)
@@ -359,8 +349,7 @@ def detect_anomalies_ensemble(
         top_rows.append(entry)
 
     detector_summaries = {
-        name: _detector_summary(scores)
-        for name, scores in detector_scores.items()
+        name: _detector_summary(scores) for name, scores in detector_scores.items()
     }
 
     return {
@@ -376,6 +365,8 @@ def detect_anomalies_ensemble(
             name: round(value, 4) for name, value in vote_thresholds.items()
         },
         "threshold": float(threshold),
+        "score_calibration": "relative_in_sample_scores_not_probabilities",
+        "vote_ties": "positive_scores_at_or_above_quantile; tied positive scores can exceed contamination",
         "contamination": float(contamination),
         "expected_anomaly_count": int(math.ceil(n_rows * contamination)),
         "flagged_count": flagged_count,

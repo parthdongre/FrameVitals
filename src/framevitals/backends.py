@@ -35,8 +35,7 @@ def resolve_numeric_backend(requested: str | None = None) -> Literal["numpy", "r
     value = (requested or os.getenv("FRAMEVITALS_BACKEND", "auto")).strip().lower()
     if value not in _VALID_BACKENDS:
         raise ValueError(
-            "Unknown FrameVitals numeric backend "
-            f"'{value}'. Choose from: auto, numpy, rust."
+            f"Unknown FrameVitals numeric backend '{value}'. Choose from: auto, numpy, rust."
         )
     if value == "numpy":
         return "numpy"
@@ -73,7 +72,7 @@ def _bias_corrected_shape(
         skewness = None
     else:
         n = float(count)
-        population_skew = np.sqrt(n) * m3 / (m2 ** 1.5)
+        population_skew = np.sqrt(n) * m3 / (m2**1.5)
         skewness = float(np.sqrt(n * (n - 1.0)) / (n - 2.0) * population_skew)
 
     if count < 4 or m2 <= 0.0:
@@ -82,9 +81,7 @@ def _bias_corrected_shape(
         n = float(count)
         population_excess = n * m4 / (m2 * m2) - 3.0
         kurtosis = float(
-            (n - 1.0)
-            / ((n - 2.0) * (n - 3.0))
-            * ((n + 1.0) * population_excess + 6.0)
+            (n - 1.0) / ((n - 2.0) * (n - 3.0)) * ((n + 1.0) * population_excess + 6.0)
         )
     return skewness, kurtosis
 
@@ -112,18 +109,33 @@ def _numpy_numeric_state(array: np.ndarray) -> dict[str, Any]:
             "maximum": None,
         }
 
-    mean = float(finite.mean())
-    centered = finite - mean
+    # Normalize so means and dimensionless shape avoid over/underflow.
+    scale = float(np.max(np.abs(finite)))
+    normalized = finite / scale if scale else finite
+    normalized_mean = float(normalized.mean())
+    mean = normalized_mean * scale
+    centered = normalized - normalized_mean
     centered2 = centered * centered
-    m2 = float(np.sum(centered2))
-    m3 = float(np.dot(centered2, centered))
-    m4 = float(np.dot(centered2, centered2))
-    variance = m2 / (finite.size - 1) if finite.size >= 2 else None
-    skewness, kurtosis = _bias_corrected_shape(int(finite.size), m2, m3, m4)
+    n2, n3, n4 = (
+        float(centered2.sum()),
+        float(np.dot(centered2, centered)),
+        float(np.dot(centered2, centered2)),
+    )
+    skewness, kurtosis = _bias_corrected_shape(int(finite.size), n2, n3, n4)
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        scale_np = np.float64(scale)
+        m2 = float(n2 * scale_np**2) if n2 else 0.0
+        m3 = float(n3 * scale_np**3) if n3 else 0.0
+        m4 = float(n4 * scale_np**4) if n4 else 0.0
+        variance = m2 / (finite.size - 1) if finite.size >= 2 else None
+
     return {
         "backend": "numpy",
         "observations": int(array.size),
         "count": int(finite.size),
+        "moment_status": "finite"
+        if np.isfinite([mean, m2, m3, m4]).all()
+        else "raw_moment_overflow",
         "missing": missing,
         "infinite": infinite,
         "mean": mean,

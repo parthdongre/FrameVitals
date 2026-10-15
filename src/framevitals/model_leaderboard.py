@@ -33,7 +33,14 @@ from sklearn.metrics import (
     r2_score,
     recall_score,
 )
-from sklearn.model_selection import KFold, StratifiedKFold, cross_validate, train_test_split
+from sklearn.model_selection import (
+    GroupKFold,
+    TimeSeriesSplit,
+    KFold,
+    StratifiedKFold,
+    cross_validate,
+    train_test_split,
+)
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.pipeline import Pipeline
 
@@ -231,9 +238,31 @@ def _cv_for(task_type: str, y: pd.Series, n_splits: int = 5):
     )
 
 
+def _evaluation_splits(X, y, task_type, n_splits, *, strategy="iid", groups=None, gap=0):
+    """Explicit dependence-aware splits; never infer independence from a column name."""
+    if strategy == "iid":
+        splitter, _ = _cv_for(task_type, y, n_splits)
+        return list(splitter.split(X, y))
+    if strategy == "group":
+        if groups is None or pd.isna(groups).any():
+            raise ValueError("group strategy requires nonmissing group labels")
+        count = len(pd.unique(groups))
+        if count < 2:
+            raise ValueError("group strategy requires at least two groups")
+        return list(GroupKFold(n_splits=min(n_splits, count)).split(X, y, groups))
+    if strategy == "time":
+        if gap < 0:
+            raise ValueError("time_gap must be nonnegative")
+        splits = min(n_splits, max(2, len(y) // 2 - 1))
+        return list(TimeSeriesSplit(n_splits=splits, gap=gap).split(X, y))
+    raise ValueError("split_strategy must be iid, group or time")
+
+
 def _scoring_for(task_type: str) -> tuple[dict[str, str], str]:
     if task_type == "classification":
         return {
+            "balanced_accuracy": "balanced_accuracy",
+            "f1_macro": "f1_macro",
             "accuracy": "accuracy",
             "f1_weighted": "f1_weighted",
             "precision_weighted": "precision_weighted",
@@ -344,9 +373,7 @@ def _classification_holdout(
         "n_train": int(len(X_train)),
         "n_test": int(len(X_test)),
         "accuracy": _safe_round(accuracy_score(y_test, y_pred)),
-        "f1_weighted": _safe_round(
-            f1_score(y_test, y_pred, average="weighted", zero_division=0)
-        ),
+        "f1_weighted": _safe_round(f1_score(y_test, y_pred, average="weighted", zero_division=0)),
         "precision_weighted": _safe_round(
             precision_score(y_test, y_pred, average="weighted", zero_division=0)
         ),
@@ -362,9 +389,7 @@ def _classification_holdout(
             if proba.shape[1] == 2 and classes is not None:
                 pos_idx = 1
                 y_bin = (y_test == classes[pos_idx]).astype(int).values
-                out["brier_score"] = _safe_round(
-                    brier_score_loss(y_bin, proba[:, pos_idx])
-                )
+                out["brier_score"] = _safe_round(brier_score_loss(y_bin, proba[:, pos_idx]))
     except Exception as exc:
         out["brier_error"] = str(exc)
 
@@ -414,6 +439,11 @@ def run_model_leaderboard(
     task_type: str | None = None,
     n_splits: int = 5,
     n_jobs: int = 1,
+    *,
+    split_strategy: str = "iid",
+    group_column: str | None = None,
+    time_column: str | None = None,
+    time_gap: int = 0,
 ) -> dict[str, Any]:
     """Run a CV-validated diagnostic model leaderboard."""
     if not target_column or target_column not in df.columns:
@@ -428,7 +458,23 @@ def run_model_leaderboard(
     if n_jobs == 0:
         raise ValueError("n_jobs cannot be 0.")
 
-    prep = prepare_ml_matrix(df, target=target_column)
+    if split_strategy not in {"iid", "group", "time"}:
+        raise ValueError("split_strategy must be iid, group or time")
+    if split_strategy == "group" and (not group_column or group_column not in df.columns):
+        raise ValueError("group_column is required for group splitting")
+    if time_column is not None and time_column not in df.columns:
+        raise ValueError("time_column is not in the dataframe")
+    if target_column in {group_column, time_column}:
+        raise ValueError("split columns must differ from target")
+    df = df.reset_index(drop=True)
+    if split_strategy == "time" and time_column:
+        if df[time_column].isna().any() or df[time_column].duplicated().any():
+            raise ValueError(
+                "time_column must contain distinct nonmissing ordered timestamps; aggregate repeated times explicitly"
+            )
+        df = df.sort_values(time_column, kind="stable")
+    features = df.drop(columns=[c for c in (group_column, time_column) if c], errors="ignore")
+    prep = prepare_ml_matrix(features, target=target_column)
     if not prep["usable"]:
         return {
             "available": False,
@@ -464,11 +510,17 @@ def run_model_leaderboard(
             }
 
     try:
-        cv, actual_splits = _cv_for(
-            task_type,
+        groups = df.loc[X.index, group_column].to_numpy() if group_column else None
+        cv = _evaluation_splits(
+            X,
             y_for_models,
-            n_splits=n_splits,
+            task_type,
+            n_splits,
+            strategy=split_strategy,
+            groups=groups,
+            gap=time_gap,
         )
+        actual_splits = len(cv)
     except ValueError as exc:
         return {
             "available": False,
@@ -479,9 +531,7 @@ def run_model_leaderboard(
 
     scoring, primary = _scoring_for(task_type)
     if task_type == "classification":
-        registry = _classification_registry(
-            class_count=int(y_for_models.nunique())
-        )
+        registry = _classification_registry(class_count=int(y_for_models.nunique()))
     else:
         registry = _regression_registry()
 
@@ -490,8 +540,11 @@ def run_model_leaderboard(
         n_rows=len(y_for_models),
         n_splits=actual_splits,
     )
-    for estimator in registry.values():
+    knn_neighbors = min(knn_neighbors, min(len(train) for train, _ in cv))
+    for name, estimator in registry.items():
         _set_estimator_jobs(estimator, 1)
+        if name in {"KNeighborsClassifier", "KNeighborsRegressor"}:
+            estimator.set_params(n_neighbors=knn_neighbors)
 
     leaderboard: list[dict[str, Any]] = []
 
@@ -503,10 +556,12 @@ def run_model_leaderboard(
                 numeric_features,
                 categorical_features,
             )
-            pipeline = Pipeline([
-                ("pre", preprocessor),
-                ("model", estimator),
-            ])
+            pipeline = Pipeline(
+                [
+                    ("pre", preprocessor),
+                    ("model", estimator),
+                ]
+            )
 
             t0 = time.perf_counter()
             try:
@@ -548,14 +603,22 @@ def run_model_leaderboard(
                 row["primary_score"] = row.get(f"{primary}_mean")
                 row["primary_std"] = row.get(f"{primary}_std")
                 row["score_stability"] = _score_stability(row["primary_std"])
+                row["fold_scores"] = [
+                    float(v) if np.isfinite(v) else None for v in cv_results[f"test_{primary}"]
+                ]
+                row["eligible_for_ranking"] = all(v is not None for v in row["fold_scores"])
+                if not row["eligible_for_ranking"]:
+                    row["primary_score"] = None
                 if row["primary_score"] is None:
                     row["error"] = "No valid cross-validation score was produced."
                 leaderboard.append(row)
             except Exception as exc:
-                leaderboard.append({
-                    "model": name,
-                    "error": f"{type(exc).__name__}: {exc}",
-                })
+                leaderboard.append(
+                    {
+                        "model": name,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
 
     def _sort_key(row: dict[str, Any]) -> float:
         value = row.get("primary_score")
@@ -563,17 +626,13 @@ def run_model_leaderboard(
 
     leaderboard.sort(key=_sort_key, reverse=True)
 
-    successful_rows = [
-        row for row in leaderboard if row.get("primary_score") is not None
-    ]
+    successful_rows = [row for row in leaderboard if row.get("primary_score") is not None]
     failed_rows = [row for row in leaderboard if row.get("primary_score") is None]
     dummy_row = next(
         (row for row in successful_rows if "Dummy" in row["model"]),
         None,
     )
-    candidates = [
-        row for row in successful_rows if "Dummy" not in row["model"]
-    ]
+    candidates = [row for row in successful_rows if "Dummy" not in row["model"]]
 
     base_payload: dict[str, Any] = {
         "available": True,
@@ -587,6 +646,16 @@ def run_model_leaderboard(
         "dropped_columns": prep["dropped_columns"],
         "warnings": list(prep["warnings"]),
         "target_encoding": target_encoding,
+        "evaluation": {
+            "method_version": "2",
+            "split_strategy": split_strategy,
+            "group_column": group_column,
+            "time_column": time_column,
+            "time_gap": time_gap,
+            "uncertainty": "Fold standard deviation is descriptive, not a confidence interval; folds share training observations.",
+            "selection": "Winner selected on reported CV; no independent generalization estimate.",
+            "preprocessing": "Imputation/scaling/encoding fitted in each fold; conservative feature eligibility screened on the whole dataset.",
+        },
         "cv": {
             "requested_splits": int(n_splits),
             "actual_splits": int(actual_splits),
@@ -596,8 +665,7 @@ def run_model_leaderboard(
         "models_succeeded": len(successful_rows),
         "models_failed": len(failed_rows),
         "model_failures": [
-            {"model": row["model"], "error": row.get("error")}
-            for row in failed_rows
+            {"model": row["model"], "error": row.get("error")} for row in failed_rows
         ],
         "leaderboard": leaderboard,
         "baseline": (
@@ -639,13 +707,17 @@ def run_model_leaderboard(
             numeric_features,
             categorical_features,
         )
-        winner_pipeline = Pipeline([
-            ("pre", winner_preprocessor),
-            ("model", winner_estimator),
-        ])
+        winner_pipeline = Pipeline(
+            [
+                ("pre", winner_preprocessor),
+                ("model", winner_estimator),
+            ]
+        )
 
         try:
-            if task_type == "classification":
+            if split_strategy != "iid":
+                holdout = {"available": False, "reason": "independent_nested_evaluation_not_run"}
+            elif task_type == "classification":
                 holdout = _classification_holdout(
                     winner_pipeline,
                     X,
@@ -663,6 +735,10 @@ def run_model_leaderboard(
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
+    holdout["independent"] = False
+    holdout["interpretation"] = (
+        "Exploratory refit only: model selection has already used these observations through CV."
+    )
     return {
         **base_payload,
         "winner": {
