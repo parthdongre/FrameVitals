@@ -1,3 +1,13 @@
+# Phase 2 status
+
+The original backlog below is preserved as historical problem framing. Phase 2 results are in [the scientific audit](../audits/ASTRA_SCIENTIFIC_AUDIT.md), [methods](../research/ASTRA_MATHEMATICAL_METHODS.md), [algorithm evaluation](../research/ASTRA_ALGORITHM_EVALUATION.md), and [benchmarks](../benchmarks/ASTRA_PERFORMANCE_REPORT.md).
+
+Addressed: spectral population/scale/condition errors, bounded full nonfinite checks, heuristic score interpretation, graph metric provenance and Laplacian definition, drift multiplicity/contingency assumptions, explicit group/time leaderboard splits, relational typed-key/population metrics, quantile relative-error representative and merge configuration, streaming extreme initialization, regular time-axis gating, alias/cycle distinction and runtime observation limits.
+
+Remaining: calibrated domain scores and threshold false-alarm rates; HLL/heavy-hitter/reservoir distribution studies; independent nested model evaluation and higher-level group/time API routing; architecture-specific sample accuracy; structural graph rewiring sensitivity; extreme-scale tensor/checkpoint drift norms; VIF sentinel migration; negative-cost shortest-path API; recent-paper SSSP implementation reproduction; full statistical coverage simulations. Passing tests does not close these scientific questions.
+
+---
+
 # Astra science backlog
 
 Start from the reviewed Phase 1 branch head pinned in PR #66. Do not start again from main or dev. Fixtures: `tests/fixtures/science/cases.json`. The following are validation tasks, not claims that every listed algorithm is defective. Priorities describe interpretation risk; Phase 1 did not change scientific formulas.

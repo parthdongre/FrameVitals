@@ -455,3 +455,5 @@ Detailed documentation lives in [`docs/`](docs/).
 ## License
 
 FrameVitals is released under the [MIT License](LICENSE).
+
+Scientific methods revision 2: see the [scientific audit](docs/audits/ASTRA_SCIENTIFIC_AUDIT.md), [method definitions](docs/research/ASTRA_MATHEMATICAL_METHODS.md), [algorithm evaluation](docs/research/ASTRA_ALGORITHM_EVALUATION.md), and [reproducible benchmarks](docs/benchmarks/ASTRA_PERFORMANCE_REPORT.md).

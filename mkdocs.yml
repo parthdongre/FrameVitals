@@ -23,6 +23,11 @@ nav:
       - Module map: audits/SOL_MODULE_MAP.md
       - Sol handoff: work-handoff/SOL_HANDOFF.md
       - Astra backlog: work-handoff/ASTRA_SCIENCE_BACKLOG.md
+  - Scientific review:
+      - Audit: audits/ASTRA_SCIENTIFIC_AUDIT.md
+      - Mathematical methods: research/ASTRA_MATHEMATICAL_METHODS.md
+      - Algorithm evaluation: research/ASTRA_ALGORITHM_EVALUATION.md
+      - Performance report: benchmarks/ASTRA_PERFORMANCE_REPORT.md
   - Protocol architecture: protocols.md
   - Structured data and model diagnostics: structured-data.md
   - Terminal workspace: terminal-ui.md
