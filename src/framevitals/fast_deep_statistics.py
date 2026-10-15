@@ -64,8 +64,8 @@ def fast_mean_ci(
             "low": _safe_float(mean),
             "high": _safe_float(mean),
             "method": "student_t",
-        "confidence_level": confidence,
-        "assumptions": "IID Gaussian for exact coverage; otherwise asymptotic finite-variance approximation",
+            "confidence_level": confidence,
+            "assumptions": "IID Gaussian for exact coverage; otherwise asymptotic finite-variance approximation",
             "n_resamples": 0,
         }
 
@@ -101,7 +101,9 @@ def fast_median_ci(
 
     alpha = 1.0 - float(confidence)
     rank = int(stats.binom.ppf(alpha / 2.0, n, 0.5))
-    rank = max(1, min(rank, n // 2))
+    if rank < 1:
+        return {"available": False, "reason": "requested_confidence_requires_unbounded_interval"}
+    rank = min(rank, n // 2)
 
     low_index = rank - 1
     high_index = n - rank
@@ -165,9 +167,7 @@ def _numeric_bivariate(
                 break
             payload = _numeric_pair_stats(df[left], df[right])
             if payload.get("available"):
-                numeric_pairs.append(
-                    {"column_a": left, "column_b": right, **payload}
-                )
+                numeric_pairs.append({"column_a": left, "column_b": right, **payload})
                 budget -= 1
         if budget <= 0:
             break
@@ -246,16 +246,13 @@ def run_fast_deep_statistics_v2(
     categorical_cols = _categorical_columns(df)
 
     categorical_view = (
-        df.loc[:, categorical_cols]
-        if categorical_cols
-        else pd.DataFrame(index=df.index)
+        df.loc[:, categorical_cols] if categorical_cols else pd.DataFrame(index=df.index)
     )
     result = run_deep_statistics_v2(categorical_view, max_pairs=max_pairs)
 
     result["numeric_columns"] = numeric_cols
     result["numeric_statistics"] = {
-        column: _numeric_column_stats_fast(df[column])
-        for column in numeric_cols
+        column: _numeric_column_stats_fast(df[column]) for column in numeric_cols
     }
 
     (

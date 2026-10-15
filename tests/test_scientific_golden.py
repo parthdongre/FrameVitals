@@ -311,3 +311,69 @@ def test_numpy_extreme_shape_is_dimensionless():
     assert r["skewness"] == pytest.approx(stats.skew(x, bias=False), abs=1e-12)
     assert r["kurtosis"] == pytest.approx(stats.kurtosis(x, bias=False), abs=1e-12)
     assert r["moment_status"] == "raw_moment_overflow"
+
+
+def test_stored_analytic_golden_fixtures():
+    import json
+    from pathlib import Path
+
+    nx = pytest.importorskip("networkx")
+    from framevitals.analysis.graph import (
+        _sample_shortest_paths,
+        _cut_structure,
+        _core_summary,
+        _budget,
+    )
+
+    fixture = json.loads((Path(__file__).parent / "fixtures/science/astra_golden.json").read_text())
+    for item in fixture["oracles"]:
+        if item["kind"] == "diagonal":
+            m = tensor_metrics(np.diag(item["values"]))["matrix"]
+            assert m["rank"] == item["rank"]
+            assert m["stable_rank"] == pytest.approx(item["stable_rank"])
+            assert m["condition_number"] == item["condition"]
+        else:
+            ctor = {"path": nx.path_graph, "cycle": nx.cycle_graph, "complete": nx.complete_graph}[
+                item["kind"]
+            ]
+            g = ctor(item["nodes"])
+            b = _budget("quick")
+            p = _sample_shortest_paths(g, nx, source_count=item["nodes"], weight=None)
+            assert p["mean_distance"] == pytest.approx(item["mean_distance"], abs=1e-6)
+            assert _cut_structure(g, nx, b)["bridges"] == item["bridges"]
+            assert _core_summary(g, nx, b)["max_core"] == item["max_core"]
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_randomized_svd_residual_reference(seed):
+    from framevitals.analysis.tensor import _spectral_metrics
+
+    rng = np.random.default_rng(seed)
+    # A known rank-six outer product exceeds the full-SVD element budget.
+    x = rng.normal(size=(600, 6)) @ rng.normal(size=(6, 500))
+    m = _spectral_metrics(x, False, x.shape)
+    oracle = np.linalg.svd(x, compute_uv=False)
+    np.testing.assert_allclose(m["singular_values"][:6], oracle[:6], rtol=1e-10, atol=1e-10)
+    assert m["relative_frobenius_residual"] < 1e-6
+    assert m["stable_rank"] == pytest.approx(np.sum(oracle**2) / oracle[0] ** 2, rel=1e-10)
+
+
+def test_native_numpy_moment_differential():
+    pytest.importorskip("framevitals._native")
+    from framevitals.backends import numeric_state
+
+    for seed in range(6):
+        x = np.random.default_rng(seed).standard_t(8, 2048)
+        a = numeric_state(x, backend="numpy")
+        b = numeric_state(x, backend="rust")
+        for key in ["mean", "variance", "skewness", "kurtosis"]:
+            assert a[key] == pytest.approx(b[key], rel=1e-10, abs=1e-11)
+
+
+def test_tiny_ci_retains_units_and_extreme_confidence_is_unavailable():
+    from framevitals.fast_deep_statistics import fast_mean_ci, fast_median_ci
+
+    x = pd.Series(np.linspace(1e-100, 2e-100, 40))
+    r = fast_mean_ci(x)
+    assert 0 < r["low"] < r["high"] < 3e-100
+    assert not fast_median_ci(x, confidence=1 - 1e-12)["available"]

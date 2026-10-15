@@ -443,7 +443,10 @@ def analyze_tensor(
                 "structure": metrics,
             },
             "tensor": metrics,
-            "health": {"overall_score": score, "label": _health_label(score)},
+            "health": {
+                "overall_score": score if metrics.get("numeric") else None,
+                "label": _health_label(score) if metrics.get("numeric") else "unavailable",
+            },
             "ml_readiness": {"score": None, "label": "not_applicable"},
             "findings": findings,
             "artifacts_enabled": False,

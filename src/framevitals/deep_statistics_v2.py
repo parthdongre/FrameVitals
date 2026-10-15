@@ -35,6 +35,7 @@ from framevitals.scientific import annotate_test_family
 # JSON-safe helpers
 # ---------------------------------------------------------------------------
 
+
 def _safe_float(value: Any) -> float | int | None:
     """Coerce numpy/pandas scalars to plain Python; drop NaN/Inf."""
     if value is None:
@@ -46,7 +47,7 @@ def _safe_float(value: Any) -> float | int | None:
             v = float(value)
             if math.isnan(v) or math.isinf(v):
                 return None
-            return round(v, 6)
+            return v
         if pd.isna(value):
             return None
         return value
@@ -61,6 +62,7 @@ def _safe_dict(d: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Per-column descriptive + outlier engine
 # ---------------------------------------------------------------------------
+
 
 def _classify_skew(skew: float | None) -> str:
     if skew is None:
@@ -174,14 +176,24 @@ def _normality(series: pd.Series) -> dict:
         return {"test": "skipped", "reason": "n<8", "p_value": None, "is_probably_normal": None}
 
     if s.nunique() < 2:
-        return {"test": "skipped", "reason": "constant_sample", "p_value": None, "is_probably_normal": None}
-    out: dict[str, Any] = {"assumptions": "IID observations; non-rejection does not establish normality."}
+        return {
+            "test": "skipped",
+            "reason": "constant_sample",
+            "p_value": None,
+            "is_probably_normal": None,
+        }
+    out: dict[str, Any] = {
+        "assumptions": "IID observations; non-rejection does not establish normality."
+    }
 
     # Shapiro-Wilk (most powerful for n<=5000)
     if len(s) <= 5000:
         try:
             stat, p = stats.shapiro(s)
-            out["shapiro"] = {"statistic": _safe_float(stat), "p_value": float(p) if np.isfinite(p) else None}
+            out["shapiro"] = {
+                "statistic": _safe_float(stat),
+                "p_value": float(p) if np.isfinite(p) else None,
+            }
         except Exception as exc:
             out["shapiro"] = {"error": str(exc)}
 
@@ -189,7 +201,10 @@ def _normality(series: pd.Series) -> dict:
     if len(s) >= 20:
         try:
             stat, p = stats.normaltest(s if len(s) <= 5000 else s.sample(5000, random_state=42))
-            out["dagostino"] = {"statistic": _safe_float(stat), "p_value": float(p) if np.isfinite(p) else None}
+            out["dagostino"] = {
+                "statistic": _safe_float(stat),
+                "p_value": float(p) if np.isfinite(p) else None,
+            }
         except Exception as exc:
             out["dagostino"] = {"error": str(exc)}
 
@@ -275,7 +290,8 @@ def _fit_best_distribution(series: pd.Series) -> dict:
                 "aic": _safe_float(aic),
                 "params": [float(p) for p in params],
                 "bic": float(k * math.log(n) - 2 * log_lik),
-                "log_likelihood": log_lik, "n_parameters": k,
+                "log_likelihood": log_lik,
+                "n_parameters": k,
             }
             leaderboard.append(entry)
             if best is None or aic < best["aic"]:
@@ -292,7 +308,8 @@ def _fit_best_distribution(series: pd.Series) -> dict:
         "available": True,
         "best_fit": best,
         "leaderboard": leaderboard[:6],
-        "likelihood_population": "finite_values_in_original_units", "n_fit": n,
+        "likelihood_population": "finite_values_in_original_units",
+        "n_fit": n,
         "interpretation": "Exploratory candidate ranking; estimated support can violate regular AIC assumptions. Not a goodness-of-fit test.",
     }
 
@@ -300,6 +317,7 @@ def _fit_best_distribution(series: pd.Series) -> dict:
 # ---------------------------------------------------------------------------
 # Bootstrap CIs
 # ---------------------------------------------------------------------------
+
 
 def _bootstrap_ci(series: pd.Series, statistic_fn, confidence: float = 0.95) -> dict:
     if not 0 < confidence < 1:
@@ -316,7 +334,8 @@ def _bootstrap_ci(series: pd.Series, statistic_fn, confidence: float = 0.95) -> 
                 n_resamples=999,
                 confidence_level=confidence,
                 method="BCa",
-                random_state=42, batch=64,
+                random_state=42,
+                batch=64,
             )
         if not np.isfinite([res.confidence_interval.low, res.confidence_interval.high]).all():
             raise ValueError("degenerate BCa interval")
@@ -336,7 +355,8 @@ def _bootstrap_ci(series: pd.Series, statistic_fn, confidence: float = 0.95) -> 
                 n_resamples=999,
                 confidence_level=confidence,
                 method="percentile",
-                random_state=42, batch=64,
+                random_state=42,
+                batch=64,
             )
             return {
                 "available": True,
@@ -353,6 +373,7 @@ def _bootstrap_ci(series: pd.Series, statistic_fn, confidence: float = 0.95) -> 
 # ---------------------------------------------------------------------------
 # Numeric per-column engine
 # ---------------------------------------------------------------------------
+
 
 def _numeric_column_stats(series: pd.Series) -> dict:
     s = series.replace([np.inf, -np.inf], np.nan).dropna()
@@ -389,6 +410,7 @@ def _numeric_column_stats(series: pd.Series) -> dict:
 # ---------------------------------------------------------------------------
 # Categorical per-column engine
 # ---------------------------------------------------------------------------
+
 
 def _categorical_column_stats(series: pd.Series) -> dict:
     counts = series.value_counts(dropna=False)
@@ -430,6 +452,7 @@ def _categorical_column_stats(series: pd.Series) -> dict:
 # Bivariate panel
 # ---------------------------------------------------------------------------
 
+
 def _classify_corr(value: float) -> str:
     a = abs(value)
     if a >= 0.8:
@@ -457,7 +480,11 @@ def _numeric_pair_stats(a: pd.Series, b: pd.Series) -> dict:
 
     try:
         r, p = stats.pearsonr(x, y)
-        out["pearson"] = {"r": _safe_float(r), "p": float(p) if np.isfinite(p) else None, "strength": _classify_corr(r)}
+        out["pearson"] = {
+            "r": _safe_float(r),
+            "p": float(p) if np.isfinite(p) else None,
+            "strength": _classify_corr(r),
+        }
     except Exception:
         out["pearson"] = {"r": None, "p": None}
 
@@ -588,6 +615,7 @@ def _group_difference_test(numeric: pd.Series, group: pd.Series) -> dict:
 # Public entry point
 # ---------------------------------------------------------------------------
 
+
 def run_deep_statistics_v2(df: pd.DataFrame, max_pairs: int = 20) -> dict:
     """
     Run the full deep-statistics battery.
@@ -690,12 +718,14 @@ def run_deep_statistics_v2(df: pd.DataFrame, max_pairs: int = 20) -> dict:
             "categorical_columns": categorical_cols,
             "numeric_statistics": numeric_stats,
             "categorical_statistics": categorical_stats,
-            "bivariate": annotate_test_family({
-                "numeric_pairs": numeric_pairs,
-                "categorical_pairs": categorical_pairs,
-                "binary_numeric_pairs": binary_numeric_pairs,
-                "group_difference_tests": group_difference_tests,
-            }),
+            "bivariate": annotate_test_family(
+                {
+                    "numeric_pairs": numeric_pairs,
+                    "categorical_pairs": categorical_pairs,
+                    "binary_numeric_pairs": binary_numeric_pairs,
+                    "group_difference_tests": group_difference_tests,
+                }
+            ),
             "summary": {
                 "numeric_count": len(numeric_cols),
                 "categorical_count": len(categorical_cols),
