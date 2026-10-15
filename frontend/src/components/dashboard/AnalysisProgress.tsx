@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import type { AnalysisMode } from "@/data/mockTelemetry";
+import type { AnalysisMode } from "@/data/telemetry";
 
 interface AnalysisProgressProps {
   progress: number;

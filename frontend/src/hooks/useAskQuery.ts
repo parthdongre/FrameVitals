@@ -4,6 +4,7 @@ import type { AskResponse } from "@/data/payload";
 
 export interface AskInput {
   question: string;
+  allow_ai: boolean;
   dataset_id: string;
 }
 

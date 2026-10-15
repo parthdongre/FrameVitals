@@ -4,6 +4,7 @@ from pathlib import Path
 
 from framevitals import __version__
 from framevitals.config import available_modules, available_presets
+from framevitals.serialization import dumps as strict_dumps
 
 
 def _add_output_argument(parser: argparse.ArgumentParser) -> None:
@@ -82,8 +83,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="framevitals",
         description=(
-            "Protocol-first analysis for understanding, trusting, transforming, "
-            "comparing, and monitoring tabular data."
+            "Protocol-first diagnostics for structured data, graphs, tensors, "
+            "ML models, and tabular pipelines."
         ),
     )
 
@@ -95,11 +96,40 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command")
 
+    subparsers.add_parser(
+        "doctor",
+        help="Check CLI installation, terminal support, and optional file parsers.",
+    )
+
+    formats_parser = subparsers.add_parser(
+        "formats",
+        help="List supported file formats and missing optional packages.",
+    )
+    formats_parser.add_argument(
+        "--json", action="store_true", help="Print the machine-readable format catalog."
+    )
+
+    caps = subparsers.add_parser("capabilities", help="Discover analyses for an optional source.")
+    caps.add_argument("file", type=Path, nargs="?")
+    serve = subparsers.add_parser("serve", help="Run the local analysis API (requires web extra).")
+    serve.add_argument("--port", type=int, default=5055)
+
+    tui_parser = subparsers.add_parser(
+        "tui",
+        aliases=["ui"],
+        help="Open the keyboard-driven terminal dashboard.",
+    )
+    tui_parser.add_argument(
+        "--plain",
+        action="store_true",
+        help="Use the line-oriented terminal menu instead of full-screen mode.",
+    )
+
     prism_parser = subparsers.add_parser(
         "prism",
         help="Run the Prism protocol.",
     )
-    prism_parser.add_argument("file", type=Path, help="Current dataset path.")
+    prism_parser.add_argument("file", type=Path, help="Current data or model source path.")
     prism_parser.add_argument(
         "--reference",
         type=Path,
@@ -128,7 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prism_parser.add_argument(
         "--format",
-        choices=["terminal", "json"],
+        choices=["terminal", "json", "envelope"],
         default="terminal",
         help="Stdout format.",
     )
@@ -144,12 +174,12 @@ def build_parser() -> argparse.ArgumentParser:
         "axiom",
         help="Establish or test an Axiom.",
     )
-    axiom_parser.add_argument("reference", type=Path, help="Reference dataset path.")
+    axiom_parser.add_argument("reference", type=Path, help="Reference data or model source path.")
     axiom_parser.add_argument(
         "--current",
         type=Path,
         default=None,
-        help="Optional current dataset to test against the Axiom.",
+        help="Optional current source to test against the Axiom.",
     )
     axiom_parser.add_argument(
         "--format",
@@ -185,10 +215,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     tide_parser = subparsers.add_parser(
         "tide",
-        help="Run the Tide protocol across two dataset states.",
+        help="Run the Tide protocol across two source states.",
     )
-    tide_parser.add_argument("reference", type=Path, help="Reference dataset path.")
-    tide_parser.add_argument("current", type=Path, help="Current dataset path.")
+    tide_parser.add_argument("reference", type=Path, help="Reference source path.")
+    tide_parser.add_argument("current", type=Path, help="Current source path.")
     tide_parser.add_argument(
         "--columns",
         default=None,
@@ -218,7 +248,7 @@ def build_parser() -> argparse.ArgumentParser:
         "pulse",
         help="Capture a compact Pulse state.",
     )
-    pulse_parser.add_argument("file", type=Path, help="Dataset path.")
+    pulse_parser.add_argument("file", type=Path, help="Data or model source path.")
     pulse_parser.add_argument(
         "--depth",
         dest="mode",
@@ -544,13 +574,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _write_json(payload: dict, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
+    output.write_text(strict_dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
 
 
 def _emit(payload: dict, output: Path | None) -> None:
     if output is not None:
         _write_json(payload, output)
-    print(json.dumps(payload, indent=2, default=str))
+    print(strict_dumps(payload, indent=2, default=str))
 
 
 def _render_source(source: dict) -> str:
@@ -578,20 +608,55 @@ def _render_pulse(snapshot: dict) -> str:
     dataset = state.get("dataset", {})
     shape = dataset.get("shape", {})
     health = state.get("health", {})
-    return "\n".join([
+    structured = state.get("structured", {})
+    source_kind = str(state.get("source_kind") or source.get("kind") or "tabular")
+
+    lines = [
         "FrameVitals · Pulse",
         "=" * 72,
-        f"Dataset       {source.get('filename', 'unknown')}",
+        f"Source        {source.get('filename', 'unknown')}",
+        f"Kind          {source_kind.upper()}",
         f"Health        {health.get('overall_score', 'n/a')}  {health.get('label', '')}",
-        (
+    ]
+
+    if source_kind == "graph":
+        lines.extend([
+            f"Nodes         {structured.get('nodes', 'unknown')}",
+            f"Edges         {structured.get('edges', 'unknown')}",
+        ])
+    elif source_kind == "tensor":
+        lines.extend([
+            f"Shape         {structured.get('shape', 'unknown')}",
+            f"Dtype         {structured.get('dtype', 'unknown')}",
+        ])
+    elif source_kind == "model":
+        lines.extend([
+            f"Architecture  {structured.get('architecture', 'unknown')}",
+            f"Parameters    {structured.get('parameters', 'unknown')}",
+        ])
+    elif source_kind == "nested":
+        lines.extend([
+            f"Nodes         {structured.get('nodes_observed', 'unknown')}",
+            f"Depth         {structured.get('max_depth', 'unknown')}",
+        ])
+    elif source_kind == "relational":
+        lines.extend([
+            f"Tables        {structured.get('table_count', 'unknown')}",
+            f"Relationships {structured.get('relationship_count', 'unknown')}",
+        ])
+    else:
+        lines.append(
             "Shape         "
             f"{shape.get('rows', 'unknown')} rows x "
             f"{shape.get('columns', 'unknown')} columns"
-        ),
+        )
+
+    lines.extend([
         f"Fingerprint   {snapshot.get('fingerprint', 'unknown')}",
         "=" * 72,
         "Pulse captured.",
     ])
+    return "\n".join(lines)
 
 
 def _render_tide(report: dict) -> str:
@@ -606,15 +671,63 @@ def _render_tide(report: dict) -> str:
 
     summary = report.get("summary", {})
     gate = report.get("gate", {})
-    return "\n".join([
+    source_kind = str(report.get("source_kind") or "tabular")
+    lines = [
         "FrameVitals · Tide",
         "=" * 72,
+        f"Kind          {source_kind.upper()}",
         f"Status        {str(gate.get('status', 'unknown')).upper()}",
-        f"Severity      {str(summary.get('overall_verdict', 'unknown')).upper()}",
-        f"Compared      {summary.get('n_columns_compared', 0)} columns",
-        "=" * 72,
-        "Tide complete.",
-    ])
+        f"Severity      {str(summary.get('overall_verdict', gate.get('severity', 'unknown'))).upper()}",
+    ]
+
+    if source_kind == "document":
+        document = report.get("document", {})
+        reference = document.get("reference", {})
+        current = document.get("current", {})
+        lines.extend([
+            f"Format        {reference.get('format', '?')} -> {current.get('format', '?')}",
+            f"Words         {reference.get('words', '?')} -> {current.get('words', '?')}",
+            f"Lines         {reference.get('lines', '?')} -> {current.get('lines', '?')}",
+            f"Text changed  {document.get('text_changed', False)}",
+        ])
+    elif source_kind == "model":
+        model = report.get("model", {})
+        lines.extend([
+            f"Parameters    {model.get('parameters_compared', 0)} compared",
+            f"Added         {len(model.get('added_parameters', []))}",
+            f"Removed       {len(model.get('removed_parameters', []))}",
+        ])
+    elif source_kind == "graph":
+        graph = report.get("graph", {})
+        lines.extend([
+            f"Nodes         {graph.get('reference_nodes', '?')} -> {graph.get('current_nodes', '?')}",
+            f"Edges         {graph.get('reference_edges', '?')} -> {graph.get('current_edges', '?')}",
+        ])
+    elif source_kind == "tensor":
+        tensor = report.get("tensor", {})
+        aligned = tensor.get("aligned", {})
+        lines.extend([
+            f"Shape         {tensor.get('reference_shape', '?')} -> {tensor.get('current_shape', '?')}",
+            f"Relative L2   {aligned.get('relative_l2', 'n/a')}",
+        ])
+    elif source_kind == "nested":
+        nested = report.get("nested", {})
+        lines.extend([
+            f"Nodes         {nested.get('reference_nodes', '?')} -> {nested.get('current_nodes', '?')}",
+            f"Depth         {nested.get('reference_depth', '?')} -> {nested.get('current_depth', '?')}",
+        ])
+    elif source_kind == "relational":
+        relational = report.get("relational", {})
+        lines.extend([
+            f"Tables        {relational.get('reference_table_count', '?')} -> {relational.get('current_table_count', '?')}",
+            f"Added         {len(relational.get('added_tables', []))}",
+            f"Removed       {len(relational.get('removed_tables', []))}",
+        ])
+    else:
+        lines.append(f"Compared      {summary.get('n_columns_compared', 0)} columns")
+
+    lines.extend(["=" * 72, "Tide complete."])
+    return "\n".join(lines)
 
 
 def _render_snapshot(snapshot: dict) -> str:
@@ -729,9 +842,71 @@ def _render_gate(report: dict) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
+def _main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.command == "serve":
+        try:
+            from framevitals.webapp import serve
+        except ImportError as exc:
+            raise ImportError('Web API requires: python -m pip install "framevitals[web]"') from exc
+        serve(port=args.port)
+        return 0
+    if args.command == "capabilities":
+        from framevitals.capabilities import capabilities
+        print(strict_dumps(capabilities(args.file), indent=2))
+        return 0
+
+    if args.command == "doctor":
+        import importlib.util
+        import os
+        import shutil
+        import sys
+
+        import framevitals
+        from framevitals.file_formats import FORMATS, is_available
+
+        print(f"FrameVitals       {framevitals.__version__}")
+        print(f"Package path      {framevitals.__file__}")
+        print(f"Python            {sys.executable}")
+        print(f"CLI 'fv' on PATH  {shutil.which('fv') or 'not found'}")
+        print(f"TTY support       {'yes' if sys.stdin.isatty() and sys.stdout.isatty() else 'no'}")
+        print(f"TERM              {os.environ.get('TERM', '<unset>')}")
+        print(f"curses module     {'available' if importlib.util.find_spec('curses') else 'missing'}")
+        for spec in FORMATS:
+            if spec.dependency and not is_available(spec):
+                print(
+                    f"Optional parser   {spec.label}: missing {spec.dependency}; "
+                    f"install framevitals[{spec.extra}]"
+                )
+        print("Tip: python -m framevitals ui --plain")
+        print("Tip: python -m framevitals formats")
+        return 0
+
+    if args.command == "formats":
+        from framevitals.file_formats import format_catalog, render_formats
+
+        if args.json:
+            print(strict_dumps(format_catalog(), indent=2))
+        else:
+            print(render_formats())
+        return 0
+
+    if args.command in {"tui", "ui"}:
+        from framevitals.terminal_ui import launch_terminal
+
+        return launch_terminal(plain=args.plain)
+
+    if args.command is None:
+        import sys
+
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            from framevitals.terminal_ui import launch_terminal
+
+            return launch_terminal()
+        parser.print_help()
+        return 0
 
     if args.command == "prism":
         from framevitals.protocols import prism
@@ -752,7 +927,10 @@ def main() -> int:
         if args.html_report is not None:
             result.to_html(args.html_report)
 
-        if args.format == "json":
+        if args.format == "envelope":
+            from framevitals.serialization import dumps
+            print(dumps(result.to_envelope()))
+        elif args.format == "json":
             print(result.to_json())
         else:
             print(result.summary_text())
@@ -819,7 +997,7 @@ def main() -> int:
         if args.output is not None:
             _write_json(result, args.output)
         if args.format == "json":
-            print(json.dumps(result, indent=2, default=str))
+            print(strict_dumps(result, indent=2, default=str))
         else:
             print(_render_tide(result))
 
@@ -891,7 +1069,7 @@ def main() -> int:
         if args.output is not None:
             _write_json(result, args.output)
         if args.format == "json":
-            print(json.dumps(result, indent=2, default=str))
+            print(strict_dumps(result, indent=2, default=str))
         else:
             print(_render_source(result))
             if args.output is not None:
@@ -929,7 +1107,7 @@ def main() -> int:
         if args.output is not None:
             _write_json(result, args.output)
         if args.format == "json":
-            print(json.dumps(result, indent=2, default=str))
+            print(strict_dumps(result, indent=2, default=str))
         else:
             print(_render_snapshot_diff(result))
         if args.fail_on_change and result.get("changed"):
@@ -943,7 +1121,7 @@ def main() -> int:
         if args.output is not None:
             _write_json(result, args.output)
         if args.format == "json":
-            print(json.dumps(result, indent=2, default=str))
+            print(strict_dumps(result, indent=2, default=str))
         else:
             print(_render_system_info(result))
             if args.output is not None:
@@ -965,7 +1143,7 @@ def main() -> int:
         if args.output is not None:
             _write_json(dict(result), args.output)
         if args.format == "json":
-            print(json.dumps(dict(result), indent=2, default=str))
+            print(strict_dumps(dict(result), indent=2, default=str))
         else:
             print(result.explain_text())
             disabled = result.get("config", {}).get("disabled_modules") or ()
@@ -996,7 +1174,7 @@ def main() -> int:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             cleaned.map(sanitize_csv_value).to_csv(args.output, index=False)
 
-        print(json.dumps(payload, indent=2, default=str))
+        print(strict_dumps(payload, indent=2, default=str))
         return 0
 
     if args.command == "compare":
@@ -1014,7 +1192,7 @@ def main() -> int:
         if args.format == "terminal":
             print(_render_compare(report))
         else:
-            print(json.dumps(report, indent=2, default=str))
+            print(strict_dumps(report, indent=2, default=str))
 
         if args.fail_on and severity_at_least(
             report.get("gate", {}).get("severity", "unknown"),
@@ -1050,7 +1228,7 @@ def main() -> int:
         if args.format == "terminal":
             print(_render_validation(report))
         else:
-            print(json.dumps(report, indent=2, default=str))
+            print(strict_dumps(report, indent=2, default=str))
 
         if report.get("status") == "fail":
             return 2
@@ -1075,7 +1253,7 @@ def main() -> int:
         if args.output is not None:
             _write_json(report, args.output)
         if args.format == "json":
-            print(json.dumps(report, indent=2, default=str))
+            print(strict_dumps(report, indent=2, default=str))
         else:
             print(_render_gate(report))
         return 0 if report.get("passed") else 1
@@ -1084,11 +1262,20 @@ def main() -> int:
         from framevitals.config import resolve_config
 
         resolved = resolve_config(args.file, preset=args.preset)
-        print(json.dumps(resolved.to_dict(), indent=2))
+        print(strict_dumps(resolved.to_dict(), indent=2))
         return 0
 
     parser.print_help()
     return 0
+
+
+def main() -> int:
+    import sys
+    try:
+        return _main()
+    except (ValueError, TypeError, OSError, ImportError, RecursionError) as exc:
+        print(f"FrameVitals: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

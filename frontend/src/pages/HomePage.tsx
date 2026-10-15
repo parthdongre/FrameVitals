@@ -14,13 +14,13 @@ const FEATURES: { eyebrow: string; title: string; body: string }[] = [
     eyebrow: "01",
     title: "Prism",
     body:
-      "Turn a dataset into one coherent view of its condition, structure, risks, and modelling potential.",
+      "Turn structured data or an ML artifact into one coherent view of its condition, structure, risks, and useful next actions.",
   },
   {
     eyebrow: "02",
     title: "Axiom",
     body:
-      "Establish expectations from trusted data and test whether new data still respects them.",
+      "Establish expectations from a trusted source and test whether new data, graphs, tensors, or models still respect them.",
   },
   {
     eyebrow: "03",
@@ -32,13 +32,13 @@ const FEATURES: { eyebrow: string; title: string; body: string }[] = [
     eyebrow: "04",
     title: "Tide",
     body:
-      "Understand how a dataset changes between two points in time, releases, or pipeline states.",
+      "Understand how data, topology, tensors, or model parameters change between states.",
   },
   {
     eyebrow: "05",
     title: "Pulse",
     body:
-      "Capture compact health states that can be retained and compared as the dataset evolves.",
+      "Capture compact health states that can be retained as data, models, and training systems evolve.",
   },
 ];
 
@@ -69,7 +69,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
 
         <div className="relative">
           <Eyebrow>FrameVitals protocols</Eyebrow>
-          <PageTitle subtitle="A protocol-first way to understand, trust, transform, compare, and monitor tabular data without stitching together a dozen separate workflows.">
+          <PageTitle subtitle="A protocol-first way to diagnose structured data and ML systems without stitching together separate profiling, graph, tensor, checkpoint, validation, and monitoring workflows.">
             Read the signal in your data.
           </PageTitle>
 
@@ -96,7 +96,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
         <SectionHeader
           eyebrow="FrameVitals protocol system"
           title="Five protocols. One coherent workflow."
-          description="Use Prism for the broad view, then reach for the more focused protocols when your workflow calls for them."
+          description="Use Prism for the broad view, then Axiom, Forge, Tide, and Pulse for trust, transformation, change, and monitoring. The Python API recognizes tables, graphs, tensors, nested data, relational projects, and model artifacts."
         />
 
         <motion.div
@@ -125,12 +125,12 @@ export function HomePage({ onNavigate }: HomePageProps) {
       <Section>
         <SectionHeader
           eyebrow="Honest about the tradeoffs"
-          title="This is a structured diagnostic report, not proof."
-          description="FrameVitals reports on the dataset you provide. It does not replace domain expertise, statistical sign-off on regulated decisions, or production model validation."
+          title="Diagnostics are evidence, not proof."
+          description="FrameVitals reports on the source you provide. It does not replace domain expertise, statistical sign-off on regulated decisions, or production model validation."
         />
 
         <ul className="grid gap-3 text-[14px] leading-7 text-[var(--ink-2)] sm:grid-cols-2">
-          <li>· FrameVitals describes the dataset you provide; it cannot supply missing domain context.</li>
+          <li>· FrameVitals describes the source you provide; it cannot supply missing domain context.</li>
           <li>· Predictive signals are analytical baselines, not production approval or deployment guidance.</li>
           <li>· Flagged rows are signals worth reviewing; they are not proof that an observation is invalid.</li>
           <li>· Optional narratives are interpretation aids, not authorities.</li>

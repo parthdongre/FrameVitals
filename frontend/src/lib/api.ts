@@ -65,7 +65,11 @@ async function parseBody<T>(response: Response): Promise<T> {
   }
 }
 
-async function request<T>(url: string, init: RequestInit, opts: RequestOptions = {}): Promise<T> {
+async function request<T>(
+  url: string,
+  init: RequestInit,
+  opts: RequestOptions = {},
+): Promise<T> {
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   let removeAbortListener: (() => void) | null = null;
   let signal: AbortSignal | undefined = opts.signal;
@@ -81,7 +85,8 @@ async function request<T>(url: string, init: RequestInit, opts: RequestOptions =
         controller.abort();
       } else {
         callerSignal.addEventListener("abort", onAbort, { once: true });
-        removeAbortListener = () => callerSignal.removeEventListener("abort", onAbort);
+        removeAbortListener = () =>
+          callerSignal.removeEventListener("abort", onAbort);
       }
     }
     signal = controller.signal;
@@ -100,7 +105,12 @@ async function request<T>(url: string, init: RequestInit, opts: RequestOptions =
 
   let response: Response;
   try {
-    response = await fetch(url, { ...init, signal });
+    const base = (import.meta.env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
+    response = await fetch(url.startsWith("/") ? `${base}${url}` : url, {
+      credentials: "include",
+      ...init,
+      signal,
+    });
   } catch (err) {
     cleanup();
     if (err instanceof DOMException && err.name === "AbortError") {
@@ -132,7 +142,11 @@ export function getJSON<T>(url: string, opts: RequestOptions = {}): Promise<T> {
   );
 }
 
-export function postJSON<T>(url: string, body: unknown, opts: RequestOptions = {}): Promise<T> {
+export function postJSON<T>(
+  url: string,
+  body: unknown,
+  opts: RequestOptions = {},
+): Promise<T> {
   return request<T>(
     url,
     {
@@ -148,7 +162,11 @@ export function postJSON<T>(url: string, body: unknown, opts: RequestOptions = {
   );
 }
 
-export function postFormData<T>(url: string, fd: FormData, opts: RequestOptions = {}): Promise<T> {
+export function postFormData<T>(
+  url: string,
+  fd: FormData,
+  opts: RequestOptions = {},
+): Promise<T> {
   return request<T>(
     url,
     {

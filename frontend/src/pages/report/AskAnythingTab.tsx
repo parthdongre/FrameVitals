@@ -1,3 +1,4 @@
+import { AiConsent } from "@/components/ui/AiConsent";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
 import { Send, Sparkles } from "lucide-react";
@@ -45,10 +46,14 @@ export default function AskAnythingTab({ analysis }: TabComponentProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const ask = useAskMutation();
+  const [allowAI, setAllowAI] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [messages.length]);
 
   if (!datasetId) {
@@ -62,13 +67,20 @@ export default function AskAnythingTab({ analysis }: TabComponentProps) {
 
   const sendQuestion = async (question: string) => {
     const trimmed = question.trim();
-    if (!trimmed) return;
+    if (!trimmed || !allowAI) return;
     const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setMessages((prev) => [...prev, { id, question: trimmed, status: "pending" }]);
+    setMessages((prev) => [
+      ...prev,
+      { id, question: trimmed, status: "pending" },
+    ]);
     setInput("");
 
     try {
-      const res = await ask.mutateAsync({ question: trimmed, dataset_id: datasetId });
+      const res = await ask.mutateAsync({
+        question: trimmed,
+        dataset_id: datasetId,
+        allow_ai: allowAI,
+      });
       setMessages((prev) =>
         prev.map((m) =>
           m.id === id
@@ -83,9 +95,12 @@ export default function AskAnythingTab({ analysis }: TabComponentProps) {
         ),
       );
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e ?? "Request failed.");
+      const msg =
+        e instanceof Error ? e.message : String(e ?? "Request failed.");
       setMessages((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, status: "error", error: msg } : m)),
+        prev.map((m) =>
+          m.id === id ? { ...m, status: "error", error: msg } : m,
+        ),
       );
     }
   };
@@ -96,8 +111,17 @@ export default function AskAnythingTab({ analysis }: TabComponentProps) {
   };
 
   return (
-    <motion.div variants={staggerParent} initial="initial" animate="animate" className="space-y-6">
-      <motion.section variants={staggerChild} className="flex flex-wrap items-center gap-3">
+    <motion.div
+      variants={staggerParent}
+      initial="initial"
+      animate="animate"
+      className="space-y-6"
+    >
+      <AiConsent checked={allowAI} onChange={setAllowAI} />
+      <motion.section
+        variants={staggerChild}
+        className="flex flex-wrap items-center gap-3"
+      >
         <Eyebrow>Ask Anything</Eyebrow>
         <span className="font-mono text-[11px] tabular-nums text-ink-3">
           dataset · <span className="text-ink-1">{datasetId}</span>
@@ -132,7 +156,7 @@ export default function AskAnythingTab({ analysis }: TabComponentProps) {
           />
           <button
             type="submit"
-            disabled={!input.trim() || ask.isPending}
+            disabled={!input.trim() || ask.isPending || !allowAI}
             className="btn-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Send className="h-3.5 w-3.5" />
@@ -151,8 +175,8 @@ function SuggestedPrompts({ onPick }: { onPick: (q: string) => void }) {
     <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
       <Sparkles className="h-5 w-5 text-accent" aria-hidden />
       <p className="max-w-md text-[14px] leading-7 text-ink-2">
-        Ask about the current Prism result. Answers stay grounded in the evidence already
-        available for this dataset.
+        Ask about the current Prism result. Answers stay grounded in the
+        evidence already available for this dataset.
       </p>
       <div className="flex flex-wrap justify-center gap-2">
         {SUGGESTED_PROMPTS.map((p) => (
@@ -182,7 +206,10 @@ function MessageBlock({ message }: { message: ChatMessage }) {
         <div className="flex justify-start">
           <div className="max-w-[80%] rounded-2xl border border-line bg-bg-2 px-4 py-2 text-[13px] text-ink-3">
             <span className="inline-flex items-center gap-2">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" aria-hidden />
+              <span
+                className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent"
+                aria-hidden
+              />
               <span>Thinking through tools…</span>
             </span>
           </div>
@@ -196,7 +223,6 @@ function MessageBlock({ message }: { message: ChatMessage }) {
             )}
           >
             <Markdown density="compact">{message.answer ?? ""}</Markdown>
-
           </div>
         </div>
       ) : null}
@@ -210,4 +236,3 @@ function MessageBlock({ message }: { message: ChatMessage }) {
     </div>
   );
 }
-

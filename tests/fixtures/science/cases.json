@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "purpose": "Reproducible science validation cases for Phase 2; no certification implied",
+  "cases": [
+    {"id": "tensor_strided_rank", "generator": "numpy.diag(numpy.tile([1.,0.,1.,0.], 600))", "question": "Can striding systematically erase spectral structure? Compare reported sketch stable rank with full diagonal oracle."},
+    {"id": "tensor_omitted_tail_nonfinite", "generator": "numpy.zeros(500001); set index 499999 to numpy.nan", "question": "Does stride sampling omit a late nonfinite value? Separate observed counts from extrapolated fractions."},
+    {"id": "graph_single_component_sampling", "generator": "networkx.path_graph(4)", "question": "Should graph execution.sampled always be true, including exact topological metrics?"},
+    {"id": "graph_directed_reachability", "generator": "networkx.DiGraph([(0,1),(1,2),(2,0),(2,3)])", "question": "Validate directed reachability, path-length denominator, and weak versus strong components."},
+    {"id": "graph_negative_edge", "generator": "networkx.DiGraph([(0,1,{'weight':2}),(1,2,{'weight':-1})])", "question": "Validate path algorithm selection and behavior for negative cycles as well as finite negative edges."},
+    {"id": "health_context_dependence", "generator": "numpy.eye(4), numpy.zeros((4,4)), networkx.empty_graph(4)", "question": "Determine when sparsity, disconnectedness or low rank is expected domain structure rather than a quality defect."},
+    {"id": "relational_false_join", "generator": "Two unrelated pandas tables each containing an integer id column", "question": "Measure false positive relationship inference and join-risk interpretation."},
+    {"id": "drift_small_sample", "generator": "reference/current CSV files with 3 constant rows, then identical values with changed row ordering", "question": "Validate degenerate distributions, effect sizes and multiple-comparison calibration."}
+  ]
+}

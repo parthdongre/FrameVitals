@@ -55,7 +55,9 @@ def test_explainability_import_does_not_require_plotting_stack():
 
 def test_excel_loader_reports_framevitals_extra(monkeypatch, tmp_path):
     path = tmp_path / "dataset.xlsx"
-    path.write_bytes(b"placeholder")
+    from zipfile import ZipFile
+    with ZipFile(path, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types />")
 
     def missing_engine(*args, **kwargs):
         raise ImportError("missing Excel engine")

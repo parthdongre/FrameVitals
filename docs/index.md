@@ -1,6 +1,6 @@
 # FrameVitals
 
-**FrameVitals is a source-aware data analysis toolkit for tabular data, organized around a small protocol-first public interface.**
+**FrameVitals is a source-aware diagnostics framework for structured data and ML systems, organized around a small protocol-first public interface.**
 
 Start with **Prism** and provide more context only when you have it:
 
@@ -48,13 +48,13 @@ See [Protocol architecture](protocols.md) for the exact composition of each prot
 
 FrameVitals currently recognizes:
 
-- pandas `DataFrame` inputs;
-- CSV and TSV files, with optional Arrow streaming;
-- Parquet through the Arrow capability;
-- PyArrow `Table` and `RecordBatch` inputs;
-- table producers supporting the Arrow C Stream / PyCapsule interface;
-- lazy DuckDB relations through the optional DuckDB adapter;
-- custom objects implementing the FrameVitals `DatasetSource` protocol.
+- pandas, Polars, Arrow, DuckDB, CSV/TSV/Parquet and custom tabular sources;
+- NetworkX graphs plus GraphML, GEXF, and GML files;
+- NumPy arrays and PyTorch tensors;
+- PyTorch models and optimizer/runtime state;
+- Safetensors and ONNX model files;
+- nested Python/JSON-like structures;
+- relational projects represented as mappings of named tabular sources.
 
 Use `fv.inspect_source(data)` before analysis when you want to see the source's
 shape metadata and streaming/projection capabilities.
@@ -73,6 +73,8 @@ pip install "framevitals[duckdb]"
 pip install "framevitals[excel]"
 pip install "framevitals[plot]"
 pip install "framevitals[ml]"
+pip install "framevitals[graph]"
+pip install "framevitals[onnx]"
 pip install "framevitals[ai]"
 pip install "framevitals[web]"
 ```
@@ -87,6 +89,7 @@ mkdocs serve
 ## Documentation map
 
 - [Protocol architecture](protocols.md)
+- [Structured data and model diagnostics](structured-data.md)
 - [Source-aware execution](source-execution.md)
 - [Execution provenance](execution-provenance.md)
 - [Quality gates and custom checks](quality-gates.md)

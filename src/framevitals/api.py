@@ -31,6 +31,12 @@ DataInput = Any
 
 def inspect_source(data: DataInput) -> dict[str, Any]:
     """Inspect source metadata/capabilities without running analysis."""
+    from framevitals.core.source import SourceKind, recognize_source
+
+    descriptor = recognize_source(data)
+    if descriptor.kind not in {SourceKind.TABULAR, SourceKind.UNKNOWN}:
+        return descriptor.to_dict()
+
     from framevitals.sources import inspect_source as _inspect_source
 
     return _inspect_source(data)

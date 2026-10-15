@@ -51,7 +51,7 @@ export const REPORT_TABS: TabDef[] = [
     id: "statistics",
     label: "Statistics",
     Icon: Sigma,
-    hasData: (a) => isPresent(a.deepStatisticsV2) || isPresent(a.deepStatistics),
+    hasData: (a) => isPresent(a.deepStatisticsV2),
     Component: lazy(() => import("./StatisticsTab")),
   },
   {
@@ -69,7 +69,8 @@ export const REPORT_TABS: TabDef[] = [
     label: "ML",
     Icon: Brain,
     hasData: (a) =>
-      Boolean(a.modelLeaderboard?.available) || isPresent(a.targetAnalysis),
+      Boolean(a.modelLeaderboard?.available) ||
+      Boolean((a.targetIntelligence as { available?: boolean } | undefined)?.available),
     Component: lazy(() => import("./MlLabTab")),
   },
   {
@@ -104,17 +105,24 @@ export const REPORT_TABS: TabDef[] = [
     id: "diagnostics",
     label: "Diagnostics",
     Icon: Stethoscope,
-    hasData: (a) =>
-      isPresent(a.modelDiagnostics) ||
-      isPresent(a.multicollinearity) ||
-      isPresent(a.targetLeakage),
+    hasData: (a) => {
+      const target = a.targetIntelligence as
+        | { leakage?: { available?: boolean } }
+        | undefined;
+      return (
+        Boolean(target?.leakage?.available) ||
+        Boolean((a.modelDiagnostics as { available?: boolean } | undefined)?.available) ||
+        isPresent(a.multicollinearity)
+      );
+    },
     Component: lazy(() => import("./DiagnosticsTab")),
   },
   {
     id: "segments",
     label: "Segments",
     Icon: LayoutGrid,
-    hasData: (a) => isPresent(a.segmentAnalysis),
+    hasData: (a) =>
+      Boolean((a.segmentAnalysis as { available?: boolean } | undefined)?.available),
     Component: lazy(() => import("./SegmentsTab")),
   },
   {

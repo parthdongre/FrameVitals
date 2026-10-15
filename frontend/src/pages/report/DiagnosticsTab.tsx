@@ -17,7 +17,14 @@ export default function DiagnosticsTab({ analysis }: TabComponentProps) {
   const t = analysis as unknown as Record<string, unknown>;
   const md = safeObj(t.modelDiagnostics, {} as Record<string, unknown>);
   const mc = safeObj(t.multicollinearity, {} as Record<string, unknown>);
-  const tl = safeObj(t.targetLeakage, {} as Record<string, unknown>);
+  const targetIntelligence = safeObj(
+    t.targetIntelligence,
+    {} as Record<string, unknown>,
+  );
+  const tl = safeObj(
+    targetIntelligence.leakage ?? t.targetLeakage,
+    {} as Record<string, unknown>,
+  );
   const advanced = safeObj(t.advanced, {} as Record<string, unknown>);
   const fairness = safeObj(advanced.fairness, {} as Record<string, unknown>);
   const advLeakage = safeObj(advanced.leakage, {} as Record<string, unknown>);
@@ -101,7 +108,7 @@ export default function DiagnosticsTab({ analysis }: TabComponentProps) {
           </p>
           <DataTable
             columns={leakageColumns}
-            rows={safeArr<LeakageRow>(tl.suspect_features)}
+            rows={safeArr<LeakageRow>(tl.warnings ?? tl.suspect_features)}
             rowKey={(r, i) => `${i}-${r.feature ?? r.column}`}
             maxHeight="60vh"
             emptyState={

@@ -336,3 +336,33 @@
     100% { background-position: -200% 0; }
   }
 }
+
+/* Shared source and result workspace. System fonts keep local use independent of font CDNs. */
+.workspace-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.workspace-panel { border: 1px solid var(--line-strong); border-radius: 18px; background: linear-gradient(150deg, #151a19, #111313 65%); padding: 24px; min-width: 0; }
+.workspace-muted { color: #b4b3ac; font-size: 12px; line-height: 1.7; font-weight: 400; }
+.source-drop { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; border: 1px dashed #49635e; border-radius: 12px; margin-top: 24px; padding: 36px 16px; background: radial-gradient(ellipse at 50% 0%, #20373066, transparent 80%); cursor: pointer; }
+.source-drop:hover, .source-drop-active { border-color: var(--accent); background-color: #1c2f29; }
+.source-icon { display: grid; place-items: center; width: 56px; height: 56px; border: 1px solid #38564b; border-radius: 16px; color: var(--accent); background: #173229; }
+.workspace-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid #37594c; border-radius: 6px; font-size: 11px; color: #9ce6c8; }
+.mode-choice { display: flex; align-items: start; gap: 10px; padding: 16px 12px; border: 1px solid #414742; border-radius: 10px; cursor: pointer; font-size: 13px; }
+.mode-choice input { margin-top: 4px; accent-color: #5eead4; }
+.mode-choice small { display: block; color: #b4b3ac; font-weight: 400; margin-top: 4px; font-size: 11px; }
+.mode-selected { border-color: #7adebc; background: #19342b88; }
+.workspace-input { width: 100%; min-width: 0; height: 44px; border: 1px solid #555c56; border-radius: 8px; background: #0c1110; padding-inline: 12px; color: #f5efe6; font-size: 13px; }
+.workspace-error { border: 1px solid #b46f60; background: #341c16; color: #ffd7c9; border-radius: 10px; padding: 18px; }
+.preview-scroll { max-width: 100%; overflow: auto; max-height: 220px; border: 1px solid #414742; border-radius: 8px; }
+.workspace-table { width: 100%; font-size: 12px; text-align: left; border-collapse: collapse; font-weight: 400; }
+.workspace-table th, .workspace-table td { padding: 10px 14px; border-bottom: 1px solid #313934; white-space: nowrap; }
+.workspace-table th { background: #1c2722; color: #d6e6db; font-weight: 600; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 12px; }
+.metric-card { background: #111815; border: 1px solid #3a4740; border-radius: 12px; padding: 18px; }
+.metric-card strong { display: block; font-size: 28px; font-weight: 600; margin-top: 10px; overflow-wrap: anywhere; }
+.result-details { border-top: 1px solid #344138; margin-top: 16px; padding-top: 16px; }
+.result-details summary { cursor: pointer; color: #d1e6d9; font-size: 13px; text-transform: capitalize; }
+.result-dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 10px 18px; margin-top: 16px; font-size: 12px; font-weight: 400; overflow-wrap: anywhere; }
+.result-dl dt { color: #b4b3ac; text-transform: capitalize; }
+.finding-card { border-left: 2px solid #d7ab70; padding: 0 0 0 16px; margin-top: 24px; }
+@media (max-width: 720px) { .workspace-grid { grid-template-columns: minmax(0, 1fr); } .workspace-panel { padding: 20px; } .metric-card strong { font-size: 24px; } }
+
+.workspace-heading h1 { font-size: clamp(2.15rem, 4.7vw, 4rem); line-height: 1.08; max-width: 18ch; letter-spacing: -0.04em; }
