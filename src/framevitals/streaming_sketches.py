@@ -53,13 +53,12 @@ class NumpyLogQuantileSketch:
     def __post_init__(self) -> None:
         if not 0.0 < float(self.relative_accuracy) < 1.0:
             raise ValueError("relative_accuracy must be between 0 and 1.")
-        if self.zero_threshold < 0:
+        if not np.isfinite(self.zero_threshold) or self.zero_threshold < 0:
             raise ValueError("zero_threshold must be non-negative.")
 
     @property
     def _log_gamma(self) -> float:
-        gamma = (1.0 + self.relative_accuracy) / (1.0 - self.relative_accuracy)
-        return float(np.log(gamma))
+        return float(np.log1p(self.relative_accuracy) - np.log1p(-self.relative_accuracy))
 
     def _update_side(self, target: dict[int, int], magnitudes: np.ndarray) -> None:
         if magnitudes.size == 0:
@@ -90,9 +89,9 @@ class NumpyLogQuantileSketch:
         return self
 
     def merge(self, other: "NumpyLogQuantileSketch") -> "NumpyLogQuantileSketch":
-        if not np.isclose(self.relative_accuracy, other.relative_accuracy):
+        if self.relative_accuracy != other.relative_accuracy:
             raise ValueError("quantile sketch accuracy mismatch")
-        if not np.isclose(self.zero_threshold, other.zero_threshold):
+        if self.zero_threshold != other.zero_threshold:
             raise ValueError("quantile sketch zero-threshold mismatch")
         self.count += other.count
         self.zero_count += other.zero_count
@@ -103,7 +102,7 @@ class NumpyLogQuantileSketch:
         return self
 
     def _representative(self, key: int) -> float:
-        return float(np.exp((float(key) + 0.5) * self._log_gamma))
+        return float(np.exp(float(key) * self._log_gamma + np.log1p(self.relative_accuracy)))
 
     def quantile(self, q: float) -> float | None:
         if self.count == 0:
@@ -144,6 +143,8 @@ class NumpyLogQuantileSketch:
             "method": "numpy_log_quantile_sketch",
             "count": int(self.count),
             "relative_accuracy": float(self.relative_accuracy),
+            "quantile_convention": "lower_order_statistic_floor_q_n_minus_1",
+            "zero_absolute_error": float(self.zero_threshold), "method_version": "2",
             "bin_count": int(self.bin_count),
             "p01": self.quantile(0.01),
             "p05": self.quantile(0.05),

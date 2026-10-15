@@ -128,8 +128,7 @@ impl LogQuantileSketch {
             relative_accuracy > 0.0 && relative_accuracy < 1.0,
             "relative accuracy must be between 0 and 1"
         );
-        let gamma = (1.0 + relative_accuracy) / (1.0 - relative_accuracy);
-        let log_gamma = gamma.ln();
+        let log_gamma = relative_accuracy.ln_1p() - (-relative_accuracy).ln_1p();
         Self {
             relative_accuracy,
             log_gamma,
@@ -149,7 +148,7 @@ impl LogQuantileSketch {
 
     #[inline]
     fn representative(&self, key: i32) -> f64 {
-        ((key as f64 + 0.5) * self.log_gamma).exp()
+        (key as f64 * self.log_gamma + self.relative_accuracy.ln_1p()).exp()
     }
 
     #[inline]
@@ -170,7 +169,7 @@ impl LogQuantileSketch {
     #[must_use]
     pub fn merge(mut self, other: Self) -> Self {
         assert!(
-            (self.relative_accuracy - other.relative_accuracy).abs() <= f64::EPSILON,
+            self.relative_accuracy == other.relative_accuracy,
             "quantile sketch accuracy mismatch"
         );
         self.count += other.count;

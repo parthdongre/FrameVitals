@@ -118,7 +118,7 @@ def _coerce_graph(graph: Any, nx: Any) -> tuple[Any, str | None]:
 def _even_sample(values: list[Any], count: int) -> list[Any]:
     if len(values) <= count:
         return list(values)
-    positions = np.linspace(0, len(values) - 1, num=max(1, count), dtype=int)
+    positions = np.sort(np.random.default_rng(42).choice(len(values), size=max(1, count), replace=False))
     return [values[int(i)] for i in positions]
 
 
@@ -157,7 +157,7 @@ def _inspect_edge_weights(graph: Any, *, attribute: str = "weight") -> dict[str,
         else:
             valid += 1
 
-    selected = attribute if checked and not invalid and valid / checked >= 0.80 else None
+    selected = attribute if checked and not invalid and valid > 0 else None
     return {
         "selected": selected,
         "status": "invalid" if invalid else "selected" if selected else "unweighted",
@@ -270,7 +270,15 @@ def _sample_shortest_paths(
     if not nodes:
         return {"available": False, "reason": "empty_graph"}
 
+    if source_count < 1:
+        raise ValueError("source_count must be positive")
     sources = _even_sample(nodes, min(source_count, len(nodes)))
+    provenance = {"coverage": "full" if len(sources) == len(nodes) else "sampled",
+                  "sampled": len(sources) < len(nodes), "approximate": len(sources) < len(nodes),
+                  "population": "reachable_ordered_nonself_pairs",
+                  "method": "dijkstra" if weight else "bfs",
+                  "source_sampling": "uniform_without_replacement", "random_seed": 42,
+                  "interpretation": "Mean pools reached pairs; sampled result is a ratio estimator. Max is a lower bound on diameter."}
     distances: list[float] = []
     reached = 0
     possible = 0
@@ -304,7 +312,8 @@ def _sample_shortest_paths(
     if not distances:
         return {
             "available": True,
-            "sources": len(sources),
+            **provenance,
+        "sources": len(sources),
             "reachable_ratio": 0.0,
             "mean_distance": None,
             "p95_distance": None,
@@ -315,6 +324,7 @@ def _sample_shortest_paths(
     arr = np.asarray(distances, dtype=float)
     return {
         "available": True,
+        **provenance,
         "sources": len(sources),
         "reachable_ratio": round(reached / possible, 6) if possible else 1.0,
         "mean_distance": round(float(np.mean(arr)), 6),
@@ -553,7 +563,7 @@ def _spectral_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, 
 
     try:
         adjacency = nx.to_scipy_sparse_array(simple, dtype=float, weight=None, format="csr")
-        laplacian = nx.normalized_laplacian_matrix(simple, weight=None)
+        laplacian = nx.laplacian_matrix(simple, weight=None).astype(float)
         if n <= 64:
             dense_a = np.asarray(adjacency.toarray(), dtype=float)
             dense_l = np.asarray(laplacian.toarray(), dtype=float)
@@ -570,13 +580,15 @@ def _spectral_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, 
                 adjacency,
                 k=1,
                 which="LM",
-                return_eigenvectors=False,
+                return_eigenvectors=False, v0=np.random.default_rng(42).normal(size=n),
+                tol=1e-8, maxiter=max(1000, 10*n),
             )
             smallest = eigsh(
                 laplacian,
                 k=2,
                 which="SM",
-                return_eigenvectors=False,
+                return_eigenvectors=False, v0=np.random.default_rng(42).normal(size=n),
+                tol=1e-8, maxiter=max(1000, 10*n),
             )
             spectral_radius = float(np.max(np.abs(largest)))
             ordered = np.sort(np.real(smallest))
@@ -586,8 +598,11 @@ def _spectral_summary(graph: Any, nx: Any, budget: dict[str, int]) -> dict[str, 
         return {
             "available": True,
             "method": method,
+            "method_version": "2", "projection": "simple_undirected_unweighted_without_loops",
+            "laplacian": "combinatorial_D_minus_A",
+            "eigensolver_tolerance": 1e-8 if n > 64 else None,
             "spectral_radius": round(spectral_radius, 8),
-            "algebraic_connectivity": round(max(0.0, algebraic), 10),
+            "algebraic_connectivity": round(max(0.0, algebraic), 10) if nx.is_connected(simple) else 0.0,
             "connected": bool(nx.is_connected(simple)),
         }
     except Exception as exc:
@@ -667,6 +682,12 @@ def analyze_graph(
     clustering = _clustering_summary(graph, nx, budget)
     core = _core_summary(graph, nx, budget)
     spectral = _spectral_summary(graph, nx, budget)
+    for section in (cuts, communities, clustering, core):
+        section["projection"] = "simple_undirected"
+    components.update(sampled=False, approximate=False, method="connected_components")
+    communities["interpretation"] = "Heuristic modularity optimization; not a globally optimal partition."
+    if resolved_weight and any(float(data.get(resolved_weight, 1)) == 0 for _, _, data in graph.edges(data=True)):
+        centrality["betweenness"] = {"available": False, "reason": "zero_weight_edges", "assumption": "strictly_positive_costs"}
 
     findings: list[dict[str, Any]] = []
     largest_ratio = float(components.get("largest_component_ratio") or 0.0)

@@ -266,9 +266,9 @@ def _stationarity(series: pd.Series) -> dict:
         elif adf_stationary is False and kpss_stationary is False:
             verdict = "non-stationary"
         elif adf_stationary and kpss_stationary is False:
-            verdict = "trend-stationary (consider differencing once)"
+            verdict = "inconclusive: both null hypotheses rejected"
         elif adf_stationary is False and kpss_stationary:
-            verdict = "difference-stationary"
+            verdict = "inconclusive: neither null hypothesis rejected"
         else:
             verdict = "inconclusive"
 
@@ -512,7 +512,15 @@ def detect_and_analyze_time_series(df: pd.DataFrame, target_column: str | None =
             "numeric_column": numeric_col,
         }
 
-    freq = _infer_frequency(parsed)
+    freq = _infer_frequency(pd.Series(series.index))
+    regular = not series.index.has_duplicates and pd.infer_freq(series.index) is not None
+    if not regular or not np.isfinite(series.to_numpy()).all():
+        unavailable = {"available": False, "reason": "irregular_duplicate_or_nonfinite_time_axis"}
+        return {"available": True, "detected_date_column": column_name, "numeric_column": numeric_col,
+                "n_observations": len(series), "frequency": freq, "period_estimate": None,
+                "stationarity": dict(unavailable), "decomposition": dict(unavailable),
+                "autocorrelation": dict(unavailable), "forecast": dict(unavailable),
+                "interpretation": "Regularize timestamps and choose a missing-data policy before lag-based analysis."}
     period = _guess_period_via_fft(series.values, freq.get("label", ""))
     stationarity = _stationarity(series)
     decomposition = _stl_decomposition(series, period) if period else {"available": False, "reason": "no period detected"}
@@ -520,7 +528,8 @@ def detect_and_analyze_time_series(df: pd.DataFrame, target_column: str | None =
     max_lag = min(40, max(2, len(series) // 5))
     acf_pacf = _autocorrelation(series, max_lag)
 
-    forecast = _forecast_holt_winters(series, period)
+    training_period = _guess_period_via_fft(series.iloc[:max(20, len(series)//2)].values, freq.get("label", ""))
+    forecast = _forecast_holt_winters(series, training_period)
 
     return {
         "available": True,

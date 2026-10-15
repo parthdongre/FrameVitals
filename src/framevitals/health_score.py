@@ -81,6 +81,9 @@ def _score_payload(
     overall = max(0, min(100, overall))
 
     payload: dict[str, Any] = {
+        "methodology": {"kind": "heuristic", "calibrated": False, "cross_modality_comparable": False,
+                        "weights": {"completeness": .30, "consistency": .20, "uniqueness": .20, "outlier_safety": .20},
+                        "offset": 10, "interpretation": "Legacy diagnostic index; desirability depends on domain. Not a probability."},
         "overall_score": overall,
         "label": _health_label(overall),
         "components": {
