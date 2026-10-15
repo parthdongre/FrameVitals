@@ -1,3 +1,5 @@
+import { getPlatformResult } from "@/lib/platform";
+import { PlatformReport } from "./PlatformReport";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Eyebrow, PageTitle, Section } from "@/components/site/SiteShell";
@@ -8,7 +10,11 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Tabs } from "@/components/ui/Tabs";
 import { findTab, REPORT_TABS } from "./report/tabRegistry";
 import { tabVariants } from "@/components/site/Variants";
-import { setAnalysis as cacheAnalysis, getAnalysis, subscribeAnalysis } from "@/lib/analysisStore";
+import {
+  setAnalysis as cacheAnalysis,
+  getAnalysis,
+  subscribeAnalysis,
+} from "@/lib/analysisStore";
 import { safeStr } from "@/lib/safe";
 import type { DashboardTelemetry } from "@/data/payload";
 
@@ -52,12 +58,19 @@ export function ReportPage({ telemetry, onNavigate }: ReportPageProps) {
   // Also catches the case where the cache has a placeholder / partially-
   // failed payload (no id or no rows) — surfacing all-zeros as a confusing
   // report is worse than asking the user to re-run.
-  const analysisAny = analysis as unknown as { id?: string; rows?: unknown } | null;
+  const analysisAny = analysis as unknown as {
+    id?: string;
+    rows?: unknown;
+  } | null;
   const hasAnalysis =
     !!analysis &&
     typeof analysisAny?.id === "string" &&
     analysisAny.id.length > 0 &&
     typeof analysisAny?.rows === "number";
+
+  const platform = getPlatformResult();
+  if (platform)
+    return <PlatformReport result={platform} onNavigate={onNavigate} />;
 
   if (!hasAnalysis) {
     return (
@@ -73,7 +86,12 @@ export function ReportPage({ telemetry, onNavigate }: ReportPageProps) {
     );
   }
 
-  return <ReportShell analysis={analysis as DashboardTelemetry} onNavigate={onNavigate} />;
+  return (
+    <ReportShell
+      analysis={analysis as DashboardTelemetry}
+      onNavigate={onNavigate}
+    />
+  );
 }
 
 function ReportShell({
@@ -122,7 +140,10 @@ function ReportShell({
 
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
           {downloadLinks.report ? (
-            <a className="btn-ghost" href={`${backendBase}${downloadLinks.report}`}>
+            <a
+              className="btn-ghost"
+              href={`${backendBase}${downloadLinks.report}`}
+            >
               Download PDF report
             </a>
           ) : null}

@@ -56,3 +56,10 @@ Thumbs.db
 .vscode/
 .idea/
 .kiro/
+
+# Local verification artifacts
+rust/target/
+frontend/test-results/
+frontend/playwright-report/
+src/framevitals/*.so
+src/framevitals/*.pyd

@@ -1,0 +1,35 @@
+name: Shared platform workflows
+on:
+  pull_request:
+  push:
+    branches: [work/framevitals-sol-platform]
+permissions:
+  contents: read
+jobs:
+  browser-and-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: pip install -e '.[dev,web,arrow,onnx]'
+      - run: python -m pytest tests/test_platform_workflows.py tests/test_web_app_hardening.py tests/test_terminal_ui.py -q
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: browser-verification
+          path: frontend/test-results

@@ -1,4 +1,4 @@
-import type { DashboardTelemetry } from "@/data/mockTelemetry";
+import type { DashboardTelemetry } from "@/data/telemetry";
 
 /**
  * Module-level cache for the latest analyze result.

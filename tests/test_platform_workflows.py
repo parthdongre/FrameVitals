@@ -309,8 +309,8 @@ def test_capacity_limit_rejects_without_leaving_uploads(web):
 
 
 def test_html_missing_score_is_unavailable():
-    from framevitals.reporting.html import render_analysis_html
+    from framevitals.reporting.html import render_html_report
     result = AnalysisResult({'filename': 'missing.csv', 'health': {'overall_score': None}, 'ml_readiness': {'score': None}})
-    html = render_analysis_html(result)
+    html = render_html_report(result)
     assert 'Unavailable' in html
     assert '0/100' not in html

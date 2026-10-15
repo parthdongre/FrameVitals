@@ -1,3 +1,4 @@
+import { AiConsent } from "@/components/ui/AiConsent";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Eyebrow } from "@/components/site/SiteShell";
@@ -17,6 +18,7 @@ export default function AiReportTab({ analysis }: TabComponentProps) {
   // Local state lets us swap in the on-demand result without re-analyzing.
   const [ai, setAi] = useState(initialAi);
   const mutation = useAiReportMutation();
+  const [allowAI, setAllowAI] = useState(false);
 
   const text = safeStr(ai.text, "");
   const source = safeStr(ai.source, "");
@@ -25,8 +27,16 @@ export default function AiReportTab({ analysis }: TabComponentProps) {
   // Empty deferred state — show a Generate CTA instead of the empty state.
   if (deferred && !text) {
     return (
-      <motion.div variants={staggerParent} initial="initial" animate="animate" className="space-y-6">
-        <motion.section variants={staggerChild} className="flex flex-wrap items-center gap-3">
+      <motion.div
+        variants={staggerParent}
+        initial="initial"
+        animate="animate"
+        className="space-y-6"
+      >
+        <motion.section
+          variants={staggerChild}
+          className="flex flex-wrap items-center gap-3"
+        >
           <Eyebrow>Narrative</Eyebrow>
           <SourceBadge source="optional" />
         </motion.section>
@@ -39,17 +49,25 @@ export default function AiReportTab({ analysis }: TabComponentProps) {
             Narrative is on demand
           </p>
           <p className="mx-auto mt-2 max-w-md text-[13px] leading-6 text-ink-3">
-            Generate an interpretation of the current Prism result when you want one.
-            This is optional and does not change the underlying analysis.
+            Generate an interpretation of the current Prism result when you want
+            one. This is optional and does not change the underlying analysis.
           </p>
+          <AiConsent checked={allowAI} onChange={setAllowAI} />
           <button
             type="button"
-            disabled={mutation.isPending || !datasetId}
+            disabled={mutation.isPending || !datasetId || !allowAI}
             className="btn-accent mt-5 disabled:cursor-not-allowed disabled:opacity-40"
             onClick={async () => {
-              if (!datasetId) return;
-              const result = await mutation.mutateAsync({ dataset_id: datasetId });
-              setAi(result as unknown as Record<string, unknown>);
+              if (!datasetId || !allowAI) return;
+              try {
+                const result = await mutation.mutateAsync({
+                  dataset_id: datasetId,
+                  allow_ai: allowAI,
+                });
+                setAi(result as unknown as Record<string, unknown>);
+              } catch {
+                /* Mutation state renders the error. */
+              }
             }}
           >
             {mutation.isPending ? "Generating…" : "Generate narrative"}
@@ -74,18 +92,34 @@ export default function AiReportTab({ analysis }: TabComponentProps) {
   }
 
   return (
-    <motion.div variants={staggerParent} initial="initial" animate="animate" className="space-y-6">
-      <motion.section variants={staggerChild} className="flex flex-wrap items-center gap-3">
+    <motion.div
+      variants={staggerParent}
+      initial="initial"
+      animate="animate"
+      className="space-y-6"
+    >
+      <AiConsent checked={allowAI} onChange={setAllowAI} />
+      <motion.section
+        variants={staggerChild}
+        className="flex flex-wrap items-center gap-3"
+      >
         <Eyebrow>Narrative</Eyebrow>
         <SourceBadge source={source ? "generated" : "optional"} />
         {datasetId ? (
           <button
             type="button"
             onClick={async () => {
-              const result = await mutation.mutateAsync({ dataset_id: datasetId });
-              setAi(result as unknown as Record<string, unknown>);
+              try {
+                const result = await mutation.mutateAsync({
+                  dataset_id: datasetId,
+                  allow_ai: allowAI,
+                });
+                setAi(result as unknown as Record<string, unknown>);
+              } catch {
+                /* Mutation state renders the error. */
+              }
             }}
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || !allowAI}
             className="btn-ghost text-[12px] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {mutation.isPending ? "Regenerating…" : "Regenerate"}
