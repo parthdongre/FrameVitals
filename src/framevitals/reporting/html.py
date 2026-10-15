@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import json
+import math
+from framevitals.serialization import dumps as strict_dumps
 from html import escape
 from typing import Any, Mapping
 
@@ -11,11 +12,12 @@ def _text(value: Any) -> str:
     return escape(str(value if value is not None else ""))
 
 
-def _score(value: Any) -> float:
+def _score(value: Any) -> float | None:
     try:
-        return max(0.0, min(100.0, float(value)))
+        score = float(value)
+        return max(0.0, min(100.0, score)) if math.isfinite(score) else None
     except (TypeError, ValueError):
-        return 0.0
+        return None
 
 
 def _severity_class(value: Any) -> str:
@@ -207,7 +209,7 @@ def render_notebook_summary(result: Mapping[str, Any]) -> str:
   </div>
   <div style="color:#475467;font-size:13px;margin-bottom:12px">{metric_text}</div>
   <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
-    <div style="background:#f9fafb;padding:12px;border-radius:10px"><div style="font-size:12px;color:#6b7280">Health</div><strong>{_text(health.get('overall_score','n/a'))}/100</strong><div style="font-size:12px">{_text(health.get('label',''))}</div></div>
+    <div style="background:#f9fafb;padding:12px;border-radius:10px"><div style="font-size:12px;color:#6b7280">Health</div><strong>{_text(health.get('overall_score') if health.get('overall_score') is not None else 'Unavailable')}/100</strong><div style="font-size:12px">{_text(health.get('label',''))}</div></div>
     <div style="background:#f9fafb;padding:12px;border-radius:10px"><div style="font-size:12px;color:#6b7280">Source</div><strong>{_text(kind.upper())}</strong><div style="font-size:12px">{_text(result.get('analysis_mode','standard'))}</div></div>
     <div style="background:#f9fafb;padding:12px;border-radius:10px"><div style="font-size:12px;color:#6b7280">Beacons</div><strong>{len(findings)}</strong><div style="font-size:12px">surfaced</div></div>
   </div>
@@ -248,10 +250,10 @@ def render_html_report(result: Mapping[str, Any]) -> str:
         ])
         source_card = (
             f'<article class="panel score"><div class="label">ML readiness</div>'
-            f'<div class="big">{_text(ml.get("score","n/a"))}'
+            f'<div class="big">{_text(ml.get("score") if ml.get("score") is not None else "Unavailable")}'
             '<span style="font-size:17px;color:#98a2b3"> / 100</span></div>'
             f'<div>{_text(ml.get("label",""))}</div>'
-            f'<div class="bar"><span style="width:{ml_score:.1f}%"></span></div></article>'
+            f'<div class="bar"><span style="width:{ml_score if ml_score is not None else 0:.1f}%"></span></div></article>'
         )
     else:
         hero_meta = "".join(
@@ -272,7 +274,7 @@ def render_html_report(result: Mapping[str, Any]) -> str:
         for label, value in source_metrics[:4]
     )
 
-    raw_json = escape(json.dumps(dict(result), indent=2, default=str))
+    raw_json = escape(strict_dumps(dict(result), indent=2, default=str))
 
     return f"""<!doctype html>
 <html lang="en">
@@ -340,7 +342,7 @@ pre {{ overflow:auto;background:#111827;color:#d1d5db;padding:16px;border-radius
 </section>
 
 <section class="grid">
-  <article class="panel score"><div class="label">Data health</div><div class="big">{_text(health.get('overall_score','n/a'))}<span style="font-size:17px;color:#98a2b3"> / 100</span></div><div>{_text(health.get('label',''))}</div><div class="bar"><span style="width:{health_score:.1f}%"></span></div></article>
+  <article class="panel score"><div class="label">Data health (heuristic)</div><div class="big">{_text(health.get('overall_score') if health.get('overall_score') is not None else 'Unavailable')}<span style="font-size:17px;color:#98a2b3"> / 100</span></div><div>{_text(health.get('label',''))}</div><div class="bar"><span style="width:{health_score if health_score is not None else 0:.1f}%"></span></div></article>
   {source_card}
   <article class="panel score"><div class="label">Actionable findings</div><div class="big">{len(findings)}</div><div style="color:#667085">Normalized from FrameVitals' deterministic signal layer.</div></article>
 

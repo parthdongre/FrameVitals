@@ -51,6 +51,12 @@ def __getattr__(name: str):
     raise AttributeError(name)
 
 
+def capabilities(data: Any = None) -> dict[str, Any]:
+    """Discover supported sources, analyses, and optional format dependencies."""
+    from framevitals.capabilities import capabilities as discover
+    return discover(data)
+
+
 def inspect_source(data: Any) -> dict[str, Any]:
     """Inspect source metadata and execution capabilities without analysis."""
     from framevitals.core.source import SourceKind, recognize_source
@@ -372,7 +378,7 @@ __all__ = [
     "PrismResult", "AxiomResult", "ForgeResult",
     "CleaningPlan", "ColumnResult", "DiagnosticResult", "DataCheck", "CheckResult", "DriftResult",
     "GateResult", "ValidationResult", "prism", "axiom", "forge", "tide", "pulse",
-    "inspect_source", "profile", "roles", "health",
+    "capabilities", "inspect_source", "profile", "roles", "health",
     "ml_readiness", "quality", "statistics", "anomalies", "relationships", "system_info",
     "target_analysis", "analyze", "plan", "plan_cleaning", "clean", "compare", "infer_contract",
     "validate", "check", "run_checks", "discover_checks", "gate", "available_modules",

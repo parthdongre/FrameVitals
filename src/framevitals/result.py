@@ -7,7 +7,6 @@ adding discoverable helpers for notebooks, applications, reports, and CI.
 
 from __future__ import annotations
 
-import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -19,6 +18,7 @@ from framevitals.findings import (
     merge_findings,
     recommendations_from_findings,
 )
+from framevitals.serialization import dumps as strict_dumps
 
 
 class ColumnResult(dict):
@@ -93,7 +93,7 @@ class DiagnosticResult(dict):
         indent: int = 2,
     ) -> str | Path:
         """Serialize the complete diagnostic result or write it to a file."""
-        rendered = json.dumps(self.to_dict(), indent=indent, default=str)
+        rendered = strict_dumps(self.to_dict(), indent=indent, default=str)
         if destination is None:
             return rendered
         path = Path(destination)
@@ -152,6 +152,10 @@ class AnalysisResult(dict):
     """Backward-compatible result returned by :func:`framevitals.analyze`."""
 
     schema_version = "1"
+
+    def to_envelope(self) -> dict[str, Any]:
+        from framevitals.result_contract import build_envelope
+        return build_envelope(self)
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -302,7 +306,7 @@ class AnalysisResult(dict):
         indent: int = 2,
     ) -> str | Path:
         """Serialize the complete result to JSON or write it to ``destination``."""
-        rendered = json.dumps(self.to_dict(), indent=indent, default=str)
+        rendered = strict_dumps(self.to_dict(), indent=indent, default=str)
         if destination is None:
             return rendered
 

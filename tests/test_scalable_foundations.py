@@ -74,7 +74,8 @@ def test_file_source_reports_cheap_metadata_without_loading(tmp_path):
     metadata = source.inspect()
     assert metadata.name == "data.csv"
     assert metadata.format == "csv"
-    assert metadata.rows is None
+    assert metadata.rows == 2
+    assert metadata.materialized is False
     assert metadata.size_bytes == path.stat().st_size
 
     loaded = source.load()

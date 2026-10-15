@@ -5,13 +5,9 @@ import unicodedata
 from pathlib import Path
 
 
-ALLOWED_EXTENSIONS = {
-    ".csv",
-    ".xlsx",
-    ".xls",
-    ".tsv",
-    ".json",
-}
+from framevitals.file_formats import supported_extensions
+
+ALLOWED_EXTENSIONS = set(supported_extensions())
 
 _WINDOWS_DEVICE_NAMES = {
     "CON",
@@ -33,7 +29,7 @@ def validate_file(filename: str) -> None:
     if suffix not in ALLOWED_EXTENSIONS:
         raise ValueError(
             f"Unsupported file type '{suffix}'. "
-            "Allowed formats are CSV, XLSX, XLS, TSV, and JSON."
+            "Run framevitals formats to see supported types. Unsafe pickle files are disabled."
         )
 
 

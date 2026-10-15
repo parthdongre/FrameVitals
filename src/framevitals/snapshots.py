@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from framevitals.serialization import dumps as strict_dumps
 
 SNAPSHOT_SCHEMA_VERSION = "1"
 
@@ -185,7 +186,7 @@ def _state_payload(result: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _fingerprint(state: Mapping[str, Any]) -> str:
-    canonical = json.dumps(
+    canonical = strict_dumps(
         dict(state),
         sort_keys=True,
         separators=(",", ":"),
@@ -251,7 +252,7 @@ class AnalysisSnapshot(dict):
         *,
         indent: int = 2,
     ) -> str | Path:
-        rendered = json.dumps(dict(self), indent=indent, default=str)
+        rendered = strict_dumps(dict(self), indent=indent, default=str)
         if destination is None:
             return rendered
         path = Path(destination)

@@ -77,6 +77,8 @@ def check_file_format(path: str | Path) -> FormatSpec:
             f"{value.suffix} support requires {spec.dependency!r}. "
             f'Install: python -m pip install "framevitals[{spec.extra}]"'
         )
+    from framevitals.input_safety import validate_input
+    validate_input(value)
     return spec
 
 

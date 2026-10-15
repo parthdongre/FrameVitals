@@ -100,7 +100,8 @@ def _budget(depth: str | None) -> dict[str, int]:
 def _coerce_graph(graph: Any, nx: Any) -> tuple[Any, str | None]:
     """Load supported graph files or return an existing graph object."""
     if isinstance(graph, (str, Path)):
-        path = Path(graph)
+        from framevitals.input_safety import validate_input
+        path = validate_input(graph)
         if not path.is_file():
             raise FileNotFoundError(path)
         suffix = path.suffix.lower()
@@ -819,7 +820,10 @@ def analyze_graph(
         score -= min(20.0, max(0.0, (0.95 - float(reachable_ratio)) * 50.0))
     score = round(max(0.0, min(100.0, score)), 2)
 
+    from framevitals.presentation import graph_excerpt
+
     graph_summary = {
+        "topology_preview": graph_excerpt(graph),
         "nodes": n,
         "edges": m,
         "directed": directed,

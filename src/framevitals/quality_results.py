@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+
+from framevitals.serialization import dumps as strict_dumps
 
 
 class _QualityResult(dict):
@@ -26,7 +27,7 @@ class _QualityResult(dict):
         *,
         indent: int = 2,
     ) -> str | Path:
-        rendered = json.dumps(self.to_dict(), indent=indent, default=str)
+        rendered = strict_dumps(self.to_dict(), indent=indent, default=str)
         if destination is None:
             return rendered
         path = Path(destination)
