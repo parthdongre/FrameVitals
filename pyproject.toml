@@ -66,11 +66,11 @@ web = [
     "werkzeug>=3.0",
 ]
 arrow = [
-    "pyarrow>=25.0,<26",
+    "pyarrow>=25.0,<27",
 ]
 duckdb = [
     "duckdb>=1.4",
-    "pyarrow>=25.0,<26",
+    "pyarrow>=25.0,<27",
 ]
 docs = [
     "mkdocs",
@@ -90,7 +90,7 @@ all = [
     "flask>=3.0",
     "gunicorn>=22.0",
     "werkzeug>=3.0",
-    "pyarrow>=25.0,<26",
+    "pyarrow>=25.0,<27",
     "duckdb>=1.4",
 ]
 dev = [
